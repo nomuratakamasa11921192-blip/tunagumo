@@ -1,3 +1,11 @@
+[model]
+# メインモデル。制限(レート/使用量上限)に達した場合の切り替えは
+# config.tomlの宣言だけでは実現できないため、daily_qa.sh側の
+# run_codex_with_fallback() 関数がgpt-5.6-solへの自動リトライを担う。
+model = "gpt-6-astra"
+model_provider = "openai"
+model_reasoning_effort = "high"
+
 [mcp_servers.higgsfield]
 url = "https://mcp.higgsfield.ai/mcp"
 
