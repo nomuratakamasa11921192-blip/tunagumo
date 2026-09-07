@@ -13,3 +13,6 @@ url = "https://mcp.higgsfield.ai/mcp"
 
 [mcp_servers.stripe]
 url = "https://mcp.stripe.com"
+
+[mcp_servers.notion]
+url = "https://mcp.notion.com/mcp"
