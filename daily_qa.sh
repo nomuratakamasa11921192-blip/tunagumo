@@ -13,7 +13,7 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 
-FALLBACK_MODEL="gpt-5.6-sol"
+FALLBACK_MODEL="gpt-5.6-luna"
 
 # $1 = codexに渡すプロンプト文字列
 run_codex_with_fallback() {

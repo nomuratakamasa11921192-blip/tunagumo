@@ -1,7 +1,9 @@
 [model]
 # メインモデル。制限(レート/使用量上限)に達した場合の切り替えは
 # config.tomlの宣言だけでは実現できないため、daily_qa.sh側の
-# run_codex_with_fallback() 関数がgpt-5.6-solへの自動リトライを担う。
+# run_codex_with_fallback() 関数がgpt-5.6-lunaへの自動リトライを担う。
+# (sol/terraは高reasoningだと5時間枠を数分で使い切る既知の不具合があるため、
+# 消費が最も軽いlunaをフォールバックに選定: https://github.com/openai/codex/issues/32606)
 model = "gpt-6-astra"
 model_provider = "openai"
 model_reasoning_effort = "high"
