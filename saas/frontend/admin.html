@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ツナグモ 管理画面</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --border: #e2e0db;
+    --text: #2b2a28;
+    --muted: #767066;
+    --accent: #b5652c;
+    --accent-hover: #9a5424;
+    --danger: #b3432f;
+    --ok: #4d7a4e;
+    --warn: #b58a2c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    display: flex;
+    min-height: 100vh;
+  }
+  a { color: var(--accent); }
+
+  #login {
+    max-width: 360px;
+    margin: 80px auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+  }
+  #login h1 { font-size: 18px; margin: 0 0 16px; }
+
+  #app { display: none; width: 100%; }
+  #app.active { display: flex; }
+
+  nav {
+    width: 200px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+  }
+  nav h1 { font-size: 15px; margin: 0 0 20px; }
+  nav .tab {
+    display: block;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  nav .tab:hover { background: var(--bg); }
+  nav .tab.selected { background: #f1e6da; font-weight: 600; }
+
+  main { flex: 1; padding: 32px; max-width: 900px; }
+  main h2 { font-size: 18px; margin: 0 0 20px; }
+
+  input, textarea, select, button {
+    font: inherit;
+    font-size: 14px;
+  }
+  input[type=text], input[type=password], textarea, select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+  }
+  textarea { resize: vertical; min-height: 90px; }
+  textarea.code { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; min-height: 480px; white-space: pre; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  label:first-child { margin-top: 0; }
+
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: #c9c4ba; cursor: default; }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--bg); }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eee; color: #555; }
+  .badge.warn { background: #fdf1dc; color: var(--warn); }
+  .badge.err { background: #f6e4e0; color: var(--danger); }
+
+  .key-display {
+    font-family: ui-monospace, monospace;
+    background: #f1e6da;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    word-break: break-all;
+    font-size: 13px;
+    margin-top: 10px;
+  }
+
+  .error-text { color: var(--danger); white-space: pre-wrap; }
+  .ok-text { color: var(--ok); }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--text);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1>ツナグモ 管理画面</h1>
+  <label for="login-key">管理者キー</label>
+  <input id="login-key" type="password" placeholder="ADMIN_API_KEY">
+  <button id="login-btn" style="margin-top: 14px; width: 100%;">ログイン</button>
+  <p id="login-error" class="error-text" style="display:none; margin-top: 10px; font-size: 13px;"></p>
+</div>
+
+<div id="app">
+  <nav>
+    <h1>ツナグモ 管理</h1>
+    <div class="tab" data-tab="dashboard">① ダッシュボード</div>
+    <div class="tab" data-tab="tenants">新規テナント発行</div>
+    <div class="tab" data-tab="config">② プロンプト編集</div>
+    <div class="tab" data-tab="documents">社内資料の期限</div>
+    <div class="tab" data-tab="regression">⑥ 回帰テスト</div>
+    <button id="logout-btn" class="secondary" style="width: 100%; margin-top: 24px;">ログアウト</button>
+  </nav>
+  <main id="main-content"></main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'tsunagumo_admin_key';
+  var adminKey = localStorage.getItem(STORAGE_KEY) || '';
+  var industries = [];
+
+  var loginEl = document.getElementById('login');
+  var appEl = document.getElementById('app');
+  var mainEl = document.getElementById('main-content');
+  var toastEl = document.getElementById('toast');
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.style.display = 'block';
+    setTimeout(function () { toastEl.style.display = 'none'; }, 3500);
+  }
+
+  function api(path, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    options.headers['Authorization'] = 'Bearer ' + adminKey;
+    if (options.body) options.headers['Content-Type'] = 'application/json';
+    return fetch(path, options).then(function (res) {
+      if (res.status === 401) {
+        logout();
+        throw new Error('認証エラー');
+      }
+      // 204 No Content等、本文が無いレスポンスはjson()を呼ぶと例外になるので分ける
+      if (res.status === 204) {
+        if (!res.ok) throw new Error('エラー: ' + res.status);
+        return null;
+      }
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.detail || ('エラー: ' + res.status));
+        return data;
+      });
+    });
+  }
+
+  function logout() {
+    localStorage.removeItem(STORAGE_KEY);
+    adminKey = '';
+    loginEl.style.display = 'block';
+    appEl.classList.remove('active');
+  }
+
+  function showApp() {
+    loginEl.style.display = 'none';
+    appEl.classList.add('active');
+    api('/admin/industries').then(function (data) {
+      industries = data.industries;
+      selectTab('dashboard');
+    });
+  }
+
+  document.getElementById('login-btn').addEventListener('click', function () {
+    var key = document.getElementById('login-key').value.trim();
+    if (!key) return;
+    adminKey = key;
+    api('/admin/dashboard').then(function () {
+      localStorage.setItem(STORAGE_KEY, adminKey);
+      document.getElementById('login-error').style.display = 'none';
+      showApp();
+    }).catch(function () {
+      document.getElementById('login-error').textContent = '管理者キーが正しくありません。';
+      document.getElementById('login-error').style.display = 'block';
+    });
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', logout);
+
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (tab) {
+    tab.addEventListener('click', function () { selectTab(tab.dataset.tab); });
+  });
+
+  function selectTab(name) {
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (tab) {
+      tab.classList.toggle('selected', tab.dataset.tab === name);
+    });
+    if (name === 'dashboard') renderDashboard();
+    if (name === 'tenants') renderTenantForm();
+    if (name === 'config') renderConfigEditor();
+    if (name === 'documents') renderExpiringDocuments();
+    if (name === 'regression') renderRegressionTest();
+  }
+
+  function industryOptions(selected) {
+    return industries.map(function (i) {
+      return '<option value="' + i + '"' + (i === selected ? ' selected' : '') + '>' + i + '</option>';
+    }).join('');
+  }
+
+  // ① 横断ダッシュボード
+  function renderDashboard() {
+    mainEl.innerHTML = '<h2>① 横断ダッシュボード</h2><div class="card muted">読み込み中…</div>';
+    api('/admin/dashboard').then(function (data) {
+      if (!data.tenants.length) {
+        mainEl.innerHTML = '<h2>① 横断ダッシュボード</h2><div class="card muted">まだテナントがありません。</div>';
+        return;
+      }
+      var rows = data.tenants.map(function (t) {
+        return '<tr>' +
+          '<td>' + escapeHtml(t.tenant_name) + '<br><span class="muted">' + t.tenant_id + '</span></td>' +
+          '<td>' + escapeHtml(t.industry) + '</td>' +
+          '<td class="num">' + t.session_count + '</td>' +
+          '<td class="num">' + (t.error_count > 0 ? '<span class="badge err">' + t.error_count + '</span>' : '0') + '</td>' +
+          '<td class="num">' + (t.halted_count > 0 ? '<span class="badge warn">' + t.halted_count + '</span>' : '0') + '</td>' +
+          '<td class="num">' + (t.pending_approval_count > 0 ? '<span class="badge warn">' + t.pending_approval_count + '</span>' : '0') + '</td>' +
+          '<td class="num">$' + t.total_cost_usd.toFixed(4) + '</td>' +
+          '<td><button class="secondary rotate-key-btn" data-tenant-id="' + t.tenant_id + '" style="padding:4px 10px;font-size:12px;">Anthropicキー更新</button></td>' +
+          '</tr>' +
+          '<tr class="rotate-key-row" data-tenant-id="' + t.tenant_id + '" style="display:none;">' +
+          '<td colspan="8" style="background:var(--bg);">' +
+          '<input type="text" class="rotate-key-input" placeholder="sk-ant-...(新しいキー)" style="width:320px;display:inline-block;">' +
+          ' <button class="rotate-key-save" data-tenant-id="' + t.tenant_id + '" style="padding:6px 12px;font-size:12px;">保存</button>' +
+          '</td></tr>';
+      }).join('');
+      mainEl.innerHTML = '<h2>① 横断ダッシュボード</h2><div class="card" style="overflow-x:auto;">' +
+        '<table><thead><tr><th>テナント</th><th>業種</th><th>セッション数</th><th>エラー</th><th>中断</th><th>承認待ち</th><th>累計コスト</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>';
+
+      Array.prototype.forEach.call(document.querySelectorAll('.rotate-key-btn'), function (btn) {
+        btn.addEventListener('click', function () {
+          var row = document.querySelector('.rotate-key-row[data-tenant-id="' + btn.dataset.tenantId + '"]');
+          row.style.display = row.style.display === 'none' ? '' : 'none';
+        });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.rotate-key-save'), function (btn) {
+        btn.addEventListener('click', function () {
+          var row = document.querySelector('.rotate-key-row[data-tenant-id="' + btn.dataset.tenantId + '"]');
+          var input = row.querySelector('.rotate-key-input');
+          var newKey = input.value.trim();
+          if (!newKey) { toast('新しいAPIキーを入力してください'); return; }
+          btn.disabled = true;
+          api('/admin/tenants/' + btn.dataset.tenantId + '/anthropic-key', {
+            method: 'PATCH',
+            body: JSON.stringify({ anthropic_api_key: newKey })
+          })
+            .then(function () {
+              toast('更新しました');
+              row.style.display = 'none';
+              input.value = '';
+            })
+            .catch(function (e) { toast(e.message); })
+            .then(function () { btn.disabled = false; });
+        });
+      });
+    }).catch(function (e) { toast(e.message); });
+  }
+
+  // 新規テナント発行
+  function renderTenantForm() {
+    mainEl.innerHTML = '<h2>新規テナント発行</h2><div class="card">' +
+      '<label for="tenant-name">会社名</label>' +
+      '<input id="tenant-name" type="text" placeholder="例: 株式会社サンプル不動産">' +
+      '<label for="tenant-industry">業種</label>' +
+      '<select id="tenant-industry">' + industryOptions('real_estate') + '</select>' +
+      '<label for="tenant-anthropic-key">顧客のAnthropic APIキー</label>' +
+      '<input id="tenant-anthropic-key" type="text" placeholder="sk-ant-...(オンライン相談で確認したもの)">' +
+      '<p class="muted" style="margin-top:6px;">AI利用の実費はこのキーで顧客自身のAnthropicアカウントに課金されます(ツナグモの月額には含まれません)。</p>' +
+      '<label for="tenant-openai-key">顧客のOpenAI APIキー(任意)</label>' +
+      '<input id="tenant-openai-key" type="text" placeholder="sk-...(社内資料検索(RAG)を使う場合のみ)">' +
+      '<p class="muted" style="margin-top:6px;">社内資料検索(RAG)機能を使う場合のみ入力してください。未入力でも発行でき、顧客が後から自分のアカウント設定画面で登録できます。</p>' +
+      '<label for="tenant-email">顧客のメールアドレス(任意)</label>' +
+      '<input id="tenant-email" type="text" placeholder="customer@example.com">' +
+      '<p class="muted" style="margin-top:6px;">入力すると、APIキー入りのウェルカムメールを自動送信します(Resend未設定の間は送信されません)。</p>' +
+      '<button id="tenant-submit" style="margin-top: 14px;">発行する</button>' +
+      '<div id="tenant-result"></div>' +
+      '</div>';
+
+    document.getElementById('tenant-submit').addEventListener('click', function () {
+      var name = document.getElementById('tenant-name').value.trim();
+      if (!name) { toast('会社名を入力してください'); return; }
+      var anthropicKey = document.getElementById('tenant-anthropic-key').value.trim();
+      if (!anthropicKey) { toast('顧客のAnthropic APIキーを入力してください'); return; }
+      var openaiKey = document.getElementById('tenant-openai-key').value.trim();
+      var email = document.getElementById('tenant-email').value.trim();
+      var industry = document.getElementById('tenant-industry').value;
+      var btn = document.getElementById('tenant-submit');
+      btn.disabled = true;
+      api('/admin/tenants', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: name,
+          industry: industry,
+          anthropic_api_key: anthropicKey,
+          openai_api_key: openaiKey || null,
+          email: email || null
+        })
+      })
+        .then(function (data) {
+          btn.disabled = false;
+          var emailNote = email
+            ? (data.email_sent
+                ? '<p class="ok-text">ウェルカムメールを' + escapeHtml(email) + 'に送信しました。</p>'
+                : '<p class="muted">メールは送信されませんでした(Resend未設定の可能性があります)。下記のAPIキーを手動で送ってください。</p>')
+            : '';
+          document.getElementById('tenant-result').innerHTML =
+            '<p class="ok-text" style="margin-top:16px;">発行しました。このAPIキーはこの画面にしか表示されません。今すぐ顧客に控えを渡してください。</p>' +
+            emailNote +
+            '<div class="key-display">' + escapeHtml(data.api_key) + '</div>';
+          document.getElementById('tenant-name').value = '';
+          document.getElementById('tenant-anthropic-key').value = '';
+          document.getElementById('tenant-openai-key').value = '';
+          document.getElementById('tenant-email').value = '';
+        })
+        .catch(function (e) { btn.disabled = false; toast(e.message); });
+    });
+  }
+
+  // ② プロンプト一括更新
+  function renderConfigEditor() {
+    mainEl.innerHTML = '<h2>② プロンプト一括更新</h2><div class="card">' +
+      '<label for="config-industry">業種</label>' +
+      '<select id="config-industry">' + industryOptions('real_estate') + '</select>' +
+      '<label for="config-yaml">設定YAML</label>' +
+      '<textarea id="config-yaml" class="code"></textarea>' +
+      '<p class="muted" style="margin-top:8px;">保存前に検証されます。検証に失敗した内容は反映されません。保存すると再デプロイなしで即座にこの業種の全顧客に反映されます。</p>' +
+      '<button id="config-save">保存する</button> ' +
+      '<button id="config-reload" class="secondary">読み込み直す</button>' +
+      '<div id="config-result" style="margin-top:10px;"></div>' +
+      '</div>';
+
+    function load() {
+      var industry = document.getElementById('config-industry').value;
+      api('/admin/config/' + industry).then(function (data) {
+        document.getElementById('config-yaml').value = data.yaml_text;
+        document.getElementById('config-result').innerHTML = '';
+      }).catch(function (e) { toast(e.message); });
+    }
+
+    document.getElementById('config-industry').addEventListener('change', load);
+    document.getElementById('config-reload').addEventListener('click', load);
+    document.getElementById('config-save').addEventListener('click', function () {
+      var industry = document.getElementById('config-industry').value;
+      var yamlText = document.getElementById('config-yaml').value;
+      var btn = document.getElementById('config-save');
+      btn.disabled = true;
+      btn.textContent = '保存中…';
+      api('/admin/config/' + industry, { method: 'PUT', body: JSON.stringify({ yaml_text: yamlText }) })
+        .then(function (data) {
+          document.getElementById('config-result').innerHTML =
+            '<p class="ok-text">保存しました(' + escapeHtml(data.company_name) + ' / 部署: ' + data.departments.join(', ') + ')</p>';
+        })
+        .catch(function (e) {
+          document.getElementById('config-result').innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = '保存する'; });
+    });
+
+    load();
+  }
+
+  // 社内資料(RAG)の有効期限が近い・過ぎている文書の横断確認
+  function renderExpiringDocuments() {
+    mainEl.innerHTML = '<h2>社内資料の期限</h2><div class="card muted">読み込み中…</div>';
+    api('/admin/documents/expiring').then(function (data) {
+      if (!data.documents.length) {
+        mainEl.innerHTML = '<h2>社内資料の期限</h2><div class="card muted">' +
+          '期限が近い(30日以内)・期限切れの社内資料はありません。</div>';
+        return;
+      }
+      var rows = data.documents.map(function (d) {
+        var badge = d.days_left < 0
+          ? '<span class="badge err">期限切れ(' + Math.abs(d.days_left) + '日経過)</span>'
+          : '<span class="badge warn">残り' + d.days_left + '日</span>';
+        return '<tr>' +
+          '<td>' + escapeHtml(d.tenant_name) + '</td>' +
+          '<td>' + escapeHtml(d.title) + '</td>' +
+          '<td>' + escapeHtml(d.valid_until) + '</td>' +
+          '<td>' + badge + '</td>' +
+          '</tr>';
+      }).join('');
+      mainEl.innerHTML = '<h2>社内資料の期限</h2>' +
+        '<p class="muted">顧客には既にメールで通知済みです(scripts.scan_document_expiry)。' +
+        'ここは全テナント横断で状況を把握するための一覧です。</p>' +
+        '<div class="card" style="overflow-x:auto;">' +
+        '<table><thead><tr><th>テナント</th><th>資料名</th><th>有効期限</th><th>状態</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>';
+    }).catch(function (e) { toast(e.message); });
+  }
+
+  // ⑥ 回帰テスト一括実行
+  function renderRegressionTest() {
+    mainEl.innerHTML = '<h2>⑥ 回帰テスト一括実行</h2><div class="card">' +
+      '<label for="regression-industry">業種</label>' +
+      '<select id="regression-industry">' + industryOptions('real_estate') + '</select>' +
+      '<p class="muted">実際のClaude APIを使って課金・数分かかります。モデル更新後の動作確認に使ってください。</p>' +
+      '<button id="regression-run">実行する</button>' +
+      '<div id="regression-result" style="margin-top:14px;"></div>' +
+      '</div>';
+
+    document.getElementById('regression-run').addEventListener('click', function () {
+      var industry = document.getElementById('regression-industry').value;
+      var btn = document.getElementById('regression-run');
+      btn.disabled = true;
+      btn.textContent = '実行中(数分かかります)…';
+      document.getElementById('regression-result').innerHTML = '';
+      api('/admin/regression-test?industry=' + encodeURIComponent(industry), { method: 'POST' })
+        .then(function (data) {
+          var rows = data.results.map(function (r) {
+            return '<tr><td>' + escapeHtml(r.name) + '</td>' +
+              '<td>' + (r.ok ? '<span class="badge ok-text">合格</span>' : '<span class="badge err">不合格</span>') + '</td>' +
+              '<td>' + escapeHtml(r.detail) + '</td></tr>';
+          }).join('');
+          document.getElementById('regression-result').innerHTML =
+            '<p class="' + (data.all_passed ? 'ok-text' : 'error-text') + '">' +
+            (data.all_passed ? '全件合格しました。' : '不合格があります。') + '</p>' +
+            '<table><thead><tr><th>ケース</th><th>結果</th><th>詳細</th></tr></thead><tbody>' + rows + '</tbody></table>';
+        })
+        .catch(function (e) {
+          document.getElementById('regression-result').innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = '実行する'; });
+    });
+  }
+
+  if (adminKey) {
+    api('/admin/dashboard').then(showApp).catch(logout);
+  }
+})();
+</script>
+
+</body>
+</html>

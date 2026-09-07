@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>料金｜ツナグモ</title>
+<meta name="description" content="ツナグモの料金プラン。AI利用料込みの月額3プラン。初期費用なし、最低契約期間なし、オンライン相談の後から2週間トライアル。">
+<meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161C" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/logo.svg">
+<style>
+  :root { --bg:#F6F4EF; --page-bg:#FFFFFF; --ink:#22283A; --ink-soft:#4B5165; --ink-faint:#7A8093; --accent:#B8792F; --accent-soft:#EFE3D1; --line:#D9D3C7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161C; --page-bg:#1B1E27; --ink:#ECE7DC; --ink-soft:#B7BAC4; --ink-faint:#7E8494; --accent:#D79A52; --accent-soft:rgba(183,121,47,0.16); --line:#333A48; } }
+  :root[data-theme="dark"] { --bg:#14161C; --page-bg:#1B1E27; --ink:#ECE7DC; --ink-soft:#B7BAC4; --ink-faint:#7E8494; --accent:#D79A52; --accent-soft:rgba(183,121,47,0.16); --line:#333A48; }
+  :root[data-theme="light"] { --bg:#F6F4EF; --page-bg:#FFFFFF; --ink:#22283A; --ink-soft:#4B5165; --ink-faint:#7A8093; --accent:#B8792F; --accent-soft:#EFE3D1; --line:#D9D3C7; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"游ゴシック体","Yu Gothic","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; line-height:1.8; }
+  a { color: inherit; }
+  h1, h2 { font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif; text-wrap: balance; margin:0; }
+  header { position: sticky; top:0; z-index:10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); border-bottom:1px solid var(--line); }
+  .nav-inner { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; max-width:800px; margin:0 auto; }
+  .logo { font-family:"游明朝",serif; font-size:20px; font-weight:700; letter-spacing:0.08em; text-decoration:none; color:var(--ink); }
+  .logo span { color: var(--accent); }
+  .nav-back { font-size:13.5px; color:var(--ink-soft); text-decoration:none; }
+  .nav-back:hover { color: var(--accent); }
+  .hero { padding: 64px 24px 40px; text-align:center; }
+  .eyebrow { display:inline-block; font-size:12px; letter-spacing:0.16em; color:var(--accent); text-transform:uppercase; margin-bottom:18px; padding:4px 12px; border:1px solid var(--accent-soft); border-radius:999px; }
+  .hero h1 { font-size: clamp(24px, 5vw, 34px); line-height:1.55; margin-bottom:14px; }
+  .hero p.lead { font-size:15px; color:var(--ink-soft); max-width:480px; margin:0 auto; }
+  section { padding: 40px 24px; }
+  .section-inner { max-width: 800px; margin: 0 auto; }
+
+  .plans { display:grid; grid-template-columns: repeat(3, 1fr); max-width: 720px; margin: 0 auto 24px; gap:16px; }
+  .plan { background:var(--page-bg); border:1px solid var(--line); border-radius:10px; padding:24px 18px; text-align:center; }
+  .plan.featured { border-color: var(--accent); }
+  .plan h3 { font-size:14.5px; color:var(--ink-faint); margin-bottom:10px; font-family: inherit; }
+  .plan .amount { font-family:"游明朝",serif; font-size:26px; color:var(--accent); display:block; margin-bottom:4px; }
+  .plan .amount .unit { font-size:12px; color:var(--ink-faint); }
+  .plan ul { list-style:none; margin:16px 0 0; padding:0; font-size:12.5px; color:var(--ink-soft); text-align:left; }
+  .plan ul li { padding: 6px 0; border-top:1px solid var(--line); }
+  .plan ul li:first-child { border-top: none; }
+  @media (max-width: 640px) { .plans { grid-template-columns: 1fr; } }
+
+  .compare-wrap { overflow-x:auto; margin-bottom:20px; }
+  .compare-table { width:100%; border-collapse:collapse; font-size:13px; min-width:520px; background:var(--page-bg); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .compare-table th, .compare-table td { padding:12px 14px; border-bottom:1px solid var(--line); text-align:center; }
+  .compare-table thead th { color:var(--ink-faint); font-weight:700; font-size:12px; }
+  .compare-table thead th.featured { color:var(--accent); }
+  .compare-table thead .plan-amount { display:block; font-family:"游明朝",serif; font-size:17px; color:var(--accent); margin-top:4px; }
+  .compare-table td:first-child, .compare-table th:first-child { text-align:left; color:var(--ink-soft); white-space:nowrap; }
+  .compare-table tr:last-child td { border-bottom:none; }
+  .compare-table td.featured-col { background: var(--accent-soft); }
+
+  .panel { background: var(--page-bg); border:1px solid var(--line); border-radius:10px; padding:26px 24px; margin-bottom:20px; }
+  .panel h2 { font-size:17px; margin-bottom:14px; }
+  .panel h2 .mark { color: var(--accent); }
+  .panel ul { margin:0; padding-left:1.2em; color:var(--ink-soft); font-size:14.5px; }
+  .panel ul li + li { margin-top:6px; }
+  .panel p { color:var(--ink-soft); font-size:14.5px; margin:0 0 8px; }
+  .panel p:last-child { margin-bottom:0; }
+  .panel .note, .note { font-size:12.5px; color:var(--ink-faint); margin-top:10px; }
+
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:13px 26px; border-radius:4px; font-size:14.5px; font-weight:700; text-decoration:none; letter-spacing:0.02em; }
+  .btn-primary { background: var(--ink); color: var(--bg); }
+  .cta-center { text-align:center; }
+  footer { padding:32px 24px; text-align:center; font-size:12.5px; color:var(--ink-faint); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav-inner">
+    <a class="logo" href="/">tunagumo<span>.</span></a>
+    <a class="nav-back" href="/">トップへ戻る</a>
+  </div>
+</header>
+
+<div class="hero">
+  <span class="eyebrow">Pricing</span>
+  <h1>料金プラン</h1>
+  <p class="lead">AI利用料を含んだ月額プランです。オンライン相談（使い方説明）の後から2週間、トライアルいただけます。</p>
+</div>
+
+<section>
+  <div class="section-inner">
+
+    <div class="compare-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>ライト<span class="plan-amount">39,800円／月</span></th>
+            <th class="featured">スタンダード<span class="plan-amount">98,000円／月</span></th>
+            <th>プレミアム<span class="plan-amount">198,000円／月</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>想定規模</td><td>個人・小規模店舗</td><td class="featured-col">営業数名の店舗</td><td>複数店舗・大規模</td></tr>
+          <tr><td>物件写真・動画の生成上限</td><td>基準量まで</td><td class="featured-col">ライトの4倍まで</td><td>ライトの12倍まで</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="text-align:center; margin:-10px 0 20px;">全プラン共通：文章作成 無制限／使い方のご案内／業界の禁止表現チェック／承認フローと履歴／初期費用なし／最低契約期間なし／解約は管理画面からいつでも可能（違約金なし）</p>
+
+    <div class="panel">
+      <h2><span class="mark">■</span> AI利用料について</h2>
+      <p>文章作成のAI利用料は、月額料金に含まれています。お客様ご自身でAI事業者と契約いただく必要はありません。</p>
+      <p>物件写真の編集・動画作成など画像/動画系の機能は、プランごとに月間のご利用上限があります。上限に達した場合、追加チケットのご購入、または上位プランへの変更が必要です。</p>
+      <p class="note">※ 生成された文章・画像は、必ず内容をご確認のうえご利用ください。文章の生成には海外のAIサービス（Anthropic社）を利用しています。</p>
+    </div>
+
+    <div class="panel cta-center">
+      <p style="margin-bottom:16px;">オンライン相談（使い方説明）の後から2週間トライアルいただけます。開始にはクレジットカードのご登録が必要です。</p>
+      <a class="btn btn-primary" href="/trial">無料相談を予約する</a>
+    </div>
+
+  </div>
+</section>
+
+<footer>&copy; 2026 tunagumo（ツナグモ） / 埼玉県春日部市</footer>
+
+</body>
+</html>

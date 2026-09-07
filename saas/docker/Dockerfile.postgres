@@ -1,0 +1,11 @@
+# pgvector入りの公式イメージをベースに、PGroonga(日本語対応全文検索)を追加する。
+# Phase 7(RAG)のハイブリッド検索(ベクトル検索+全文検索)で両方使う。
+FROM pgvector/pgvector:pg16
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates \
+    && wget "https://packages.groonga.org/debian/groonga-apt-source-latest-$(lsb_release --codename --short).deb" \
+    && apt-get install -y -V ./groonga-apt-source-latest-*.deb \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-16-pgdg-pgroonga \
+    && rm -rf /var/lib/apt/lists/* ./groonga-apt-source-latest-*.deb

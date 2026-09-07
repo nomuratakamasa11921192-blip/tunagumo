@@ -1,0 +1,28 @@
+# VPS上の /etc/caddy/Caddyfile に、この内容をコピーする。
+# Caddyは指定したドメインで自動的にLet's EncryptのHTTPS証明書を取得・更新してくれる。
+#
+# 構成(2026-08-26変更): 営業サイト(website/)とSaaS本体を同じドメインに同居させると
+# 衝突する(どちらもルートパスを使うため)。トップドメインは営業サイト、SaaS本体は
+# app.サブドメインに分離する。
+#   tunagumo.com, www.tunagumo.com → 営業サイト(静的ファイル、/opt/tsunagumo/website)
+#   app.tunagumo.com               → SaaS本体(reverse_proxy)
+#
+# 使い方:
+#   sudo nano /etc/caddy/Caddyfile
+#   (この内容を貼り付ける。ドメインが違う場合は差し替える)
+#   sudo systemctl reload caddy
+#
+# 前提: /opt/tsunagumo/website に営業サイトの静的ファイル一式を配置しておくこと
+# (saas/README.mdの「営業サイトの配置」参照)。app.tunagumo.comのDNS Aレコードも
+# 別途、tunagumo.comと同じIPで追加しておくこと。
+
+tunagumo.com, www.tunagumo.com {
+    root * /opt/tsunagumo/website
+    file_server
+    # 拡張子なしのURL(/trial等)を/trial.htmlとして解決する
+    try_files {path} {path}.html {path}/index.html
+}
+
+app.tunagumo.com {
+    reverse_proxy localhost:8000
+}

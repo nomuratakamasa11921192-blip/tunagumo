@@ -1,0 +1,35 @@
+%% Phase 2で実装したOrgStateグラフの構造(config/default.yamlの部署設定に基づく)
+%% 生成方法: docker compose exec api python -c "
+%%   from src.agent.config_loader import load_config
+%%   from src.agent.graph import build_graph
+%%   print(build_graph(load_config('config/default.yaml')).get_graph().draw_mermaid())"
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	ceo_office(ceo_office)
+	clarify(clarify)
+	join(join)
+	qa_auditor(qa_auditor)
+	planning_dept(planning_dept)
+	copy_dept(copy_dept)
+	client_comm_dept(client_comm_dept)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> ceo_office;
+	clarify --> ceo_office;
+	client_comm_dept --> join;
+	copy_dept --> join;
+	join --> qa_auditor;
+	planning_dept --> join;
+	qa_auditor --> ceo_office;
+	ceo_office -.-> planning_dept;
+	ceo_office -.-> copy_dept;
+	ceo_office -.-> client_comm_dept;
+	ceo_office -.-> clarify;
+	ceo_office -.-> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

@@ -1,0 +1,21 @@
+# 本番用の上書き設定。開発用docker-compose.ymlはそのまま(パスワード固定・ENV=development)。
+# 本番では db/api/scheduler の3箇所だけ、実際のパスワード・ENV=production に差し替える。
+#
+# 使い方(VPS上、docker/ ディレクトリで):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# 同じディレクトリに、POSTGRES_PASSWORD=... の1行だけを書いた .env が別途必要
+# (これは docker compose の変数展開専用。アプリ本体の設定は ../.env の方)。
+
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  api:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tsunagumo:${POSTGRES_PASSWORD}@db:5432/tsunagumo
+      ENV: production
+  scheduler:
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tsunagumo:${POSTGRES_PASSWORD}@db:5432/tsunagumo
+      ENV: production

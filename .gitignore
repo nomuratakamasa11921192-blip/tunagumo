@@ -1,0 +1,11 @@
+.env
+node_modules/
+private/*.json
+.wrangler/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+saas/docker/backups/
+*.pdf

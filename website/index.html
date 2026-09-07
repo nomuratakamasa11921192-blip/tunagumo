@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ツナグモ｜不動産の文章・画像・動画づくりを、月20〜40時間削減するAI SaaS</title>
+<meta name="description" content="不動産会社向けの業種特化AI SaaS「ツナグモ」。物件紹介文からチラシ画像、ルームツアー動画まで、選んで埋めるだけで業界のルールに沿って仕上がります。AI利用料も込みで、別途契約は不要。LINEで無料相談を予約、月39,800円〜。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ツナグモ">
+<meta property="og:title" content="ツナグモ｜不動産の文章・画像・動画づくりを、月20〜40時間削減するAI SaaS">
+<meta property="og:description" content="物件紹介文からチラシ画像、ルームツアー動画まで、選んで埋めるだけで業界のルールに沿って仕上がります。AI利用料も込みで、別途契約は不要。LINEで無料相談を予約、月39,800円〜。">
+<meta name="twitter:card" content="summary">
+<meta name="google-site-verification" content="moPSveoMPGKI2BZ7Bi5kOatVipcQDH5sOmNxoR7RSzc" />
+<link rel="icon" href="/assets/logo.svg">
+<meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161C" media="(prefers-color-scheme: dark)">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ProfessionalService",
+  "name": "tunagumo（ツナグモ）",
+  "description": "不動産会社向けの業種特化AI SaaS。物件紹介文などの文章作成に加え、チラシ画像やルームツアー動画の生成にも対応し、資料作成にかかる時間を削減する。",
+  "areaServed": ["日本全国（オンライン対応）"],
+  "address": { "@type": "PostalAddress", "addressLocality": "春日部市", "addressRegion": "埼玉県", "addressCountry": "JP" },
+  "founder": { "@type": "Person", "name": "野村隆真" },
+  "email": "nomuratakamasa11921192@gmail.com"
+}
+</script>
+<style>
+  :root {
+    --bg: #F6F4EF; --page-bg: #FFFFFF; --ink: #22283A; --ink-soft: #4B5165;
+    --ink-faint: #7A8093; --accent: #B8792F; --accent-soft: #EFE3D1; --line: #D9D3C7; --thread: #C7BBA3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161C; --page-bg: #1B1E27; --ink: #ECE7DC; --ink-soft: #B7BAC4; --ink-faint: #7E8494; --accent: #D79A52; --accent-soft: rgba(183,121,47,0.16); --line: #333A48; --thread: #3C4356; }
+  }
+  :root[data-theme="dark"] { --bg: #14161C; --page-bg: #1B1E27; --ink: #ECE7DC; --ink-soft: #B7BAC4; --ink-faint: #7E8494; --accent: #D79A52; --accent-soft: rgba(183,121,47,0.16); --line: #333A48; --thread: #3C4356; }
+  :root[data-theme="light"] { --bg: #F6F4EF; --page-bg: #FFFFFF; --ink: #22283A; --ink-soft: #4B5165; --ink-faint: #7A8093; --accent: #B8792F; --accent-soft: #EFE3D1; --line: #D9D3C7; --thread: #C7BBA3; }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: "游ゴシック体", "Yu Gothic", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+  a { color: inherit; }
+  h1, h2, h3 { font-family: "游明朝", "Yu Mincho", "Hiragino Mincho ProN", "Noto Serif JP", serif; text-wrap: balance; letter-spacing: 0.02em; margin: 0; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+  header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; max-width: 960px; margin: 0 auto; }
+  .logo { font-family: "游明朝", "Yu Mincho", serif; font-size: 20px; font-weight: 700; letter-spacing: 0.08em; text-decoration: none; color: var(--ink); }
+  .logo span { color: var(--accent); }
+  nav ul { list-style: none; display: flex; gap: 26px; margin: 0; padding: 0; font-size: 13.5px; align-items: center; }
+  nav a { text-decoration: none; color: var(--ink-soft); }
+  nav a:hover { color: var(--accent); }
+  nav a.nav-cta { background: var(--ink); color: var(--bg); padding: 9px 18px; border-radius: 4px; font-weight: 700; }
+  nav a.nav-cta:hover { color: var(--bg); opacity: 0.9; }
+
+  .nav-toggle { display: none; width: 36px; height: 36px; background: none; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; position: relative; }
+  .nav-toggle span, .nav-toggle span::before, .nav-toggle span::after { content: ""; position: absolute; left: 8px; right: 8px; height: 1.5px; background: var(--ink); transition: transform 0.2s ease, opacity 0.2s ease, top 0.2s ease; }
+  .nav-toggle span { top: 17px; }
+  .nav-toggle span::before { top: -7px; }
+  .nav-toggle span::after { top: 7px; }
+  .nav-toggle[aria-expanded="true"] span { background: transparent; }
+  .nav-toggle[aria-expanded="true"] span::before { top: 0; transform: rotate(45deg); }
+  .nav-toggle[aria-expanded="true"] span::after { top: 0; transform: rotate(-45deg); }
+  @media (max-width: 720px) {
+    .nav-toggle { display: block; }
+    nav ul { display: flex; flex-direction: column; align-items: stretch; gap: 0; position: fixed; top: 61px; left: 0; right: 0; background: var(--page-bg); border-bottom: 1px solid var(--line); max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+    nav ul.open { max-height: 400px; }
+    nav a { display: block; padding: 15px 24px; border-top: 1px solid var(--line); }
+    nav a.nav-cta { text-align: center; margin: 12px 24px; border-radius: 4px; }
+  }
+
+  .hero { position: relative; overflow: hidden; padding: 80px 24px 88px; }
+  #web-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  .hero-inner { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; text-align: center; }
+  .eyebrow { display: inline-block; font-size: 12px; letter-spacing: 0.16em; color: var(--accent); text-transform: uppercase; margin-bottom: 18px; padding: 4px 12px; border: 1px solid var(--accent-soft); border-radius: 999px; }
+  .hero h1 { font-size: clamp(26px, 4.6vw, 40px); line-height: 1.55; margin-bottom: 20px; }
+  .hero p.lead { font-size: 15.5px; color: var(--ink-soft); max-width: 480px; margin: 0 auto 30px; }
+  .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 26px; border-radius: 4px; font-size: 14.5px; font-weight: 700; text-decoration: none; letter-spacing: 0.02em; transition: transform 0.15s ease, box-shadow 0.15s ease; }
+  .btn-primary { background: var(--ink); color: var(--bg); }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0,0,0,0.18); }
+  .btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .hero .area-note { font-size: 12.5px; color: var(--ink-faint); margin: 18px 0 0; }
+
+  section { padding: 68px 24px; }
+  .section-inner { max-width: 960px; margin: 0 auto; }
+  .section-head { max-width: 580px; margin: 0 auto 40px; text-align: center; }
+  .section-head .kicker { font-size: 12px; letter-spacing: 0.14em; color: var(--accent); text-transform: uppercase; margin-bottom: 10px; display: block; }
+  .section-head h2 { font-size: 25px; margin-bottom: 12px; }
+  .section-head p { color: var(--ink-soft); font-size: 14.5px; margin: 0; }
+  .panel { background: var(--page-bg); border: 1px solid var(--line); border-radius: 10px; }
+
+  /* --- 課題提起 --- */
+  #problem { background: var(--page-bg); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .problem-list { max-width: 600px; margin: 0 auto; display: grid; gap: 14px; }
+  .problem-list .panel { padding: 18px 22px; font-size: 14.5px; color: var(--ink-soft); display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .problem-list .panel .time { font-size: 12.5px; color: var(--accent); font-weight: 700; white-space: nowrap; }
+  .problem-note { text-align: center; color: var(--ink-soft); font-size: 14.5px; margin-top: 26px; }
+
+  /* --- 3ステップ --- */
+  .flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 28px; }
+  .flow-step { padding: 4px; }
+  .flow-step .num { font-family: "游明朝", serif; font-size: 32px; color: var(--accent-soft); -webkit-text-stroke: 1px var(--accent); display: block; margin-bottom: 12px; }
+  .flow-step h4 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .flow-step p { font-size: 13.5px; color: var(--ink-soft); margin: 0; }
+
+  /* --- 比較表 --- */
+  #compare { background: var(--page-bg); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .compare-table { width: 100%; border-collapse: collapse; font-size: 13.5px; max-width: 640px; margin: 0 auto; }
+  .compare-table th, .compare-table td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: center; }
+  .compare-table th { color: var(--ink-faint); font-weight: 700; font-size: 12.5px; }
+  .compare-table td:first-child, .compare-table th:first-child { text-align: left; color: var(--ink-soft); }
+  .compare-table td.tsunagumo { color: var(--accent); font-weight: 700; }
+  .compare-example { max-width: 640px; margin: 28px auto 0; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; font-size: 13.5px; color: var(--ink-soft); }
+  .compare-example strong { color: var(--ink); }
+  .compare-example .note { font-size: 12px; color: var(--ink-faint); margin-top: 10px; }
+
+  /* --- 業種導線 --- */
+  .industry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .industry-card { padding: 24px 20px; text-align: center; text-decoration: none; color: var(--ink); transition: border-color 0.15s ease; }
+  .industry-card:hover { border-color: var(--accent); }
+  .industry-card h3 { font-size: 15.5px; margin-bottom: 6px; }
+  .industry-card p { font-size: 12.5px; color: var(--ink-faint); margin: 0; }
+
+  /* --- 料金概要 --- */
+  #pricing-summary { text-align: center; }
+  #pricing-summary .big { font-size: 15.5px; color: var(--ink-soft); margin-bottom: 28px; }
+  #pricing-summary .big strong { color: var(--accent); font-size: 22px; font-family: "游明朝", serif; }
+
+  /* --- About --- */
+  #about { background: var(--page-bg); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .about-grid { display: grid; grid-template-columns: 96px 1fr; gap: 28px; align-items: start; }
+  .avatar { width: 96px; height: 96px; border-radius: 50%; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; font-family: "游明朝", serif; font-size: 28px; color: var(--accent); border: 1px solid var(--accent-soft); flex-shrink: 0; overflow: hidden; }
+  .about-text h3 { font-size: 19px; margin-bottom: 6px; }
+  .about-role { font-size: 13px; color: var(--ink-faint); margin-bottom: 16px; }
+  .about-text p { color: var(--ink-soft); font-size: 15px; margin: 0 0 14px; }
+  .about-text p:last-child { margin-bottom: 0; }
+  @media (max-width: 560px) { .about-grid { grid-template-columns: 1fr; text-align: center; } .avatar { margin: 0 auto; } }
+
+  /* --- 最後のCTA --- */
+  #final-cta { background: var(--ink); color: var(--bg); text-align: center; }
+  #final-cta h2 { color: var(--bg); font-size: 24px; margin-bottom: 12px; }
+  #final-cta p { color: var(--bg); opacity: 0.75; font-size: 14.5px; margin-bottom: 30px; }
+  #final-cta .btn-primary { background: var(--accent); color: var(--ink); }
+
+  footer { padding: 32px 24px; text-align: center; font-size: 12.5px; color: var(--ink-faint); }
+  footer a { color: var(--ink-faint); text-decoration: underline; margin: 0 8px; }
+  ::selection { background: var(--accent-soft); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .skip-link { position: absolute; left: -9999px; top: 0; z-index: 100; background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 0 0 6px 0; font-size: 13px; text-decoration: none; }
+  .skip-link:focus { left: 0; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">本文へスキップ</a>
+
+<header>
+  <div class="nav-inner">
+    <a class="logo" href="/">tunagumo<span>.</span></a>
+    <nav>
+      <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-menu" aria-label="メニューを開く"><span></span></button>
+      <ul id="nav-menu">
+        <li><a href="#industry">できること</a></li>
+        <li><a href="#pricing-summary">料金</a></li>
+        <li><a href="/faq">FAQ</a></li>
+        <li><a href="/spot">スポット案件</a></li>
+        <li><a class="nav-cta" href="/trial">無料相談を予約する</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<div class="hero" id="main">
+  <canvas id="web-canvas" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <span class="eyebrow">不動産会社のための、AI組織</span>
+    <h1>不動産の<br>「文章・画像・動画づくり」を、<br>月20〜40時間の削減が見込めます。</h1>
+    <p class="lead">物件紹介文、チラシ画像、ルームツアー動画まで。選んで埋めるだけで、業界のルールに沿った形で仕上がります。AIの利用料もすべて込みで、別途どこかと契約していただく必要はありません。</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="/trial">無料相談を予約する</a>
+      <a class="btn btn-ghost" href="#pricing-summary">料金を見る</a>
+    </div>
+    <p class="area-note">導入前の使い方説明は無料（オンライン、約15分）／導入後も専任担当が伴走してサポートします</p>
+  </div>
+</div>
+
+<section id="problem">
+  <div class="section-inner">
+    <div class="section-head">
+      <span class="kicker">Problem</span>
+      <h2>こんなことに時間を使っていませんか</h2>
+    </div>
+    <div class="problem-list">
+      <div class="panel"><span>物件1件ごとに紹介文を書く</span><span class="time">月20〜40時間</span></div>
+      <div class="panel"><span>反響・問い合わせに個別に返信する</span><span class="time">月10〜20時間</span></div>
+      <div class="panel"><span>オーナー様への月次報告文を作る</span><span class="time">月5〜15時間</span></div>
+      <div class="panel"><span>物件写真を見栄えよく編集する</span><span class="time">月3〜6時間</span></div>
+      <div class="panel"><span>内見前の紹介動画を編集する</span><span class="time">月5〜10時間</span></div>
+    </div>
+    <p class="problem-note">これらは、決まった形のある作業です。毎回ゼロから作る必要はありません。</p>
+  </div>
+</section>
+
+<section id="ai-org">
+  <div class="section-inner">
+    <div class="section-head">
+      <span class="kicker">仕組み</span>
+      <h2>御社専属の「AI組織」が働きます</h2>
+    </div>
+    <div class="flow">
+      <div class="flow-step">
+        <span class="num">社長AI</span>
+        <h4>依頼を受け取る</h4>
+        <p>依頼内容を見て、どのAIに任せるか判断します。情報が足りない時は、社長AIが確認の質問をするので、それに答えるだけで大丈夫です。</p>
+      </div>
+      <div class="flow-step">
+        <span class="num">担当AI</span>
+        <h4>下書きを作る</h4>
+        <p>物件紹介・顧客対応・報告書など、担当AIが業務ごとに書き分けます。</p>
+      </div>
+      <div class="flow-step">
+        <span class="num">監査AI</span>
+        <h4>内容を確認する</h4>
+        <p>事実の捏造や禁止表現がないか、監査AIが確認します。</p>
+      </div>
+    </div>
+    <p class="problem-note">最後に必ず人が確認・承認してから外に出ます。AIだけで完結させません。</p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="section-inner">
+    <div class="section-head">
+      <span class="kicker">How it works</span>
+      <h2>使い方は3ステップ</h2>
+    </div>
+    <div class="flow">
+      <div class="flow-step">
+        <span class="num">01</span>
+        <h4>依頼を伝える</h4>
+        <p>物件情報や依頼内容を入力するだけ。何を書けばいいか、画面が案内します。<br>※初期設定はこちらで行います</p>
+      </div>
+      <div class="flow-step">
+        <span class="num">02</span>
+        <h4>下書きができる</h4>
+        <p>物件紹介文、チラシ、オーナー様への報告文。文章に加えて、画像・動画も一緒に作れます。</p>
+      </div>
+      <div class="flow-step">
+        <span class="num">03</span>
+        <h4>確認して完成</h4>
+        <p>業界の禁止表現は自動でチェック。上長の承認を通してから確定できます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="compare">
+  <div class="section-inner">
+    <div class="section-head">
+      <span class="kicker">Why tunagumo</span>
+      <h2>ChatGPTやClaudeを使えばいいのでは？</h2>
+    </div>
+    <table class="compare-table">
+      <thead>
+        <tr><th></th><th>汎用AI</th><th>ツナグモ</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>何を頼むか</td><td>自分で考える</td><td class="tsunagumo">メニューから選ぶ</td></tr>
+        <tr><td>業界のルール</td><td>自分で知る必要</td><td class="tsunagumo">自動でチェック</td></tr>
+        <tr><td>初期設定</td><td>自分で行う</td><td class="tsunagumo">こちらで代行（無料）</td></tr>
+        <tr><td>困ったときの相談</td><td>自分で調べる</td><td class="tsunagumo">担当者にいつでも相談できる</td></tr>
+      </tbody>
+    </table>
+    <div class="compare-example">
+      <strong>【例】不動産の紹介文</strong><br>
+      汎用AIに「物件紹介文を作って」と頼むと、「駅から徒歩3分の完全な物件」といった文章が出ることがあります。「完全」は不動産の表示に関する公正競争規約で使えない表現です。<br><br>
+      ツナグモは、こうした表現を自動で検出します。
+      <p class="note">※検出は補助であり、最終的なご確認は貴社でお願いしています。</p>
+    </div>
+  </div>
+</section>
+
+<section id="industry">
+  <div class="section-inner">
+    <div class="section-head">
+      <span class="kicker">For</span>
+      <h2>不動産の、こんな作業に使えます</h2>
+    </div>
+    <div class="industry-grid">
+      <a class="panel industry-card" href="/for/real-estate"><h3>物件紹介文</h3><p>ポータル掲載用の紹介文を作成 →</p></a>
+      <a class="panel industry-card" href="/for/real-estate"><h3>反響対応</h3><p>問い合わせへの返信メール下書き →</p></a>
+      <a class="panel industry-card" href="/for/real-estate"><h3>チラシ・広告</h3><p>キャッチコピーの作成 →</p></a>
+      <a class="panel industry-card" href="/for/real-estate"><h3>オーナー様への報告</h3><p>募集状況報告の下書き →</p></a>
+    </div>
+  </div>
+</section>
+
+<section id="pricing-summary">
+  <div class="section-inner">
+    <div class="section-head">
+      <span class="kicker">Pricing</span>
+      <h2>料金</h2>
+    </div>
+    <p class="big">月額<strong>39,800円〜</strong>、AI利用料込みのプラン。初期費用はいただきません。<br>まずはLINEで無料相談をご予約ください。</p>
+    <div class="cta-row" style="justify-content:center;">
+      <a class="btn btn-ghost" href="/pricing">料金の詳細を見る</a>
+    </div>
+  </div>
+</section>
+
+<section id="about">
+  <div class="section-inner about-grid">
+    <div class="avatar"><img src="data:image/webp;base64,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" alt="ツナグモ 野村隆真"></div>
+    <div class="about-text">
+      <span style="display:block; font-size:12px; letter-spacing:0.14em; color:var(--accent); text-transform:uppercase; margin-bottom:6px;">About</span>
+      <h2 style="font-size:19px; margin: 0 0 6px;">野村隆真（ツナグモ）</h2>
+      <div class="about-role">埼玉県春日部市 / ツナグモ 運営者</div>
+      <p>受験勉強の合間に生成AIを使うようになったのがきっかけで、経営者の方から「AIって聞くけど、何に使えばいいか分からない」というお話を伺い、この活動を始めました。</p>
+      <p>専門用語を使わず、今日から使えるものをお渡しすることを大切にしています。</p>
+      <a class="btn btn-ghost" href="/about" style="margin-top:6px;">詳しく見る</a>
+    </div>
+  </div>
+</section>
+
+<section id="final-cta">
+  <div class="section-inner">
+    <h2>2週間、無料でお試しいただけます</h2>
+    <p>15分のオンラインで、使い方をご案内しながらアカウントを発行します。</p>
+    <a class="btn btn-primary" href="/trial">無料で試してみる</a>
+  </div>
+</section>
+
+<footer>
+  &copy; 2026 tunagumo（ツナグモ） / 埼玉県春日部市
+  <div style="margin-top:8px;">
+    <a href="/terms">利用規約</a>・<a href="/privacy">プライバシーポリシー</a>・<a href="/law">特定商取引法に基づく表記</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const canvas = document.getElementById('web-canvas');
+  const ctx = canvas.getContext('2d');
+  let w, h, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function themeColor() { return getComputedStyle(document.documentElement).getPropertyValue('--thread').trim() || '#C7BBA3'; }
+  function resize() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    w = rect.width; h = rect.height;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  const N = 26;
+  let nodes = [];
+  function initNodes() {
+    nodes = Array.from({ length: N }, () => ({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 0.12, vy: (Math.random() - 0.5) * 0.12, r: Math.random() * 1.4 + 1 }));
+  }
+  function step() {
+    ctx.clearRect(0, 0, w, h);
+    const color = themeColor();
+    nodes.forEach(n => { n.x += n.vx; n.y += n.vy; if (n.x < 0 || n.x > w) n.vx *= -1; if (n.y < 0 || n.y > h) n.vy *= -1; });
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDist = 170;
+        if (dist < maxDist) {
+          ctx.strokeStyle = color; ctx.globalAlpha = (1 - dist / maxDist) * 0.55; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+    }
+    ctx.globalAlpha = 0.7;
+    nodes.forEach(n => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill(); });
+    ctx.globalAlpha = 1;
+    if (!reduceMotion) requestAnimationFrame(step);
+  }
+  window.addEventListener('resize', () => { resize(); });
+  resize(); initNodes(); step();
+})();
+
+(function () {
+  const toggle = document.getElementById('nav-toggle');
+  const menu = document.getElementById('nav-menu');
+  if (!toggle || !menu) return;
+  toggle.addEventListener('click', function () {
+    const open = menu.classList.toggle('open');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  menu.querySelectorAll('a').forEach(a => a.addEventListener('click', function () {
+    menu.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+  }));
+})();
+
+(function () {
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduceMotion || !('IntersectionObserver' in window)) return;
+  const targets = document.querySelectorAll('#problem .panel, #how .flow-step, #compare, #industry .industry-card, #about, #final-cta');
+  targets.forEach(el => { el.style.opacity = '0'; el.style.transform = 'translateY(14px)'; el.style.transition = 'opacity 0.5s ease, transform 0.5s ease'; });
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) { entry.target.style.opacity = '1'; entry.target.style.transform = 'translateY(0)'; io.unobserve(entry.target); } });
+  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+  targets.forEach(el => io.observe(el));
+})();
+</script>
+
+</body>
+</html>

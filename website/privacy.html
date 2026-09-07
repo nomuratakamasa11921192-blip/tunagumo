@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>プライバシーポリシー｜ツナグモ</title>
+<meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161C" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/logo.svg">
+<style>
+  :root { --bg:#F6F4EF; --page-bg:#FFFFFF; --ink:#22283A; --ink-soft:#4B5165; --ink-faint:#7A8093; --accent:#B8792F; --line:#D9D3C7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161C; --page-bg:#1B1E27; --ink:#ECE7DC; --ink-soft:#B7BAC4; --ink-faint:#7E8494; --accent:#D79A52; --line:#333A48; } }
+  :root[data-theme="dark"] { --bg:#14161C; --page-bg:#1B1E27; --ink:#ECE7DC; --ink-soft:#B7BAC4; --ink-faint:#7E8494; --accent:#D79A52; --line:#333A48; }
+  :root[data-theme="light"] { --bg:#F6F4EF; --page-bg:#FFFFFF; --ink:#22283A; --ink-soft:#4B5165; --ink-faint:#7A8093; --accent:#B8792F; --line:#D9D3C7; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"游ゴシック体","Yu Gothic","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; line-height:1.9; }
+  a { color: inherit; }
+  h1, h2 { font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif; margin:0; }
+  header { position: sticky; top:0; z-index:10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); border-bottom:1px solid var(--line); }
+  .nav-inner { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; max-width:680px; margin:0 auto; }
+  .logo { font-family:"游明朝",serif; font-size:20px; font-weight:700; letter-spacing:0.08em; text-decoration:none; color:var(--ink); }
+  .logo span { color: var(--accent); }
+  .nav-back { font-size:13.5px; color:var(--ink-soft); text-decoration:none; }
+  .nav-back:hover { color: var(--accent); }
+  .hero { padding: 48px 24px 16px; text-align:center; }
+  .hero h1 { font-size: 26px; }
+  .hero .updated { font-size: 12.5px; color: var(--ink-faint); margin-top:8px; }
+  section { padding: 8px 24px 56px; }
+  .doc { max-width: 640px; margin: 0 auto; background: var(--page-bg); border:1px solid var(--line); border-radius:10px; padding: 36px 32px; font-size: 14.5px; color: var(--ink-soft); }
+  .doc h2 { font-size:15.5px; color: var(--ink); margin: 28px 0 10px; }
+  .doc h2:first-child { margin-top: 0; }
+  .doc p { margin: 0 0 10px; }
+  .doc ul { margin: 0 0 10px; padding-left: 1.3em; }
+  .doc li + li { margin-top: 4px; }
+  .doc .highlight { background: color-mix(in srgb, var(--accent) 12%, transparent); border-left: 3px solid var(--accent); padding: 12px 16px; border-radius: 4px; }
+  footer { padding:32px 24px; text-align:center; font-size:12.5px; color:var(--ink-faint); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav-inner">
+    <a class="logo" href="/">tunagumo<span>.</span></a>
+    <a class="nav-back" href="/">トップへ戻る</a>
+  </div>
+</header>
+
+<div class="hero">
+  <h1>プライバシーポリシー</h1>
+  <p class="updated">最終更新日：2026年9月3日</p>
+</div>
+
+<section>
+  <div class="doc">
+
+    <h2>1. 取得する情報</h2>
+    <p>本サービスのお申し込み・ご利用にあたり、以下の情報を取得します。</p>
+    <ul>
+      <li>会社名、お名前、メールアドレス、電話番号（任意）</li>
+      <li>業種、現在お困りのこと、ご希望の日程などお申し込みフォームにご入力いただいた内容</li>
+      <li>本サービスの利用にあたり入力いただく業務関連の情報（物件情報、募集条件等、文章生成のために入力される内容）</li>
+      <li>お支払いに関する情報（決済処理はStripe社が行い、当社はクレジットカード番号そのものを保持しません）</li>
+    </ul>
+
+    <h2>2. 利用目的</h2>
+    <ul>
+      <li>お申し込み内容の確認、初期設定のご案内、日程調整のご連絡</li>
+      <li>本サービスの提供（入力内容に基づく文章生成）</li>
+      <li>料金の請求・お支払いに関するご連絡</li>
+      <li>サービス改善のための利用状況の把握</li>
+    </ul>
+
+    <h2>3. 第三者提供・委託先</h2>
+    <p>取得した情報は、本サービスの提供に必要な範囲で、以下の委託先に提供します。</p>
+    <ul>
+      <li>Anthropic社（文章生成AIの提供元。入力内容の一部が処理のため送信されます）</li>
+      <li>Higgsfield社（画像・動画生成AIの提供元。画像/動画生成機能をご利用の場合に、入力内容の一部が送信されます）</li>
+      <li>Stripe社（決済処理の委託先。お支払い情報の処理に用います）</li>
+      <li>さくらインターネット株式会社（サーバーの保管先）</li>
+    </ul>
+    <p>上記のAI事業者との契約は、運営者（本サービス提供者）とAI事業者との間で締結されており、利用者が個別にAI事業者と契約いただく必要はありません。</p>
+    <p>上記以外の第三者への提供は、法令に基づく場合を除き行いません。</p>
+
+    <div class="highlight">
+      <p style="margin:0;"><strong>海外への移転について</strong><br>文章生成の処理には海外のAIサービス（Anthropic社）を利用しているため、入力いただいた内容の一部は海外のサーバーで処理されます。このため、個人情報を含む内容の入力はお控えいただくようお願いしています。</p>
+    </div>
+
+    <h2>4. 保存期間</h2>
+    <p>取得した情報は、契約継続中および契約終了後、法令で定める期間または本サービスの提供・記録保持に必要な期間、保存します。契約終了時には、利用者の設定内容・作成物をお渡しした上で、不要となった情報は順次削除します。</p>
+
+    <h2>5. 安全管理措置</h2>
+    <p>本サービスへのログインに用いるAPIキーは、運営者側にも平文（元の文字列）が残らない形式で保管しています。お支払い情報はStripe社のシステム内で管理され、当社のサーバーには保存されません。</p>
+
+    <h2>6. 開示・訂正・削除の請求</h2>
+    <p>利用者は、ご自身の情報について、開示・訂正・削除等を請求することができます。下記の問い合わせ先までご連絡ください。合理的な期間内に対応します。</p>
+
+    <h2>7. お問い合わせ先</h2>
+    <p>運営者：野村隆真（ツナグモ）<br>メール：nomuratakamasa11921192@gmail.com</p>
+
+  </div>
+</section>
+
+<footer>&copy; 2026 tunagumo（ツナグモ） / 埼玉県春日部市</footer>
+
+</body>
+</html>

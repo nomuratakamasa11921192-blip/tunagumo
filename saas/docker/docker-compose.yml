@@ -1,0 +1,79 @@
+x-logging: &default-logging
+  # 8-5: ログでディスクを埋めないよう、コンテナごとのログサイズに上限を設ける
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    environment:
+      POSTGRES_USER: tsunagumo
+      POSTGRES_PASSWORD: tsunagumo_dev
+      POSTGRES_DB: tsunagumo
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    # 8-2: 同一のdockerネットワーク内(サービス名"db")からのみ接続する。
+    # ホストにポートを公開しない(外部公開しない)。ローカルでpsqlを使いたい場合は
+    # `docker compose exec db psql -U tsunagumo -d tsunagumo` を使う。
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tsunagumo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tsunagumo:tsunagumo_dev@db:5432/tsunagumo
+      ENV: development
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../workspace:/app/workspace
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  scheduler:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["python", "-m", "scripts.scheduler"]
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://tsunagumo:tsunagumo_dev@db:5432/tsunagumo
+      ENV: development
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+volumes:
+  db_data:

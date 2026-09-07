@@ -1,0 +1,1660 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ツナグモ</title>
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --panel: #ffffff;
+    --border: #e2e0db;
+    --text: #2b2a28;
+    --muted: #767066;
+    --accent: #b5652c;
+    --accent-hover: #9a5424;
+    --danger: #b3432f;
+    --ok: #4d7a4e;
+    --warn: #b58a2c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    display: flex;
+    min-height: 100vh;
+  }
+  a { color: var(--accent); }
+
+  #login-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 60px auto;
+    max-width: 360px;
+    width: 100%;
+    padding: 0 24px;
+  }
+  #login {
+    max-width: 360px;
+    width: 100%;
+    flex-shrink: 0;
+    margin: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    align-self: center;
+  }
+  #login h1 { font-size: 18px; margin: 0 0 16px; }
+
+  #app { display: none; width: 100%; }
+  #app.active { display: flex; }
+
+  aside {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+  }
+  aside h2 { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 20px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+
+  #session-list { list-style: none; margin: 0; padding: 0; }
+  #session-list li {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    font-size: 13px;
+  }
+  #session-list li:hover { background: var(--bg); }
+  #session-list li.selected { background: #f1e6da; }
+  #session-list .req-text { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #session-list .meta { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+  main { flex: 1; padding: 32px; max-width: 760px; }
+
+  input, textarea, button {
+    font: inherit;
+    font-size: 14px;
+  }
+  input[type=text], input[type=password], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+  }
+  textarea { resize: vertical; min-height: 90px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  label:first-child { margin-top: 0; }
+
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 18px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { background: #c9c4ba; cursor: default; }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--bg); }
+  button.danger { background: var(--danger); }
+  button.danger:hover { background: #922f1f; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+  }
+
+  .status-badge {
+    display: inline-block;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .status-QUEUED, .status-RUNNING { background: #eaeaea; color: #555; }
+  .spinner-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    margin-right: 6px;
+    animation: spinner-pulse 1s ease-in-out infinite;
+    vertical-align: middle;
+  }
+  @keyframes spinner-pulse {
+    0%, 100% { opacity: 0.25; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  .processing-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .spinner-ring {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spinner-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spinner-spin { to { transform: rotate(360deg); } }
+  .template-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .template-chip {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .template-chip:hover { background: #f1e6da; border-color: var(--accent); }
+  .template-group-label { font-size: 12px; color: var(--muted); margin: 14px 0 4px; }
+  .template-group-label:first-child { margin-top: 0; }
+  .guide-section { margin-bottom: 22px; }
+  .guide-section h3 { font-size: 15px; margin: 0 0 10px; }
+  .guide-steps { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8; }
+  .guide-steps li { margin-bottom: 6px; }
+  .guide-example-group { margin-bottom: 14px; }
+  .guide-example-group h4 { font-size: 13px; color: var(--muted); margin: 0 0 6px; }
+  .guide-example-group ul { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.7; }
+  .status-CLARIFYING { background: #fdf1dc; color: var(--warn); }
+  .status-AWAITING_APPROVAL { background: #e8f0e8; color: var(--ok); }
+  .status-APPROVED, .status-COMPLETED { background: #e2f0e2; color: var(--ok); }
+  .status-ERROR, .status-HALTED, .status-REJECTED { background: #f6e4e0; color: var(--danger); }
+  .status-PROCESSING { background: #eaeaea; color: #555; }
+  .status-ACTIVE { background: #e2f0e2; color: var(--ok); }
+  .status-FAILED { background: #f6e4e0; color: var(--danger); }
+  .status-SUPERSEDED, .status-ARCHIVED, .status-EXPIRED { background: #eaeaea; color: var(--muted); }
+
+  .doc-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .doc-row:first-child { border-top: none; padding-top: 0; }
+  .doc-row .doc-info { min-width: 0; }
+  .doc-row .doc-title { font-size: 14px; margin: 0 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .doc-row .doc-meta { font-size: 12px; color: var(--muted); }
+  .doc-row .doc-actions { flex-shrink: 0; margin-left: 12px; }
+
+  .question-item { margin-bottom: 14px; }
+  .question-item p { margin: 0 0 6px; font-size: 14px; }
+
+  .dept-output {
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+    margin-top: 14px;
+  }
+  .dept-output h4 { font-size: 13px; color: var(--muted); margin: 0 0 8px; }
+  .dept-output .rendered { font-size: 14px; line-height: 1.7; }
+  .dept-output .rendered h2 { font-size: 15px; margin: 14px 0 6px; }
+  .dept-output .rendered ul { padding-left: 20px; margin: 6px 0; }
+
+  .decision-points, .caveats { font-size: 13px; }
+  .decision-points li, .caveats li { margin-bottom: 4px; }
+
+  #empty-state { color: var(--muted); padding: 60px 0; text-align: center; }
+
+  .error-text { color: var(--danger); white-space: pre-wrap; }
+  .ok-text { color: var(--ok); }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  #toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--text);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="login-wrap">
+  <div id="login">
+    <h1>ツナグモ</h1>
+    <label for="login-key">APIキー</label>
+    <input id="login-key" type="password" placeholder="お送りしたAPIキーを入力してください">
+    <button id="login-btn" style="margin-top: 14px; width: 100%;">ログイン</button>
+    <p id="login-error" class="error-text" style="display:none; margin-top: 10px; font-size: 13px;"></p>
+  </div>
+</div>
+
+<div id="app">
+  <aside>
+    <button id="new-request-btn" style="width: 100%;">＋ 新しい依頼</button>
+    <h2>依頼履歴</h2>
+    <ul id="session-list"></ul>
+    <h2>アカウント</h2>
+    <button id="guide-btn" class="secondary" style="width: 100%;">使い方ガイド</button>
+    <button id="documents-btn" class="secondary" style="width: 100%; margin-top: 8px;">社内資料</button>
+    <button id="reel-editor-btn" class="secondary" style="width: 100%; margin-top: 8px;">リール自動編集</button>
+    <button id="room-tour-btn" class="secondary" style="width: 100%; margin-top: 8px;">ルームツアー動画</button>
+    <button id="property-csv-btn" class="secondary" style="width: 100%; margin-top: 8px;">ポータル連携CSV</button>
+    <button id="schedules-btn" class="secondary" style="width: 100%; margin-top: 8px;">定期実行</button>
+    <button id="settings-btn" class="secondary" style="width: 100%; margin-top: 8px;">設定・利用状況</button>
+    <button id="logout-btn" class="secondary" style="width: 100%; margin-top: 8px;">ログアウト</button>
+  </aside>
+  <main id="main-content">
+    <div id="empty-state">左のメニューから「新しい依頼」を選ぶか、履歴から依頼を選んでください。</div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'tsunagumo_api_key';
+  var apiKey = localStorage.getItem(STORAGE_KEY) || '';
+  var currentSessionId = null;
+  var pollTimer = null;
+  // 物件URL取込で見つかった画像。次に送信する依頼(1件)にだけ引き継ぎ、
+  // そのセッションの動画生成時に「起点画像」として使う(セッションIDをキーに保持)。
+  var pendingImportedImageUrls = [];
+  var sessionReferenceImages = {};
+
+  var loginEl = document.getElementById('login-wrap');
+  var appEl = document.getElementById('app');
+  var mainEl = document.getElementById('main-content');
+  var listEl = document.getElementById('session-list');
+  var toastEl = document.getElementById('toast');
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // 成果物はMarkdownで生成される想定なので、ごく簡単な変換だけ行う。
+  // 必ずエスケープしてから変換するので、生成テキストにHTMLタグが含まれても
+  // そのまま描画されることはない。
+  function renderMarkdownish(text) {
+    var escaped = escapeHtml(text);
+    var lines = escaped.split('\n');
+    var html = '';
+    var inList = false;
+    lines.forEach(function (line) {
+      var headerMatch = line.match(/^##\s+(.*)/);
+      var listMatch = line.match(/^[-・]\s+(.*)/);
+      if (headerMatch) {
+        if (inList) { html += '</ul>'; inList = false; }
+        html += '<h2>' + headerMatch[1] + '</h2>';
+      } else if (listMatch) {
+        if (!inList) { html += '<ul>'; inList = true; }
+        html += '<li>' + boldify(listMatch[1]) + '</li>';
+      } else if (line.trim() === '') {
+        if (inList) { html += '</ul>'; inList = false; }
+      } else {
+        if (inList) { html += '</ul>'; inList = false; }
+        html += '<p>' + boldify(line) + '</p>';
+      }
+    });
+    if (inList) html += '</ul>';
+    return html;
+  }
+
+  function boldify(s) {
+    return s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  }
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.style.display = 'block';
+    setTimeout(function () { toastEl.style.display = 'none'; }, 3000);
+  }
+
+  function api(path, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    options.headers['Authorization'] = 'Bearer ' + apiKey;
+    // FormData(ファイルアップロード)はブラウザがboundary付きのContent-Typeを
+    // 自動設定するため、ここで上書きしない
+    if (options.body && !(options.body instanceof FormData)) options.headers['Content-Type'] = 'application/json';
+    return fetch(path, options).then(function (res) {
+      if (res.status === 401) {
+        logout();
+        throw new Error('認証エラー');
+      }
+      // 204 No Content等、本文が無いレスポンスはjson()を呼ぶと例外になるので分ける
+      if (res.status === 204) {
+        if (!res.ok) throw new Error('エラー: ' + res.status);
+        return null;
+      }
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.detail || ('エラー: ' + res.status));
+        return data;
+      });
+    });
+  }
+
+  function logout() {
+    localStorage.removeItem(STORAGE_KEY);
+    apiKey = '';
+    if (pollTimer) clearTimeout(pollTimer);
+    loginEl.style.display = 'flex';
+    appEl.classList.remove('active');
+  }
+
+  function showApp() {
+    loginEl.style.display = 'none';
+    appEl.classList.add('active');
+    loadSessionList();
+  }
+
+  document.getElementById('login-btn').addEventListener('click', function () {
+    var key = document.getElementById('login-key').value.trim();
+    if (!key) return;
+    apiKey = key;
+    api('/api/sessions').then(function () {
+      localStorage.setItem(STORAGE_KEY, apiKey);
+      document.getElementById('login-error').style.display = 'none';
+      showApp();
+    }).catch(function () {
+      document.getElementById('login-error').textContent = 'APIキーが正しくありません。';
+      document.getElementById('login-error').style.display = 'block';
+    });
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', logout);
+
+  document.getElementById('new-request-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderNewRequestForm();
+    highlightSelected(null);
+  });
+
+  document.getElementById('settings-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderSettings();
+    highlightSelected(null);
+  });
+
+  document.getElementById('documents-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderDocuments();
+    highlightSelected(null);
+  });
+
+  document.getElementById('guide-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderGuide();
+    highlightSelected(null);
+  });
+
+  document.getElementById('schedules-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderSchedules();
+    highlightSelected(null);
+  });
+
+  document.getElementById('reel-editor-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderReelEditor();
+    highlightSelected(null);
+  });
+
+  document.getElementById('room-tour-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderRoomTour();
+    highlightSelected(null);
+  });
+
+  document.getElementById('property-csv-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderPropertyCsv();
+    highlightSelected(null);
+  });
+
+  function renderSettings() {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card"><p class="muted" style="margin-top:0;">今月の利用状況</p>' +
+      '<div id="usage-body">読み込み中…</div>' +
+      '<button id="buy-addon-btn" class="secondary" style="margin-top:12px;">追加AI予算を購入する(¥25,000で$5分)</button>' +
+      '<div id="buy-addon-result"></div>' +
+      '<button id="billing-portal-btn" class="secondary" style="margin-top:12px;">契約を管理する(お支払い方法の変更・解約はこちら)</button>' +
+      '<div id="billing-portal-result"></div>' +
+      '</div>';
+
+    api('/api/account/usage').then(function (u) {
+      var planLabel = { light: 'ライト', standard: 'スタンダード', unlimited: '無制限' }[u.plan] || u.plan;
+      var remaining = Math.max(u.monthly_ai_budget_usd - u.ai_cost_this_period_usd, 0) + u.addon_credit_usd;
+      var addonText = u.addon_credit_usd > 0 ? '(追加購入分 $' + u.addon_credit_usd.toFixed(2) + '含む)' : '';
+      var pct = u.monthly_ai_budget_usd > 0
+        ? Math.min(Math.round((u.ai_cost_this_period_usd / u.monthly_ai_budget_usd) * 100), 100)
+        : 0;
+      var barColor = pct >= 90 ? '#B8452F' : (pct >= 70 ? '#B8792F' : 'var(--accent, #4d7a4e)');
+      document.getElementById('usage-body').innerHTML =
+        '<p style="font-size:14px;">今月: <strong>' + u.this_month_session_count + '件</strong> ／ ' +
+        '概算コスト <strong>$' + u.this_month_cost_usd.toFixed(4) + '</strong></p>' +
+        '<p class="muted" style="font-size:12px;">累計: ' + u.all_time_session_count + '件 ／ $' +
+        u.all_time_cost_usd.toFixed(4) + '</p>' +
+        '<p style="font-size:14px; margin-top:10px;">プラン: <strong>' + escapeHtml(planLabel) + '</strong></p>' +
+        '<p class="muted" style="font-size:12px;">今月のAI利用予算: $' + u.ai_cost_this_period_usd.toFixed(2) +
+        ' / $' + u.monthly_ai_budget_usd.toFixed(2) + '(' + pct + '%使用、残り約$' + remaining.toFixed(2) + ')' + addonText + '</p>' +
+        '<div style="background:#0000000f; border-radius:6px; height:8px; margin-top:6px; overflow:hidden;">' +
+        '<div style="background:' + barColor + '; width:' + pct + '%; height:100%;"></div>' +
+        '</div>' +
+        '<p class="muted" style="font-size:12px; margin-top:8px;">※ 実際の原価とは、集計タイミング等により多少ずれる場合があります。目安としてご覧ください。</p>';
+    }).catch(function (e) {
+      document.getElementById('usage-body').innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+    });
+
+    document.getElementById('buy-addon-btn').addEventListener('click', function () {
+      var btn = document.getElementById('buy-addon-btn');
+      btn.disabled = true;
+      btn.textContent = '準備中…';
+      api('/api/account/buy-addon', { method: 'POST' })
+        .then(function (data) {
+          window.location.href = data.checkout_url;
+        })
+        .catch(function (e) {
+          document.getElementById('buy-addon-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+          btn.disabled = false;
+          btn.textContent = '追加AI予算を購入する(¥25,000で$5分)';
+        });
+    });
+
+    document.getElementById('billing-portal-btn').addEventListener('click', function () {
+      var btn = document.getElementById('billing-portal-btn');
+      btn.disabled = true;
+      btn.textContent = '準備中…';
+      api('/api/account/billing-portal', { method: 'POST' })
+        .then(function (data) {
+          window.location.href = data.portal_url;
+        })
+        .catch(function (e) {
+          document.getElementById('billing-portal-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+          btn.disabled = false;
+          btn.textContent = '契約を管理する(お支払い方法の変更・解約はこちら)';
+        });
+    });
+  }
+
+  var documentStatusLabels = {
+    PROCESSING: '取り込み中', ACTIVE: '利用可能', FAILED: '失敗',
+    SUPERSEDED: '旧版(差し替え済み)', ARCHIVED: '削除済み', EXPIRED: '期限切れ'
+  };
+
+  function renderDocuments() {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card">' +
+      '<p class="muted" style="margin-top:0;">文書をアップロード</p>' +
+      '<p style="font-size:13px;">PDF・Word(.docx)・テキスト・Markdownに対応しています。' +
+      '同じタイトルで再アップロードすると、旧版は自動的に検索対象から外れます。</p>' +
+      '<label for="doc-file">ファイル</label>' +
+      '<input id="doc-file" type="file" accept=".pdf,.docx,.txt,.md">' +
+      '<label for="doc-title">タイトル(空欄可、ファイル名を使用)</label>' +
+      '<input id="doc-title" type="text" placeholder="例: 就業規則">' +
+      '<label for="doc-valid-until">有効期限(任意、資料の鮮度管理に使います)</label>' +
+      '<input id="doc-valid-until" type="date">' +
+      '<button id="doc-upload-btn" style="margin-top:14px;">アップロード</button>' +
+      '<div id="doc-upload-result"></div>' +
+      '</div>' +
+      '<div class="card"><p class="muted" style="margin-top:0;">登録済みの文書</p>' +
+      '<div id="doc-list">読み込み中…</div></div>';
+
+    document.getElementById('doc-upload-btn').addEventListener('click', function () {
+      var fileInput = document.getElementById('doc-file');
+      var file = fileInput.files[0];
+      if (!file) { toast('ファイルを選択してください'); return; }
+
+      var formData = new FormData();
+      formData.append('file', file);
+      var title = document.getElementById('doc-title').value.trim();
+      if (title) formData.append('title', title);
+      var validUntil = document.getElementById('doc-valid-until').value;
+      if (validUntil) formData.append('valid_until', validUntil);
+
+      var btn = document.getElementById('doc-upload-btn');
+      btn.disabled = true;
+      btn.textContent = 'アップロード中…';
+      api('/api/documents', { method: 'POST', body: formData })
+        .then(function () {
+          document.getElementById('doc-upload-result').innerHTML = '';
+          fileInput.value = '';
+          document.getElementById('doc-title').value = '';
+          document.getElementById('doc-valid-until').value = '';
+          loadDocumentList();
+        })
+        .catch(function (e) {
+          document.getElementById('doc-upload-result').innerHTML =
+            '<p class="error-text" style="margin-top:10px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = 'アップロード'; });
+    });
+
+    loadDocumentList();
+  }
+
+  function loadDocumentList() {
+    var docListEl = document.getElementById('doc-list');
+    if (!docListEl) return; // 別の画面に移動済み
+    api('/api/documents').then(function (data) {
+      var target = document.getElementById('doc-list');
+      if (!target) return;
+      if (!data.documents.length) {
+        target.innerHTML = '<p class="muted">まだ文書が登録されていません。</p>';
+        return;
+      }
+      var html = '';
+      var hasProcessing = false;
+      data.documents.forEach(function (d) {
+        if (d.status === 'PROCESSING') hasProcessing = true;
+        var badge = '<span class="status-badge status-' + d.status + '">' +
+          (documentStatusLabels[d.status] || d.status) + '</span>';
+        var meta = d.filename + (d.valid_until ? ' ・ 有効期限: ' + d.valid_until : '') +
+          (d.version > 1 ? ' ・ v' + d.version : '');
+        html += '<div class="doc-row" data-id="' + d.id + '">' +
+          '<div class="doc-info"><p class="doc-title">' + escapeHtml(d.title) + ' ' + badge + '</p>' +
+          '<p class="doc-meta">' + escapeHtml(meta) + '</p>';
+        if (d.status === 'FAILED' && d.error_message) {
+          html += '<p class="error-text" style="font-size:12px; margin:4px 0 0;">' + escapeHtml(d.error_message) + '</p>';
+        }
+        html += '</div>';
+        if (d.status !== 'ARCHIVED') {
+          html += '<div class="doc-actions"><button class="secondary doc-delete-btn" data-id="' + d.id + '">削除</button></div>';
+        }
+        html += '</div>';
+      });
+      target.innerHTML = html;
+
+      Array.prototype.forEach.call(document.querySelectorAll('.doc-delete-btn'), function (btn) {
+        btn.addEventListener('click', function () {
+          if (!confirm('この文書を削除しますか？(検索対象から外れます)')) return;
+          btn.disabled = true;
+          api('/api/documents/' + btn.dataset.id, { method: 'DELETE' })
+            .then(loadDocumentList)
+            .catch(function (e) { toast(e.message); btn.disabled = false; });
+        });
+      });
+
+      if (hasProcessing) {
+        pollTimer = setTimeout(loadDocumentList, 2000);
+      }
+    }).catch(function (e) {
+      var target = document.getElementById('doc-list');
+      if (target) target.innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+    });
+  }
+
+  var listPollTimer = null;
+
+  function loadSessionList() {
+    api('/api/sessions').then(function (data) {
+      listEl.innerHTML = '';
+      var anyInProgress = false;
+      data.sessions.forEach(function (s) {
+        var inProgress = s.status === 'QUEUED' || s.status === 'RUNNING';
+        if (inProgress) anyInProgress = true;
+        var li = document.createElement('li');
+        li.dataset.id = s.session_id;
+        var reqText = document.createElement('span');
+        reqText.className = 'req-text';
+        reqText.textContent = s.request_text;
+        var meta = document.createElement('span');
+        meta.className = 'meta';
+        if (inProgress) {
+          var dot = document.createElement('span');
+          dot.className = 'spinner-dot';
+          meta.appendChild(dot);
+        }
+        meta.appendChild(document.createTextNode(statusLabel(s.status) + ' ・ ' + formatDate(s.created_at)));
+        li.appendChild(reqText);
+        li.appendChild(meta);
+        li.addEventListener('click', function () {
+          currentSessionId = s.session_id;
+          highlightSelected(s.session_id);
+          loadSessionDetail(s.session_id);
+        });
+        listEl.appendChild(li);
+      });
+      highlightSelected(currentSessionId);
+      if (listPollTimer) clearTimeout(listPollTimer);
+      if (anyInProgress) {
+        listPollTimer = setTimeout(loadSessionList, 3000);
+      }
+    }).catch(function (e) { toast(e.message); });
+  }
+
+  function highlightSelected(id) {
+    Array.prototype.forEach.call(listEl.children, function (li) {
+      li.classList.toggle('selected', li.dataset.id === id);
+    });
+  }
+
+  function formatDate(iso) {
+    var d = new Date(iso + (iso.indexOf('Z') === -1 && iso.indexOf('+') === -1 ? 'Z' : ''));
+    return d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function statusLabel(status) {
+    var labels = {
+      QUEUED: '受付中', RUNNING: '処理中', CLARIFYING: '要確認',
+      AWAITING_APPROVAL: '承認待ち', APPROVED: '承認済み', REJECTED: '却下',
+      COMPLETED: '完了', ERROR: 'エラー', HALTED: '中断'
+    };
+    return labels[status] || status;
+  }
+
+  var PREFECTURES = [
+    ['01', '北海道'], ['02', '青森県'], ['03', '岩手県'], ['04', '宮城県'], ['05', '秋田県'],
+    ['06', '山形県'], ['07', '福島県'], ['08', '茨城県'], ['09', '栃木県'], ['10', '群馬県'],
+    ['11', '埼玉県'], ['12', '千葉県'], ['13', '東京都'], ['14', '神奈川県'], ['15', '新潟県'],
+    ['16', '富山県'], ['17', '石川県'], ['18', '福井県'], ['19', '山梨県'], ['20', '長野県'],
+    ['21', '岐阜県'], ['22', '静岡県'], ['23', '愛知県'], ['24', '三重県'], ['25', '滋賀県'],
+    ['26', '京都府'], ['27', '大阪府'], ['28', '兵庫県'], ['29', '奈良県'], ['30', '和歌山県'],
+    ['31', '鳥取県'], ['32', '島根県'], ['33', '岡山県'], ['34', '広島県'], ['35', '山口県'],
+    ['36', '徳島県'], ['37', '香川県'], ['38', '愛媛県'], ['39', '高知県'], ['40', '福岡県'],
+    ['41', '佐賀県'], ['42', '長崎県'], ['43', '熊本県'], ['44', '大分県'], ['45', '宮崎県'],
+    ['46', '鹿児島県'], ['47', '沖縄県']
+  ];
+
+  var TEMPLATE_GROUPS = [
+    {
+      label: '物件紹介・広告コピー',
+      items: [
+        '賃貸物件の紹介文を作ってください。所在地・間取り・賃料等はこちらで伝えます。',
+        '売買物件の紹介文を作ってください。価格・面積・特徴はこちらで伝えます。',
+        'チラシ・折込広告のキャッチコピーを3案作ってください。物件の特徴を伝えます。',
+        'SNS投稿用の物件紹介文を作ってください。ポータル用より短く、カジュアルにしてください。'
+      ]
+    },
+    {
+      label: '顧客対応(反響・内見フォロー)',
+      items: [
+        'ポータル反響への返信メールを作ってください。問い合わせ内容と物件情報を伝えます。',
+        '内見後のフォローメールを作ってください。内見時の様子と物件の特徴を伝えます。',
+        'よくある質問への回答文を作ってください。質問内容を伝えます。'
+      ]
+    },
+    {
+      label: 'オーナー報告',
+      items: [
+        'オーナー様向けの月次募集状況報告を作ってください。今月の反響・内見の状況を伝えます。',
+        '成約時のオーナー様向けご報告文を作ってください。成約条件を伝えます。'
+      ]
+    },
+    {
+      label: '周辺環境ブログ',
+      items: [
+        '物件最寄り駅の周辺環境を紹介するブログ記事を作ってください。駅名を伝えます。',
+        'エリアの住みやすさを紹介するブログ記事を作ってください。地域名を伝えます。'
+      ]
+    },
+    {
+      label: '入居者トラブル対応',
+      items: [
+        '水漏れのクレームに対する返信文を作ってください。状況を伝えます。',
+        '騒音の苦情に対する返信文を作ってください。状況を伝えます。',
+        '設備不良の問い合わせへの返信文を作ってください。状況を伝えます。'
+      ]
+    },
+    {
+      label: '査定・空室対策・エリア分析',
+      items: [
+        '物件の価格査定レポートを作ってください。周辺データは下の「市場データを取得」から反映します。',
+        'オーナー様向けの空室対策レポートを作ってください。周辺データは下の「市場データを取得」から反映します。',
+        'エリアの人口動態分析レポートを作ってください。地域データは下の「市場データを取得」から反映します。'
+      ]
+    }
+  ];
+
+  function templateChipsHtml(groups, extraClass) {
+    return groups.map(function (group) {
+      return '<p class="template-group-label">' + escapeHtml(group.label) + '</p>' +
+        '<div class="template-chips">' +
+        group.items.map(function (item) {
+          return '<button type="button" class="template-chip ' + extraClass + '" data-text="' + escapeHtml(item) + '">' +
+            escapeHtml(item.length > 24 ? item.slice(0, 24) + '…' : item) + '</button>';
+        }).join('') +
+        '</div>';
+    }).join('');
+  }
+
+  function wireTemplateChips(className, targetId) {
+    var target = document.getElementById(targetId);
+    Array.prototype.forEach.call(document.querySelectorAll('.' + className), function (btn) {
+      btn.addEventListener('click', function () {
+        target.value = btn.getAttribute('data-text');
+        target.focus();
+      });
+    });
+  }
+
+  function renderNewRequestForm() {
+    if (pollTimer) clearTimeout(pollTimer);
+    var chipsHtml = templateChipsHtml(TEMPLATE_GROUPS, 'req-chip');
+    mainEl.innerHTML =
+      '<div class="card">' +
+      '<label for="property-url">物件ページのURL(任意)</label>' +
+      '<input id="property-url" type="text" placeholder="例: https://www.example-fudosan.co.jp/property/123">' +
+      '<button id="property-url-import" style="margin-top:10px;">この内容を読み込む</button>' +
+      '<p class="muted" style="margin-top:8px; font-size:12.5px;">物件ページの文章を「ご依頼内容」欄に自動で入れます。取得した内容をご利用いただく権利があることを、ご自身でご確認ください。他社サイトによっては取得できない場合があります。</p>' +
+      '<div id="property-url-result"></div>' +
+      '<label for="property-pdf" style="margin-top:16px;">または、図面PDFをアップロード(任意)</label>' +
+      '<input id="property-pdf" type="file" accept="application/pdf">' +
+      '<button id="property-pdf-import" style="margin-top:10px;">このPDFを読み込む</button>' +
+      '<p class="muted" style="margin-top:8px; font-size:12.5px;">図面PDFの文字情報を「ご依頼内容」欄に自動で入れます(画像のみのスキャンPDFは非対応)。</p>' +
+      '<div id="property-pdf-result"></div>' +
+      '</div>' +
+      '<div class="card">' +
+      '<p class="muted" style="margin-top:0;">市場データを取得(査定・空室対策・エリア分析用、任意)</p>' +
+      '<label for="market-prefecture">都道府県</label>' +
+      '<select id="market-prefecture">' +
+      PREFECTURES.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') +
+      '</select>' +
+      '<label for="market-city-code" style="margin-top:10px;">市区町村コード(5桁)</label>' +
+      '<input id="market-city-code" type="text" placeholder="例: 11213(春日部市)" maxlength="5">' +
+      '<p class="muted" style="margin-top:4px; font-size:12px;">' +
+      '<a href="https://www.soumu.go.jp/denshijiti/code.html" target="_blank" rel="noopener">総務省の全国地方公共団体コード一覧</a>' +
+      'でご確認ください。</p>' +
+      '<label for="market-purpose" style="margin-top:10px;">用途</label>' +
+      '<select id="market-purpose">' +
+      '<option value="valuation">価格査定</option>' +
+      '<option value="vacancy_report">空室対策レポート</option>' +
+      '<option value="area_analysis">エリア人口動態分析</option>' +
+      '</select>' +
+      '<button id="market-data-fetch" style="margin-top:10px;">市場データを取得してご依頼内容に反映</button>' +
+      '<div id="market-data-result"></div>' +
+      '</div>' +
+      '<div class="card">' +
+      '<label for="new-text">ご依頼内容</label>' +
+      '<textarea id="new-text" placeholder="例: LPの見出しを作ってください。対象はBtoB SaaS企業の経営者、訴求はコスト削減、納期は来週です。"></textarea>' +
+      '<button id="new-submit" style="margin-top: 14px;">送信する</button>' +
+      '<p class="muted" style="margin-top: 12px;">他のご依頼が進行中でも、この画面から新しく送信できます。それぞれ並行して処理されます(進捗は左の「依頼履歴」から確認できます)。</p>' +
+      '</div>' +
+      '<div class="card">' +
+      '<p class="muted" style="margin-top:0;">テンプレート(押すと入力欄に入ります。内容を書き換えてから送信してください)</p>' +
+      chipsHtml +
+      '</div>';
+    wireTemplateChips('req-chip', 'new-text');
+    document.getElementById('property-url-import').addEventListener('click', function () {
+      var url = document.getElementById('property-url').value.trim();
+      if (!url) return;
+      var btn = document.getElementById('property-url-import');
+      btn.disabled = true;
+      btn.textContent = '読み込み中…';
+      api('/api/property-url/extract', { method: 'POST', body: JSON.stringify({ url: url }) })
+        .then(function (data) {
+          document.getElementById('new-text').value = data.text;
+          pendingImportedImageUrls = data.image_urls || [];
+          var imgNote = data.image_urls.length
+            ? '<p class="muted" style="font-size:12.5px;">画像が' + data.image_urls.length + '件見つかりました。この依頼を送信すると、動画生成時に自動で使えます。</p>'
+            : '';
+          document.getElementById('property-url-result').innerHTML =
+            '<p class="muted" style="margin-top:8px; font-size:12.5px;">読み込みました。「ご依頼内容」欄の内容をご確認・編集のうえ送信してください。</p>' + imgNote;
+        })
+        .catch(function (e) {
+          document.getElementById('property-url-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = 'この内容を読み込む'; });
+    });
+    document.getElementById('property-pdf-import').addEventListener('click', function () {
+      var fileInput = document.getElementById('property-pdf');
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      var btn = document.getElementById('property-pdf-import');
+      btn.disabled = true;
+      btn.textContent = '読み込み中…';
+      var formData = new FormData();
+      formData.append('file', file);
+      api('/api/property-url/extract-pdf', { method: 'POST', body: formData })
+        .then(function (data) {
+          document.getElementById('new-text').value = data.text;
+          document.getElementById('property-pdf-result').innerHTML =
+            '<p class="muted" style="margin-top:8px; font-size:12.5px;">読み込みました。「ご依頼内容」欄の内容をご確認・編集のうえ送信してください。</p>';
+        })
+        .catch(function (e) {
+          document.getElementById('property-pdf-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = 'このPDFを読み込む'; });
+    });
+    document.getElementById('market-data-fetch').addEventListener('click', function () {
+      var prefectureCode = document.getElementById('market-prefecture').value;
+      var cityCode = document.getElementById('market-city-code').value.trim();
+      var purpose = document.getElementById('market-purpose').value;
+      if (!/^[0-9]{5}$/.test(cityCode)) {
+        document.getElementById('market-data-result').innerHTML =
+          '<p class="error-text" style="margin-top:8px; font-size:12.5px;">市区町村コードは5桁の数字で入力してください。</p>';
+        return;
+      }
+      var endpoint = {
+        valuation: '/api/market-data/valuation-input',
+        vacancy_report: '/api/market-data/vacancy-report-input',
+        area_analysis: '/api/market-data/area-analysis-input'
+      }[purpose];
+      var btn = document.getElementById('market-data-fetch');
+      btn.disabled = true;
+      btn.textContent = '取得中…';
+      api(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({ prefecture_code: prefectureCode, city_code: cityCode, purpose: purpose })
+      })
+        .then(function (data) {
+          document.getElementById('new-text').value = data.text;
+          document.getElementById('market-data-result').innerHTML =
+            '<p class="muted" style="margin-top:8px; font-size:12.5px;">取得しました。「ご依頼内容」欄の内容をご確認・編集のうえ送信してください。' + escapeHtml(data.notice) + '</p>';
+        })
+        .catch(function (e) {
+          document.getElementById('market-data-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = '市場データを取得してご依頼内容に反映'; });
+    });
+    document.getElementById('new-submit').addEventListener('click', function () {
+      var text = document.getElementById('new-text').value.trim();
+      if (!text) return;
+      var btn = document.getElementById('new-submit');
+      btn.disabled = true;
+      btn.textContent = '送信中…';
+      api('/api/sessions', { method: 'POST', body: JSON.stringify({ text: text }) })
+        .then(function (data) {
+          currentSessionId = data.session_id;
+          if (pendingImportedImageUrls.length) {
+            sessionReferenceImages[data.session_id] = pendingImportedImageUrls;
+            pendingImportedImageUrls = [];
+          }
+          loadSessionList();
+          loadSessionDetail(data.session_id);
+        })
+        .catch(function (e) {
+          toast(e.message);
+          btn.disabled = false;
+          btn.textContent = '送信する';
+        });
+    });
+  }
+
+  function renderReelEditor() {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card">' +
+      '<h3 style="margin-top:0;">リール自動編集</h3>' +
+      '<p class="muted">スマホで撮った物件紹介の生動画をアップロードすると、AIが無音区間をカットし、' +
+      '字幕を自動生成して焼き込み、BGMを合成した動画を作成します(お手持ちの動画を編集するもので、' +
+      '新しい動画を1から生成するものではありません)。字幕の自動生成にはOpenAI APIキーの登録が必要です' +
+      '(設定画面から登録できます)。処理に数分かかることがあります。</p>' +
+      '<label for="reel-video-file">動画ファイル(mp4/mov)</label>' +
+      '<input id="reel-video-file" type="file" accept="video/mp4,video/quicktime">' +
+      '<label for="reel-bgm-select" style="margin-top:10px;">BGM(任意)</label>' +
+      '<select id="reel-bgm-select"><option value="">なし</option></select>' +
+      '<button id="reel-edit-submit" style="margin-top:14px;">編集を開始する</button>' +
+      '<div id="reel-edit-result"></div>' +
+      '</div>';
+
+    api('/api/reel/bgm-options').then(function (options) {
+      var select = document.getElementById('reel-bgm-select');
+      if (!select) return;
+      options.forEach(function (opt) {
+        var el = document.createElement('option');
+        el.value = opt.id;
+        el.textContent = opt.label;
+        select.appendChild(el);
+      });
+    }).catch(function () { /* BGM一覧の取得に失敗しても「なし」で続行できる */ });
+
+    document.getElementById('reel-edit-submit').addEventListener('click', function () {
+      var fileInput = document.getElementById('reel-video-file');
+      var file = fileInput.files && fileInput.files[0];
+      if (!file) { toast('動画ファイルを選んでください'); return; }
+      var bgm = document.getElementById('reel-bgm-select').value;
+      var btn = document.getElementById('reel-edit-submit');
+      btn.disabled = true;
+      btn.textContent = '編集中…(数分かかります)';
+      var formData = new FormData();
+      formData.append('file', file);
+      var url = '/api/reel/edit' + (bgm ? '?bgm=' + encodeURIComponent(bgm) : '');
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + apiKey },
+        body: formData
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+          return res.blob();
+        })
+        .then(function (blob) {
+          var objectUrl = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = objectUrl;
+          a.download = 'reel.mp4';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(objectUrl);
+          document.getElementById('reel-edit-result').innerHTML =
+            '<p class="muted" style="margin-top:8px; font-size:12.5px;">編集済み動画をダウンロードしました。</p>';
+        })
+        .catch(function (e) {
+          document.getElementById('reel-edit-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = '編集を開始する'; });
+    });
+  }
+
+  function renderRoomTour() {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card">' +
+      '<h3 style="margin-top:0;">ルームツアー動画</h3>' +
+      '<p class="muted">物件の写真、またはお手持ちの生動画をアップロードすると、AIが物件情報から台本を作り、' +
+      'ナレーション音声を合成し、下地映像(写真ならスライドショー、動画なら無音カット後の映像)に合成した動画を作成します' +
+      '(写真・動画は実際にアップロードされたものだけを使い、AIが部屋の中身を想像することはありません)。' +
+      'ナレーション音声合成にはOpenAI APIキーの登録が必要です。処理に数分かかることがあります。</p>' +
+      '<label for="room-tour-info">物件情報</label>' +
+      '<textarea id="room-tour-info" placeholder="例: 2LDK、駅徒歩5分、リフォーム済みのキッチン、南向きで日当たり良好"></textarea>' +
+      '<p class="muted" style="margin-top:10px; font-size:12.5px;">写真・動画のどちらか一方をアップロードしてください(両方選んだ場合は動画を優先します)。</p>' +
+      '<label for="room-tour-photos">物件写真(複数選択可)</label>' +
+      '<input id="room-tour-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>' +
+      '<label for="room-tour-video" style="margin-top:10px;">または、生動画(1本)</label>' +
+      '<input id="room-tour-video" type="file" accept="video/mp4,video/quicktime">' +
+      '<label for="room-tour-bgm" style="margin-top:10px;">BGM(任意)</label>' +
+      '<select id="room-tour-bgm"><option value="">なし</option></select>' +
+      '<button id="room-tour-submit" style="margin-top:14px;">動画を作成する</button>' +
+      '<div id="room-tour-result"></div>' +
+      '</div>';
+
+    api('/api/reel/bgm-options').then(function (options) {
+      var select = document.getElementById('room-tour-bgm');
+      if (!select) return;
+      options.forEach(function (opt) {
+        var el = document.createElement('option');
+        el.value = opt.id;
+        el.textContent = opt.label;
+        select.appendChild(el);
+      });
+    }).catch(function () { /* BGM一覧の取得に失敗しても「なし」で続行できる */ });
+
+    document.getElementById('room-tour-submit').addEventListener('click', function () {
+      var info = document.getElementById('room-tour-info').value.trim();
+      if (!info) { toast('物件情報を入力してください'); return; }
+      var photoFiles = document.getElementById('room-tour-photos').files;
+      var videoFiles = document.getElementById('room-tour-video').files;
+      var hasVideo = videoFiles && videoFiles.length;
+      var hasPhotos = photoFiles && photoFiles.length;
+      if (!hasVideo && !hasPhotos) { toast('写真または動画のいずれかを選んでください'); return; }
+      var bgm = document.getElementById('room-tour-bgm').value;
+      var btn = document.getElementById('room-tour-submit');
+      btn.disabled = true;
+      btn.textContent = '作成中…(数分かかります)';
+      var formData = new FormData();
+      formData.append('property_info', info);
+      if (bgm) formData.append('bgm', bgm);
+      if (hasVideo) {
+        formData.append('video', videoFiles[0]);
+      } else {
+        Array.prototype.forEach.call(photoFiles, function (f) { formData.append('photos', f); });
+      }
+      fetch('/api/room-tour/generate', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + apiKey },
+        body: formData
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+          return res.blob();
+        })
+        .then(function (blob) {
+          var objectUrl = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = objectUrl;
+          a.download = 'room_tour.mp4';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(objectUrl);
+          document.getElementById('room-tour-result').innerHTML =
+            '<p class="muted" style="margin-top:8px; font-size:12.5px;">動画をダウンロードしました。</p>';
+        })
+        .catch(function (e) {
+          document.getElementById('room-tour-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = '動画を作成する'; });
+    });
+  }
+
+  function renderPropertyCsv() {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card">' +
+      '<h3 style="margin-top:0;">ポータル連携CSV</h3>' +
+      '<p class="muted">物件情報を入力すると、ieRabuchCLOUD・RealterWorksなどの一括配信サービスに読み込ませる' +
+      '汎用CSVファイルを作成します(SUUMO等への直接登録APIは存在しないため、既にご契約中の配信サービス経由での' +
+      'ご利用を想定しています。列名は配信サービス側のインポート画面で調整が必要な場合があります)。</p>' +
+      '<label for="csv-name">物件名</label><input id="csv-name" type="text">' +
+      '<label for="csv-deal-type" style="margin-top:8px;">取引態様</label>' +
+      '<select id="csv-deal-type"><option value="賃貸">賃貸</option><option value="売買">売買</option></select>' +
+      '<label for="csv-address" style="margin-top:8px;">所在地</label><input id="csv-address" type="text">' +
+      '<label for="csv-station" style="margin-top:8px;">最寄り駅</label><input id="csv-station" type="text">' +
+      '<label for="csv-walk" style="margin-top:8px;">徒歩分</label><input id="csv-walk" type="text">' +
+      '<label for="csv-price" style="margin-top:8px;">価格・賃料</label><input id="csv-price" type="text">' +
+      '<label for="csv-management-fee" style="margin-top:8px;">管理費・共益費</label><input id="csv-management-fee" type="text">' +
+      '<label for="csv-deposit" style="margin-top:8px;">敷金</label><input id="csv-deposit" type="text">' +
+      '<label for="csv-key-money" style="margin-top:8px;">礼金</label><input id="csv-key-money" type="text">' +
+      '<label for="csv-layout" style="margin-top:8px;">間取り</label><input id="csv-layout" type="text">' +
+      '<label for="csv-floor-area" style="margin-top:8px;">専有面積</label><input id="csv-floor-area" type="text">' +
+      '<label for="csv-built-year" style="margin-top:8px;">築年数</label><input id="csv-built-year" type="text">' +
+      '<label for="csv-structure" style="margin-top:8px;">構造</label><input id="csv-structure" type="text">' +
+      '<label for="csv-direction" style="margin-top:8px;">方位</label><input id="csv-direction" type="text">' +
+      '<label for="csv-features" style="margin-top:8px;">設備・特徴</label><input id="csv-features" type="text">' +
+      '<label for="csv-description" style="margin-top:8px;">物件説明</label><textarea id="csv-description"></textarea>' +
+      '<label for="csv-images" style="margin-top:8px;">画像URL(1行に1つ、最大5つ)</label>' +
+      '<textarea id="csv-images" placeholder="https://...&#10;https://..."></textarea>' +
+      '<button id="csv-export-btn" style="margin-top:14px;">CSVをダウンロード</button>' +
+      '<div id="csv-export-result"></div>' +
+      '</div>';
+
+    document.getElementById('csv-export-btn').addEventListener('click', function () {
+      var body = {
+        name: document.getElementById('csv-name').value.trim(),
+        deal_type: document.getElementById('csv-deal-type').value,
+        address: document.getElementById('csv-address').value.trim(),
+        nearest_station: document.getElementById('csv-station').value.trim(),
+        walk_minutes: document.getElementById('csv-walk').value.trim(),
+        price: document.getElementById('csv-price').value.trim(),
+        management_fee: document.getElementById('csv-management-fee').value.trim(),
+        deposit: document.getElementById('csv-deposit').value.trim(),
+        key_money: document.getElementById('csv-key-money').value.trim(),
+        layout: document.getElementById('csv-layout').value.trim(),
+        floor_area: document.getElementById('csv-floor-area').value.trim(),
+        built_year: document.getElementById('csv-built-year').value.trim(),
+        structure: document.getElementById('csv-structure').value.trim(),
+        direction: document.getElementById('csv-direction').value.trim(),
+        features: document.getElementById('csv-features').value.trim(),
+        description: document.getElementById('csv-description').value.trim(),
+        image_urls: document.getElementById('csv-images').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean)
+      };
+      var btn = document.getElementById('csv-export-btn');
+      btn.disabled = true;
+      btn.textContent = '作成中…';
+      fetch('/api/property-export/csv', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+        .then(function (res) {
+          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+          return res.blob();
+        })
+        .then(function (blob) {
+          var objectUrl = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = objectUrl;
+          a.download = 'property.csv';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(objectUrl);
+          document.getElementById('csv-export-result').innerHTML =
+            '<p class="muted" style="margin-top:8px; font-size:12.5px;">CSVをダウンロードしました。</p>';
+        })
+        .catch(function (e) {
+          document.getElementById('csv-export-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = 'CSVをダウンロード'; });
+    });
+  }
+
+  function renderGuide() {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card guide-section">' +
+      '<h3>使い方</h3>' +
+      '<ol class="guide-steps">' +
+      '<li>左メニューの「＋ 新しい依頼」を押す</li>' +
+      '<li>依頼内容を入力欄に書いて送信する(テンプレートを押して書き換えると早いです)</li>' +
+      '<li>AIが内容を担当部署に振り分けて下書きを作ります。情報が足りない場合は先に確認の質問が来るので回答してください(「要確認」の状態)</li>' +
+      '<li>自動の品質チェックを通過すると「承認待ち」になります。内容を確認し、承認するか、修正してほしい点を伝えて差し戻してください</li>' +
+      '<li>承認すると完成です。必要であれば、完成した文章に合わせた画像・動画も追加で作れます(Higgsfield APIキーの登録が必要です)</li>' +
+      '</ol>' +
+      '</div>' +
+      '<div class="card guide-section">' +
+      '<h3>物件ページのURLから読み込む</h3>' +
+      '<p style="font-size:14px;">「＋ 新しい依頼」画面で、物件ページのURLを入力して「この内容を読み込む」を押すと、そのページの文章を「ご依頼内容」欄に自動で入れられます。内容をご確認・編集のうえ送信してください(取得した内容をご利用いただく権利があることは、ご自身でご確認ください。他社サイトによっては取得できない場合があります)。</p>' +
+      '</div>' +
+      '<div class="card guide-section">' +
+      '<h3>依頼の書き方の例</h3>' +
+      TEMPLATE_GROUPS.map(function (group) {
+        return '<div class="guide-example-group"><h4>' + escapeHtml(group.label) + '</h4><ul>' +
+          group.items.map(function (item) { return '<li>' + escapeHtml(item) + '</li>'; }).join('') +
+          '</ul></div>';
+      }).join('') +
+      '</div>' +
+      '<div class="card guide-section">' +
+      '<h3>料金の目安</h3>' +
+      '<p style="font-size:14px;">月額のご契約とは別に、AI(Anthropic社)の利用料が実費でかかります。ご依頼1件あたり、システム側で上限$3.0程度を目安に設定していますが、実際にはそれよりずっと少額(多くの場合、数十円〜100円程度)で収まることがほとんどです。正確な金額は、左メニューの「設定・利用状況」から今月の概算コストを確認できます。</p>' +
+      '<p class="muted">画像・動画の追加生成にはHiggsfield社の利用料が別途かかります(お客様ご自身でHiggsfieldと契約し、ご自身のAPIキーを登録していただく形です)。</p>' +
+      '</div>' +
+      '<div class="card guide-section">' +
+      '<h3>定期実行(毎週・毎月など、自動で依頼を作る)</h3>' +
+      '<p style="font-size:14px;">左メニューの「定期実行」から、「毎週月曜9時にオーナー報告の下書きを作る」のように登録できます。細かく書ききらなくても大丈夫です。実行時に情報が足りなければ社長AIが確認の質問をし、それは通常の依頼と同じく「依頼履歴」に届くので、都度そこから答えてください。生成された内容も、必ず承認待ちを経て人が確認してから完成します。</p>' +
+      '</div>';
+  }
+
+  var SCHEDULE_PRESETS = [
+    { label: '毎日9時', cron: '0 9 * * *' },
+    { label: '毎週月曜9時', cron: '0 9 * * 1' },
+    { label: '毎月1日9時', cron: '0 9 1 * *' }
+  ];
+
+  var scheduleStatusLabels = { true: '有効', false: '無効(停止中)' };
+
+  function renderSchedules() {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card">' +
+      '<p class="muted" style="margin-top:0;">新しい定期実行を登録</p>' +
+      '<p style="font-size:13px;">「何をしてほしいか」は、細かく書ききらなくても大丈夫です。実行時に情報が足りなければ、社長AIが確認の質問をします。その場合は普段の依頼と同じく、左の「依頼履歴」に質問が届くので、そこから答えてください(実行のたびに、その場で聞かれるわけではありません)。</p>' +
+      '<label for="sch-goal">何をしてほしいか</label>' +
+      '<textarea id="sch-goal" placeholder="例: 今週の反響状況をまとめたオーナー報告の下書きを作る"></textarea>' +
+      templateChipsHtml(TEMPLATE_GROUPS, 'goal-chip') +
+      '<label for="sch-cron" style="margin-top:14px;">実行タイミング</label>' +
+      '<div class="template-chips" style="margin-top:0;">' +
+      SCHEDULE_PRESETS.map(function (p) {
+        return '<button type="button" class="template-chip schedule-preset" data-cron="' + escapeHtml(p.cron) + '">' + escapeHtml(p.label) + '</button>';
+      }).join('') +
+      '</div>' +
+      '<input id="sch-cron" type="text" placeholder="cron形式(例: 0 9 * * 1 = 毎週月曜9時)" style="margin-top:8px;">' +
+      '<p class="muted" style="font-size:12px;">タイムゾーンは日本時間(Asia/Tokyo)固定です。生成された内容は、通常の依頼と同じく必ず承認待ちになります(無人で外部に出ることはありません)。</p>' +
+      '<button id="sch-create-btn" style="margin-top:10px;">登録する</button>' +
+      '<div id="sch-create-result"></div>' +
+      '</div>' +
+      '<div class="card">' +
+      '<p class="muted" style="margin-top:0;">登録済みの定期実行</p>' +
+      '<div id="sch-list">読み込み中…</div>' +
+      '</div>';
+
+    wireTemplateChips('goal-chip', 'sch-goal');
+    Array.prototype.forEach.call(document.querySelectorAll('.schedule-preset'), function (btn) {
+      btn.addEventListener('click', function () {
+        document.getElementById('sch-cron').value = btn.getAttribute('data-cron');
+      });
+    });
+
+    document.getElementById('sch-create-btn').addEventListener('click', function () {
+      var goal = document.getElementById('sch-goal').value.trim();
+      var cron = document.getElementById('sch-cron').value.trim();
+      if (!goal || !cron) { toast('内容とタイミングの両方を入力してください'); return; }
+      var btn = document.getElementById('sch-create-btn');
+      btn.disabled = true;
+      api('/api/schedules', { method: 'POST', body: JSON.stringify({ cron: cron, timezone: 'Asia/Tokyo', goal: goal }) })
+        .then(function () {
+          document.getElementById('sch-create-result').innerHTML = '<p class="ok-text" style="margin-top:10px;">登録しました。</p>';
+          document.getElementById('sch-goal').value = '';
+          document.getElementById('sch-cron').value = '';
+          loadScheduleList();
+        })
+        .catch(function (e) {
+          document.getElementById('sch-create-result').innerHTML = '<p class="error-text" style="margin-top:10px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; });
+    });
+
+    loadScheduleList();
+  }
+
+  function loadScheduleList() {
+    var listEl = document.getElementById('sch-list');
+    if (!listEl) return;
+    api('/api/schedules').then(function (data) {
+      if (!data.schedules.length) {
+        listEl.innerHTML = '<p class="muted">まだ登録された定期実行はありません。</p>';
+        return;
+      }
+      listEl.innerHTML = data.schedules.map(function (s) {
+        var badgeClass = s.enabled ? 'status-AWAITING_APPROVAL' : 'status-ARCHIVED';
+        return '<div class="doc-row">' +
+          '<div class="doc-info">' +
+          '<p class="doc-title">' + escapeHtml(s.goal) + '</p>' +
+          '<p class="doc-meta">' + escapeHtml(s.cron) + '(日本時間) ・ ' +
+          '<span class="status-badge ' + badgeClass + '">' + scheduleStatusLabels[s.enabled] + '</span>' +
+          (s.consecutive_failures > 0 ? ' ・ 連続失敗' + s.consecutive_failures + '回' : '') +
+          '</p></div>' +
+          '<div class="doc-actions">' +
+          '<button type="button" class="secondary sch-toggle" data-id="' + s.id + '" data-enabled="' + s.enabled + '">' + (s.enabled ? '停止する' : '再開する') + '</button> ' +
+          '<button type="button" class="danger sch-delete" data-id="' + s.id + '">削除</button>' +
+          '</div></div>';
+      }).join('');
+
+      Array.prototype.forEach.call(document.querySelectorAll('.sch-toggle'), function (btn) {
+        btn.addEventListener('click', function () {
+          var enabled = btn.getAttribute('data-enabled') === 'true';
+          btn.disabled = true;
+          api('/api/schedules/' + btn.getAttribute('data-id'), { method: 'PATCH', body: JSON.stringify({ enabled: !enabled }) })
+            .then(loadScheduleList)
+            .catch(function (e) { toast(e.message); btn.disabled = false; });
+        });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.sch-delete'), function (btn) {
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          api('/api/schedules/' + btn.getAttribute('data-id'), { method: 'DELETE' })
+            .then(loadScheduleList)
+            .catch(function (e) { toast(e.message); btn.disabled = false; });
+        });
+      });
+    }).catch(function (e) {
+      listEl.innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+    });
+  }
+
+  function loadSessionDetail(id) {
+    if (pollTimer) clearTimeout(pollTimer);
+    api('/api/sessions/' + id).then(function (data) {
+      renderSessionDetail(data);
+      if (data.status === 'QUEUED' || data.status === 'RUNNING') {
+        pollTimer = setTimeout(function () { loadSessionDetail(id); }, 2000);
+      }
+    }).catch(function (e) { toast(e.message); });
+  }
+
+  // 回答/承認/却下を送信した直後は、裏側の処理がまだ終わっておらず
+  // GETの結果がまだ古いstatus(CLARIFYING/AWAITING_APPROVAL)のままのことがある。
+  // その場合は同じフォームを空欄で出し直すのではなく、「処理中」の表示を続け、
+  // statusが変わるまでポーリングする。
+  function pollUntilChanged(id, fromStatus) {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML = '<div class="card muted processing-card"><span class="spinner-ring"></span>送信しました。処理しています…</div>';
+    (function check() {
+      api('/api/sessions/' + id).then(function (data) {
+        if (data.status !== fromStatus) {
+          renderSessionDetail(data);
+          loadSessionList();
+          if (data.status === 'QUEUED' || data.status === 'RUNNING') {
+            pollTimer = setTimeout(function () { loadSessionDetail(id); }, 2000);
+          }
+        } else {
+          pollTimer = setTimeout(check, 2000);
+        }
+      }).catch(function (e) { toast(e.message); });
+    })();
+  }
+
+  function renderSessionDetail(data) {
+    var badge = '<span class="status-badge status-' + data.status + '">' + statusLabel(data.status) + '</span>';
+    var html = '<div class="card">' +
+      '<p class="muted">ご依頼内容</p>' +
+      '<p>' + escapeHtml(data.request_text) + '</p>' +
+      '<p style="margin-top: 14px;">' + badge + '</p>' +
+      '</div>';
+
+    var result = data.result || {};
+
+    if (data.status === 'QUEUED' || data.status === 'RUNNING') {
+      html += '<div class="card muted processing-card"><span class="spinner-ring"></span>処理しています。しばらくお待ちください…(他のご依頼をこの間に送っても大丈夫です)</div>';
+    }
+
+    if (data.status === 'CLARIFYING' && result.questions) {
+      html += '<div class="card"><p><strong>着手前に確認させてください</strong></p><div id="clarify-form">';
+      result.questions.forEach(function (q, i) {
+        html += '<div class="question-item"><p>' + (i + 1) + '. ' + escapeHtml(q) + '</p>' +
+          '<input type="text" class="clarify-answer" data-question="' + escapeHtml(q) + '">' +
+          '</div>';
+      });
+      html += '<button id="clarify-submit" style="margin-top: 8px;">回答を送信</button></div></div>';
+    }
+
+    if ((data.status === 'AWAITING_APPROVAL' || data.status === 'APPROVED') && result.approval_summary) {
+      var s = result.approval_summary;
+      html += '<div class="card">';
+      html += '<h3 style="margin-top:0;">' + escapeHtml(s.headline || '') + '</h3>';
+      if (s.qa_result) html += '<p class="muted">品質検査: ' + escapeHtml(s.qa_result) + '</p>';
+      if (s.decision_points && s.decision_points.length) {
+        html += '<p><strong>ご判断いただきたい点</strong></p><ul class="decision-points">' +
+          s.decision_points.map(function (p) { return '<li>' + escapeHtml(p) + '</li>'; }).join('') + '</ul>';
+      }
+      if (s.caveats && s.caveats.length) {
+        html += '<p><strong>要確認事項</strong></p><ul class="caveats">' +
+          s.caveats.map(function (p) { return '<li>' + escapeHtml(p) + '</li>'; }).join('') + '</ul>';
+      }
+      html += '</div>';
+
+      if (result.board) {
+        html += '<div class="card"><p class="muted" style="margin-top:0;">成果物</p>';
+        Object.keys(result.board).forEach(function (dept) {
+          html += '<div class="dept-output"><div class="rendered">' + renderMarkdownish(result.board[dept]) + '</div></div>';
+        });
+        html += '</div>';
+      }
+
+      if (data.status === 'AWAITING_APPROVAL') {
+        html += '<div class="card">' +
+          '<button id="approve-btn">承認する</button> ' +
+          '<button id="reject-btn" class="secondary">修正を依頼する</button>' +
+          '<div id="reject-form" style="display:none; margin-top: 12px;">' +
+          '<label for="reject-comment">修正してほしい点</label>' +
+          '<textarea id="reject-comment"></textarea>' +
+          '<button id="reject-submit" class="danger" style="margin-top: 10px;">この内容で修正を依頼</button>' +
+          '</div></div>';
+      }
+    }
+
+    if (data.status === 'COMPLETED' && result.reply) {
+      html += '<div class="card">' + escapeHtml(result.reply) + '</div>';
+    }
+
+    if (['AWAITING_APPROVAL', 'APPROVED', 'COMPLETED'].indexOf(data.status) !== -1) {
+      html += '<div class="card">' +
+        '<p class="muted" style="margin-top:0;">付随画像(Higgsfield)</p>' +
+        '<p style="font-size:12px; color:var(--muted);">まず低画質(下書き)で生成します。気に入ったものだけ「高画質で作り直す」を押してください(クレジット節約のため)。</p>' +
+        '<div id="generated-images">' +
+        (result.generated_images || []).map(function (img, i) {
+          return '<div style="margin-bottom:10px;">' +
+            '<img src="' + escapeHtml(img.url) + '" style="max-width:100%; border-radius:8px; display:block;">' +
+            (img.quality === 'high'
+              ? '<p style="font-size:12px; color:var(--muted); margin:4px 0 0;">高画質版</p>'
+              : '<button class="upscale-image-btn" data-index="' + i + '" data-hint="' + escapeHtml(img.prompt_hint || '') + '" style="margin-top:6px;">高画質で作り直す</button>') +
+            '<div style="margin-top:8px;">' +
+            '<button class="stage-image-preset-btn" data-url="' + escapeHtml(img.url) + '" data-instruction="brighten the room, replace overcast or gray sky with clear blue sky, keep all objects and structure unchanged" style="margin-right:6px;">晴天化・明るく補正</button>' +
+            '<span class="muted" style="font-size:12px;">(試験提供中の機能です)</span>' +
+            '<div style="margin-top:6px;">' +
+            '<input class="stage-instruction" data-url="' + escapeHtml(img.url) + '" type="text" placeholder="例: 生活感のある物を消してソファとテーブルを置く" style="width:70%;">' +
+            '<button class="stage-image-btn" data-url="' + escapeHtml(img.url) + '" style="margin-left:6px;">この写真を編集する</button>' +
+            '</div>' +
+            '<div class="stage-image-result"></div>' +
+            '</div>' +
+            '</div>';
+        }).join('') +
+        '</div>' +
+        '<label for="generate-image-hint">追加の指示(任意)</label>' +
+        '<input id="generate-image-hint" type="text" placeholder="例: 縦長のバナーで">' +
+        '<button id="generate-image-btn" style="margin-top:14px;">画像を生成する(低画質)</button>' +
+        '<div id="generate-image-result"></div>' +
+        '</div>' +
+        '<div class="card">' +
+        '<p class="muted" style="margin-top:0;">付随動画(Higgsfield)</p>' +
+        '<p style="font-size:12px; color:var(--muted);">生成に数分かかることがあります。まず低画質(下書き)で生成します。気に入ったものだけ「高画質で作り直す」を押してください(クレジット節約のため)。</p>' +
+        '<div id="generated-videos">' +
+        (result.generated_videos || []).map(function (vid, i) {
+          return '<div style="margin-bottom:10px;">' +
+            '<video src="' + escapeHtml(vid.url) + '" controls style="max-width:100%; border-radius:8px; display:block;"></video>' +
+            (vid.quality === 'high'
+              ? '<p style="font-size:12px; color:var(--muted); margin:4px 0 0;">高画質版(1080p)</p>'
+              : '<button class="upscale-video-btn" data-index="' + i + '" data-hint="' + escapeHtml(vid.prompt_hint || '') + '" style="margin-top:6px;">高画質で作り直す(1080p)</button>') +
+            '</div>';
+        }).join('') +
+        '</div>' +
+        (sessionReferenceImages[data.session_id]
+          ? '<p class="muted" style="font-size:12px;">物件URLから見つかった写真をもとに動画を作成します。</p>'
+          : '') +
+        '<label for="generate-video-hint">追加の指示(任意)</label>' +
+        '<input id="generate-video-hint" type="text" placeholder="例: ゆっくりしたカメラワークで">' +
+        '<button id="generate-video-btn" style="margin-top:14px;">動画を生成する(低画質)</button>' +
+        '<div id="generate-video-result"></div>' +
+        '</div>' +
+        '<div class="card">' +
+        '<p class="muted" style="margin-top:0;">マイソクPDF(募集図面・チラシ)</p>' +
+        '<p style="font-size:12px; color:var(--muted);">この依頼の文章と、これまでに生成した画像を使ってPDFを作成します。</p>' +
+        '<button id="generate-flyer-btn" style="margin-top:6px;">マイソクPDFを作成</button>' +
+        '<div id="generate-flyer-result"></div>' +
+        '</div>';
+    }
+
+    if ((data.status === 'ERROR' || data.status === 'HALTED') ) {
+      html += '<div class="card"><p class="error-text">' + escapeHtml(result.error_message || '処理を中断しました。') + '</p>';
+      if (result.rejection_history && result.rejection_history.length) {
+        html += '<p class="muted">これまでの修正依頼:</p><ul>' +
+          result.rejection_history.map(function (c) { return '<li>' + escapeHtml(c) + '</li>'; }).join('') + '</ul>';
+      }
+      if (result.board) {
+        Object.keys(result.board).forEach(function (dept) {
+          html += '<div class="dept-output"><h4>' + escapeHtml(dept) + '(途中経過)</h4><div class="rendered">' +
+            renderMarkdownish(result.board[dept]) + '</div></div>';
+        });
+      }
+      html += '</div>';
+    }
+
+    mainEl.innerHTML = html;
+
+    var clarifyBtn = document.getElementById('clarify-submit');
+    if (clarifyBtn) {
+      clarifyBtn.addEventListener('click', function () {
+        var answer = {};
+        Array.prototype.forEach.call(document.querySelectorAll('.clarify-answer'), function (input) {
+          answer[input.dataset.question] = input.value.trim();
+        });
+        clarifyBtn.disabled = true;
+        clarifyBtn.textContent = '送信中…';
+        api('/api/sessions/' + data.session_id + '/answer', { method: 'POST', body: JSON.stringify({ answer: answer }) })
+          .then(function () { pollUntilChanged(data.session_id, 'CLARIFYING'); loadSessionList(); })
+          .catch(function (e) { toast(e.message); clarifyBtn.disabled = false; clarifyBtn.textContent = '回答を送信'; });
+      });
+    }
+
+    var approveBtn = document.getElementById('approve-btn');
+    if (approveBtn) {
+      approveBtn.addEventListener('click', function () {
+        approveBtn.disabled = true;
+        api('/api/sessions/' + data.session_id + '/approve', { method: 'POST', body: JSON.stringify({ decision: 'approve' }) })
+          .then(function () { pollUntilChanged(data.session_id, 'AWAITING_APPROVAL'); loadSessionList(); })
+          .catch(function (e) { toast(e.message); approveBtn.disabled = false; });
+      });
+    }
+
+    var generateImageBtn = document.getElementById('generate-image-btn');
+    if (generateImageBtn) {
+      generateImageBtn.addEventListener('click', function () {
+        var hint = document.getElementById('generate-image-hint').value.trim();
+        generateImageBtn.disabled = true;
+        generateImageBtn.textContent = '生成中…';
+        api('/api/sessions/' + data.session_id + '/generate-image', {
+          method: 'POST',
+          body: JSON.stringify({ prompt_hint: hint || null, quality: 'draft' })
+        })
+          .then(function () { loadSessionDetail(data.session_id); })
+          .catch(function (e) {
+            document.getElementById('generate-image-result').innerHTML =
+              '<p class="error-text" style="margin-top:10px;">' + escapeHtml(e.message) + '</p>';
+          })
+          .then(function () { generateImageBtn.disabled = false; generateImageBtn.textContent = '画像を生成する(低画質)'; });
+      });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.upscale-image-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.textContent = '高画質で生成中…';
+        api('/api/sessions/' + data.session_id + '/generate-image', {
+          method: 'POST',
+          body: JSON.stringify({ prompt_hint: btn.dataset.hint || null, quality: 'high' })
+        })
+          .then(function () { loadSessionDetail(data.session_id); })
+          .catch(function (e) {
+            btn.disabled = false;
+            btn.textContent = '高画質で作り直す';
+            toast(e.message);
+          });
+      });
+    });
+
+    function runStageImage(btn, resultEl, imageUrl, instruction, resetLabel) {
+      btn.disabled = true;
+      var originalLabel = btn.textContent;
+      btn.textContent = '編集中…';
+      api('/api/property-url/stage-image', {
+        method: 'POST',
+        body: JSON.stringify({ image_url: imageUrl, instruction: instruction })
+      })
+        .then(function (res) {
+          var img = document.createElement('img');
+          img.src = res.image_url;
+          img.style.cssText = 'max-width:100%; border-radius:8px; margin-top:8px; display:block;';
+          resultEl.innerHTML = '';
+          resultEl.appendChild(img);
+        })
+        .catch(function (e) {
+          resultEl.innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = resetLabel || originalLabel; });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.stage-image-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        var wrap = btn.parentElement;
+        var instruction = wrap.querySelector('.stage-instruction').value.trim();
+        if (!instruction) return;
+        var resultEl = wrap.parentElement.querySelector('.stage-image-result');
+        runStageImage(btn, resultEl, btn.dataset.url, instruction, 'この写真を編集する');
+      });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('.stage-image-preset-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        var resultEl = btn.parentElement.querySelector('.stage-image-result');
+        runStageImage(btn, resultEl, btn.dataset.url, btn.dataset.instruction, '晴天化・明るく補正');
+      });
+    });
+
+    var generateVideoBtn = document.getElementById('generate-video-btn');
+    if (generateVideoBtn) {
+      generateVideoBtn.addEventListener('click', function () {
+        var hint = document.getElementById('generate-video-hint').value.trim();
+        generateVideoBtn.disabled = true;
+        generateVideoBtn.textContent = '生成中…(数分かかります)';
+        var refImages = sessionReferenceImages[data.session_id];
+        api('/api/sessions/' + data.session_id + '/generate-video', {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt_hint: hint || null,
+            quality: 'draft',
+            reference_image_url: (refImages && refImages[0]) || null
+          })
+        })
+          .then(function () { loadSessionDetail(data.session_id); })
+          .catch(function (e) {
+            document.getElementById('generate-video-result').innerHTML =
+              '<p class="error-text" style="margin-top:10px;">' + escapeHtml(e.message) + '</p>';
+          })
+          .then(function () { generateVideoBtn.disabled = false; generateVideoBtn.textContent = '動画を生成する(低画質)'; });
+      });
+    }
+
+    var generateFlyerBtn = document.getElementById('generate-flyer-btn');
+    if (generateFlyerBtn) {
+      generateFlyerBtn.addEventListener('click', function () {
+        generateFlyerBtn.disabled = true;
+        generateFlyerBtn.textContent = '作成中…';
+        var imageUrls = (result.generated_images || []).map(function (img) { return img.url; });
+        fetch('/api/sessions/' + data.session_id + '/generate-flyer', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image_urls: imageUrls })
+        })
+          .then(function (res) {
+            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+            return res.blob();
+          })
+          .then(function (blob) {
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'マイソク.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            document.getElementById('generate-flyer-result').innerHTML =
+              '<p class="muted" style="margin-top:8px; font-size:12.5px;">PDFをダウンロードしました。</p>';
+          })
+          .catch(function (e) {
+            document.getElementById('generate-flyer-result').innerHTML =
+              '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+          })
+          .then(function () { generateFlyerBtn.disabled = false; generateFlyerBtn.textContent = 'マイソクPDFを作成'; });
+      });
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll('.upscale-video-btn'), function (btn) {
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        btn.textContent = '高画質で生成中…(数分かかります)';
+        var refImagesUp = sessionReferenceImages[data.session_id];
+        api('/api/sessions/' + data.session_id + '/generate-video', {
+          method: 'POST',
+          body: JSON.stringify({
+            prompt_hint: btn.dataset.hint || null,
+            quality: 'high',
+            reference_image_url: (refImagesUp && refImagesUp[0]) || null
+          })
+        })
+          .then(function () { loadSessionDetail(data.session_id); })
+          .catch(function (e) {
+            btn.disabled = false;
+            btn.textContent = '高画質で作り直す(1080p)';
+            toast(e.message);
+          });
+      });
+    });
+
+    var rejectBtn = document.getElementById('reject-btn');
+    if (rejectBtn) {
+      rejectBtn.addEventListener('click', function () {
+        document.getElementById('reject-form').style.display = 'block';
+      });
+    }
+
+    var rejectSubmit = document.getElementById('reject-submit');
+    if (rejectSubmit) {
+      rejectSubmit.addEventListener('click', function () {
+        var comment = document.getElementById('reject-comment').value.trim();
+        if (!comment) { toast('修正内容を入力してください'); return; }
+        rejectSubmit.disabled = true;
+        rejectSubmit.textContent = '送信中…';
+        api('/api/sessions/' + data.session_id + '/approve', {
+          method: 'POST',
+          body: JSON.stringify({ decision: 'reject', comment: comment })
+        })
+          .then(function () { pollUntilChanged(data.session_id, 'AWAITING_APPROVAL'); loadSessionList(); })
+          .catch(function (e) { toast(e.message); rejectSubmit.disabled = false; rejectSubmit.textContent = 'この内容で修正を依頼'; });
+      });
+    }
+  }
+
+  if (apiKey) {
+    api('/api/sessions').then(showApp).catch(logout);
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,29 @@
+name = "tsunagumo-line-bot"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# wrangler kv namespace create tsunagumo_line_chat_history で作成したIDに置き換える
+[[kv_namespaces]]
+binding = "CHAT_HISTORY"
+id = "2dd62f340c054f21a9358985d9e2d503"
+
+[vars]
+ANTHROPIC_MODEL = "claude-sonnet-5"
+GOOGLE_CALENDAR_ID = "primary"
+# SaaS本体(saas/)のデプロイ先URL。未デプロイの間は空のままでよい
+# (トライアル開始自体は失敗しない。SaaS側のテナント発行だけスキップされる)。
+SAAS_BASE_URL = "https://app.tunagumo.com"
+# 月5万円プランのStripe price ID(live mode、2026-08-20作成)。秘密情報ではないため
+# ここに直接書いてよい(Stripe側の商品構成が変わるまで固定値)。
+STRIPE_PRICE_TSUNAGUMO = "price_1U6LS6Gj5LbAzw5NDK48bI32"
+
+# 以下はここに書かない。wrangler secret put で個別に設定する:
+#   LINE_CHANNEL_SECRET
+#   LINE_CHANNEL_ACCESS_TOKEN
+#   ANTHROPIC_API_KEY
+#   GOOGLE_OAUTH_CLIENT_ID
+#   GOOGLE_OAUTH_CLIENT_SECRET
+#   GOOGLE_CALENDAR_REFRESH_TOKEN
+#   ZOOM_PERSONAL_ROOM_URL
+#   SAAS_ADMIN_API_KEY   (saas/.envのADMIN_API_KEYと同じ値)
+#   STRIPE_SECRET_KEY    (Stripe本番化時は sk_live_... に必ず差し替える。sk_test_のままだと課金されない)

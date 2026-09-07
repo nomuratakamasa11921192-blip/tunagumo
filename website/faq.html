@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>よくある質問｜ツナグモ</title>
+<meta name="description" content="ツナグモに関するよくある質問。高校生が運営していること、データの安全性、法令違反の検出、解約について等にお答えします。">
+<meta name="theme-color" content="#F6F4EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14161C" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/assets/logo.svg">
+<style>
+  :root { --bg:#F6F4EF; --page-bg:#FFFFFF; --ink:#22283A; --ink-soft:#4B5165; --ink-faint:#7A8093; --accent:#B8792F; --accent-soft:#EFE3D1; --line:#D9D3C7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161C; --page-bg:#1B1E27; --ink:#ECE7DC; --ink-soft:#B7BAC4; --ink-faint:#7E8494; --accent:#D79A52; --accent-soft:rgba(183,121,47,0.16); --line:#333A48; } }
+  :root[data-theme="dark"] { --bg:#14161C; --page-bg:#1B1E27; --ink:#ECE7DC; --ink-soft:#B7BAC4; --ink-faint:#7E8494; --accent:#D79A52; --accent-soft:rgba(183,121,47,0.16); --line:#333A48; }
+  :root[data-theme="light"] { --bg:#F6F4EF; --page-bg:#FFFFFF; --ink:#22283A; --ink-soft:#4B5165; --ink-faint:#7A8093; --accent:#B8792F; --accent-soft:#EFE3D1; --line:#D9D3C7; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"游ゴシック体","Yu Gothic","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; line-height:1.8; }
+  a { color: inherit; }
+  h1, h2 { font-family:"游明朝","Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif; text-wrap: balance; margin:0; }
+  header { position: sticky; top:0; z-index:10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(6px); border-bottom:1px solid var(--line); }
+  .nav-inner { display:flex; align-items:center; justify-content:space-between; padding:16px 24px; max-width:720px; margin:0 auto; }
+  .logo { font-family:"游明朝",serif; font-size:20px; font-weight:700; letter-spacing:0.08em; text-decoration:none; color:var(--ink); }
+  .logo span { color: var(--accent); }
+  .nav-back { font-size:13.5px; color:var(--ink-soft); text-decoration:none; }
+  .nav-back:hover { color: var(--accent); }
+  .hero { padding: 64px 24px 32px; text-align:center; }
+  .hero h1 { font-size: clamp(24px, 5vw, 34px); }
+  section { padding: 24px 24px 56px; }
+  .section-inner { max-width: 680px; margin: 0 auto; }
+  .qa { background: var(--page-bg); border:1px solid var(--line); border-radius:10px; padding:22px 24px; margin-bottom:16px; }
+  .qa .q { font-weight:700; font-size:15px; margin-bottom:10px; display:flex; gap:8px; }
+  .qa .q .mark { color: var(--accent); flex-shrink:0; }
+  .qa .a { color: var(--ink-soft); font-size:14.5px; margin:0; padding-left: 1.6em; }
+  .cta-center { text-align:center; margin-top: 32px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:13px 26px; border-radius:4px; font-size:14.5px; font-weight:700; text-decoration:none; letter-spacing:0.02em; background: var(--ink); color: var(--bg); }
+  footer { padding:32px 24px; text-align:center; font-size:12.5px; color:var(--ink-faint); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="nav-inner">
+    <a class="logo" href="/">tunagumo<span>.</span></a>
+    <a class="nav-back" href="/">トップへ戻る</a>
+  </div>
+</header>
+
+<div class="hero"><h1>よくある質問</h1></div>
+
+<section>
+  <div class="section-inner">
+
+    <div class="qa">
+      <p class="q"><span class="mark">Q.</span> 高校生が運営していると聞きましたが、大丈夫でしょうか</p>
+      <p class="a">はい、埼玉県春日部市の高校3年生です。ご不安に思われるのは当然だと思います。そのため、以下の形にしています。<br>・2週間の無料お試し期間があります<br>・最低契約期間はありません<br>・契約終了時には、設定内容と作成物をすべてお渡しします</p>
+    </div>
+
+    <div class="qa">
+      <p class="q"><span class="mark">Q.</span> 進学されたあとはどうなりますか</p>
+      <p class="a">事業は継続する予定です。万一サービスを終了する場合は、3ヶ月前にご連絡し、設定内容と作成物をすべてお渡しします。この点は契約書にも明記しています。</p>
+    </div>
+
+    <div class="qa">
+      <p class="q"><span class="mark">Q.</span> データは安全ですか</p>
+      <p class="a">保管しているサーバーは国内（さくらインターネット）です。ただし、文章の生成には海外のAIサービス（Anthropic社）を利用しているため、入力内容は海外のサーバーで処理されます。このため、個人情報を含む内容の入力はお控えいただくようお願いしています。</p>
+    </div>
+
+    <div class="qa">
+      <p class="q"><span class="mark">Q.</span> 法令違反の文章が出ることはありませんか</p>
+      <p class="a">業界で使用が制限されている表現を自動で検出する機能があります。ただし、これは補助機能であり、法令適合を保証するものではありません。最終的なご確認は、貴社でお願いしています。</p>
+    </div>
+
+    <div class="qa">
+      <p class="q"><span class="mark">Q.</span> AIの知識がなくても使えますか</p>
+      <p class="a">AIの知識は不要です。画面から項目を選んで、空欄を埋めていただくだけです。初期設定もこちらで行います。ただし、出てきた文章の内容が業務上適切かどうかは、貴社でご判断いただく必要があります。</p>
+    </div>
+
+    <div class="qa">
+      <p class="q"><span class="mark">Q.</span> 途中で解約できますか</p>
+      <p class="a">できます。管理画面からご自身でいつでも手続きいただけます。違約金はいただきません。</p>
+    </div>
+
+    <div class="qa">
+      <p class="q"><span class="mark">Q.</span> 不動産以外の業種でも使えますか</p>
+      <p class="a">現在は不動産に特化して提供しています。それ以外の業種では、十分な精度が出ない可能性があります。一度ご相談ください。</p>
+    </div>
+
+    <div class="cta-center">
+      <a class="btn" href="/trial">無料相談を予約する</a>
+    </div>
+
+  </div>
+</section>
+
+<footer>&copy; 2026 tunagumo（ツナグモ） / 埼玉県春日部市</footer>
+
+</body>
+</html>

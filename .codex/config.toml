@@ -1,0 +1,5 @@
+[mcp_servers.higgsfield]
+url = "https://mcp.higgsfield.ai/mcp"
+
+[mcp_servers.stripe]
+url = "https://mcp.stripe.com"
