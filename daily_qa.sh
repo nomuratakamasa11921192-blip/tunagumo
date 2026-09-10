@@ -40,13 +40,16 @@ run_codex_with_fallback() {
   # TUI起動を試みてしまい、端末が無いcron環境では "stdin is not a terminal" で
   # 失敗する(2026-09-08 instagram_check.shのcron初回実行で発覚、同じ構造の
   # このスクリプトも同様に失敗していた可能性が高い)。
-  out=$(codex exec -a never -c sandbox_mode="danger-full-access" "$prompt" 2>&1)
+  # `-a`/`--ask-for-approval` は exec には存在しない(codexコマンド本体のみの
+  # オプションだった)。exec では `-s/--sandbox danger-full-access` を使う
+  # (2026-09-10、`codex exec --help`で確認)。
+  out=$(codex exec -s danger-full-access "$prompt" 2>&1)
   local status=$?
 
   if [ $status -ne 0 ] || echo "$out" | grep -qiE "rate.?limit|usage.?cap|429|quota"; then
     echo "[daily_qa] メインモデルで失敗/制限を検知。${FALLBACK_MODEL} で再実行します。" >&2
     echo "$out"
-    out=$(codex exec -a never -c sandbox_mode="danger-full-access" --model "$FALLBACK_MODEL" "$prompt" 2>&1)
+    out=$(codex exec -s danger-full-access --model "$FALLBACK_MODEL" "$prompt" 2>&1)
     status=$?
   fi
 
