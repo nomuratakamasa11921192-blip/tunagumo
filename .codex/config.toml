@@ -4,7 +4,6 @@
 # (sol/terraは高reasoningだと5時間枠を数分で使い切る既知の不具合があるため、
 # 消費が最も軽いlunaをフォールバックに選定: https://github.com/openai/codex/issues/32606)
 model = "gpt-6-astra"
-model_provider = "openai"
 model_reasoning_effort = "high"
 
 [mcp_servers.higgsfield]
