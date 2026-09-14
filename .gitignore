@@ -13,3 +13,6 @@ __pycache__/
 venv/
 saas/docker/backups/
 *.pdf
+# VPS上の自動実行ログ(cronが追記し続けるのでGitでは管理しない)
+instagram_check.log
+qa_execution.log
