@@ -26,8 +26,6 @@ from src.api.deps import (
     get_scoped_db,
 )
 from src.core.ai_budget import (
-    ESTIMATED_HIGGSFIELD_IMAGE_COST_USD,
-    ESTIMATED_HIGGSFIELD_VIDEO_COST_USD,
     BudgetExceededError,
     ensure_budget_available,
     record_cost,
@@ -304,7 +302,8 @@ async def generate_session_image(
     except HiggsfieldError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    record_cost(tenant_row, ESTIMATED_HIGGSFIELD_IMAGE_COST_USD)
+    # Higgsfieldは顧客自身のAPIキーで課金される(顧客負担、2026-09-15決定)ため、
+    # 運営の月間AI予算からは差し引かない。
 
     result = dict(session.result or {})
     generated_images = list(result.get("generated_images", []))
@@ -365,8 +364,9 @@ async def generate_session_video(
     except HiggsfieldError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # 生成が成功したときだけ予算を消費する(失敗はカウントしない)。
-    record_cost(tenant_row, ESTIMATED_HIGGSFIELD_VIDEO_COST_USD)
+    # Higgsfieldは顧客自身のAPIキーで課金される(顧客負担、2026-09-15決定)ため、
+    # 運営の月間AI予算からは差し引かない。動画は1本あたりの単価が高くコストが
+    # 読みにくいため、単価が十分下がるまでは顧客負担を維持する。
 
     result = dict(session.result or {})
     generated_videos = list(result.get("generated_videos", []))

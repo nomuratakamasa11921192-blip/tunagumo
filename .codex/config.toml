@@ -6,8 +6,16 @@
 model = "gpt-6-astra"
 model_reasoning_effort = "high"
 
+# Higgsfield: VPS上ではOAuthログインが通らないため無効化している。
+# 原因はHiggsfield側のissuer不整合(expected clerk.higgsfield.ai / received
+# higgsfield.ai/_clerk)で、公式にも未対応のまま報告されている:
+# https://github.com/higgsfield-ai/cli/issues/81
+# 有効のままだとCodex起動のたびに接続失敗の警告が出るため enabled=false にした。
+# 画像・動画生成はローカルPCのCodex(認証済み)で行う。
+# Higgsfield側が修正したら enabled を消して `codex mcp login higgsfield` を実行すればよい。
 [mcp_servers.higgsfield]
 url = "https://mcp.higgsfield.ai/mcp"
+enabled = false
 
 [mcp_servers.stripe]
 url = "https://mcp.stripe.com"

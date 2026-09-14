@@ -11,6 +11,7 @@ from anthropic import AsyncAnthropic
 from src.agent.config_models import AppConfig
 from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
 from src.core.config import settings
+from src.core.crypto import decrypt_secret
 from src.core.db import get_db, get_scoped_db_for_tenant
 from src.core.higgsfield_client import HiggsfieldClient
 from src.core.models import Tenant, TenantUser, TenantUserToken
@@ -165,15 +166,20 @@ async def get_tts_provider(tenant: Tenant = Depends(get_current_tenant)) -> TTSP
 
 
 async def get_higgsfield_client(tenant: Tenant = Depends(get_current_tenant)) -> HiggsfieldClient | None:
-    """ツナグモ自身のHiggsfield APIキー(cloud.higgsfield.aiの開発者アカウント)で
-    画像・動画生成クライアントを作る(get_embedding_providerと同じ理由で運営負担に統一)。
-    運営側キー未設定ならNoneを返す(画像・動画機能全体を一時的に無効化する運用上の
-    逃げ道として残す)。
+    """顧客自身のHiggsfield APIキーで画像・動画生成クライアントを作る(顧客負担)。
+
+    文章生成・音声・埋め込みは運営負担(月額に含む)だが、Higgsfieldの動画生成だけは
+    1本あたりの単価が高くコストが読みにくいため、顧客自身に契約・負担してもらう方針
+    (2026-09-15決定)。将来単価が十分下がったら運営負担への切り替えを再検討する。
+
+    顧客がキーを未登録ならNoneを返す。呼び出し元は「この機能をご利用いただくには
+    Higgsfieldのキー登録が必要です」という趣旨を顧客に伝えること。
     """
-    if not settings.higgsfield_api_key_id or not settings.higgsfield_api_key_secret:
+    if not tenant.higgsfield_api_key_id or not tenant.higgsfield_api_key_secret:
         return None
     return HiggsfieldClient(
-        key_id=settings.higgsfield_api_key_id, key_secret=settings.higgsfield_api_key_secret
+        key_id=decrypt_secret(tenant.higgsfield_api_key_id),
+        key_secret=decrypt_secret(tenant.higgsfield_api_key_secret),
     )
 
 
