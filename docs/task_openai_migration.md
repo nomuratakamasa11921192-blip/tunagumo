@@ -1,13 +1,19 @@
-# タスク: SaaSのLLM基盤をAnthropic(Claude)からOpenAIへ移行する
+# タスク: SaaSのAI基盤をOpenAIに一本化する
 
 ## 背景・目的
 
-現在このSaaSは、文章生成の中核にAnthropic Claudeを使い、音声合成(TTS)・文字起こし(STT)・
-埋め込み(embeddings)にOpenAIを使い、画像生成・編集にHiggsfieldを使っている。
+現在このSaaSは、文章生成にAnthropic Claude、画像生成・編集にHiggsfield、
+音声合成(TTS)・文字起こし(STT)・埋め込み(embeddings)にOpenAIを使っている。
 契約先が3つに分かれていて、請求・APIキー管理・予算管理が煩雑になっている。
 
-そこで**文章生成をOpenAIに寄せて、AnthropicとHiggsfieldへの依存を減らす**ことを目指す。
-これにより、OpenAI 1社への一本化に近づける(Higgsfieldの扱いは本タスクの範囲外。別途判断する)。
+そこで**文章生成と画像処理をOpenAIに寄せ、AnthropicとHiggsfieldへの依存を無くす**。
+これにより契約先が1社(OpenAI)になり、運用が大幅に単純化される。
+
+本タスクは2部構成:
+- **Part A**: 文章生成を Anthropic → OpenAI へ移行
+- **Part B**: 画像生成・編集を Higgsfield → OpenAI Images API へ移行
+
+Part A だけでも独立して価値があるので、**Part A を先に完成させてテストを通してから Part B に進む**こと。
 
 ## 絶対に守ること
 
@@ -47,7 +53,7 @@
 `saas/src/rag/embeddings.py`, `saas/src/video/tts.py`, `saas/src/video/stt.py`
 — OpenAIクライアントの初期化・エラーハンドリングの書き方はここを踏襲すると一貫性が保てる。
 
-## やること
+## Part A: 文章生成の移行(こちらを先に完成させる)
 
 ### 1. `StructuredLLM` をOpenAI対応にする
 
@@ -107,13 +113,81 @@
 を確認する。`SYSTEM_PROMPT.md` §0.1 の顧客向け文章ルール(「絶対」「必ず」「100%」を使わない等)に
 沿った出力が維持されているかも併せて見ること。
 
+**Part A がここまで完了し、テストが全て通ったら、一度コミットして人間に報告すること。**
+その後 Part B に進む。
+
+---
+
+## Part B: 画像生成・編集の移行(Part A 完了後)
+
+### 背景
+
+`saas/src/core/higgsfield_client.py` の `HiggsfieldClient` が、画像生成・画像編集・動画生成を
+担当している。これを OpenAI の Images API に置き換え、Higgsfield依存を無くす。
+
+**重要な前提**:
+- `edit_image()` は現状 **「未検証機能」** とコメントされており、Higgsfield APIのフィールド名を
+  2通り推測して試す実装になっている(仕様が不明なまま書かれた)。つまり**現時点で動作保証が無い**。
+  OpenAIへ移行することで、公式ドキュメントのある確実なAPIになる。
+- `generate_video()` は**移行不要**。ルームツアー動画は「実際にアップロードされた写真・動画だけを
+  素材にする」方針で、ffmpegのスライドショー(`photos_to_video`)で作る設計になっている。
+  AI動画生成は使わない。該当コードは**削除せず温存**し、呼び出されない状態にしておく。
+
+### やること
+
+1. **新規モジュール `saas/src/core/openai_image_client.py` を作る**
+   - `HiggsfieldClient` と**同じメソッド名・同じ引数・同じ戻り値の型**にする
+     (`generate_image(prompt, quality) -> str`、`edit_image(image_url, instruction) -> str`)。
+     こうすることで呼び出し元の変更を最小限にできる。
+   - `generate_image`: OpenAI の画像生成APIを使う。
+   - `edit_image`: OpenAI の **`images.edit`** エンドポイントを使う。
+     - 入力画像URLを取得してバイト列にし、プロンプトと共に送る。
+     - マスクの扱い: 現状の `edit_image(image_url, instruction)` はマスクを受け取らない。
+       まずはマスク無し(画像全体を対象)で実装し、「曇り空を青空に」「空室に家具を配置」が
+       実用に足る品質で出るか検証する。品質が不十分な場合のみ、マスク対応の引数追加を
+       人間に提案する(勝手にインターフェースを変えない)。
+     - **注意**: OpenAI公式ドキュメントに「マスクはプロンプトベースのガイダンスであり、
+       形状に完全に従うとは限らない」と明記されている。UIの注記
+       「※画像編集は試験提供中の機能です。実際の内観と細部が異なる場合があります。」は
+       そのまま維持すること。
+   - エラー型・リトライの方針は `saas/src/agent/llm.py`(Part Aで書き換えたもの)に合わせる。
+
+2. **`saas/src/api/deps.py` の `get_higgsfield_client` を差し替える**
+   - OpenAIクライアントを返すようにする。関数名は呼び出し元の変更を避けるため、
+     まずは維持してよい(内部実装だけ差し替え)。整理したい場合は別途提案すること。
+
+3. **コスト計算に画像分を組み込む**
+   - `saas/src/core/ai_budget.py` の `record_cost` に、画像生成・編集のコストも加算する。
+   - 画像の単価は**必ずOpenAI公式の料金ページで確認**し、推測で書かない。
+     確認できなければ人間に報告して判断を仰ぐ。
+
+4. **設定の整理**
+   - `higgsfield_api_key_id` / `higgsfield_api_key_secret` は `Settings` と `Tenant` から
+     **削除しない**(過去データ・切り戻しのため)。読まれなくなるだけでよい。
+   - フロントエンドにHiggsfieldのキー入力欄がある場合は、非表示にするかコメントで
+     「現在は使用していません」と明記する。
+
+5. **テストを通す**
+   - Part A と同様、`docker compose exec api pytest -v` が全て通る状態にする。
+   - 既存の `tests/` にHiggsfieldをモックしている箇所があれば、OpenAI方式に合わせて修正する。
+
+6. **実際に1枚、画像編集を試す**
+   - 物件写真を想定した画像で「曇り空を青空にする」を実行し、出力を確認する。
+   - 実用品質かどうかを人間に報告する(品質が不十分なら、その事実を正直に報告すること。
+     動いたことにしない)。
+
+---
+
 ## 完了したら
 
 - `CHANGES.log` に `[Codex]` として変更内容を日本語で記録する。
-- `[Codex] SaaSのLLM基盤をOpenAIへ移行` のメッセージでコミットし、`origin/main` へpushする
+- コミットして `origin/main` へpushする
   (これはGitHubの更新のみで、本番VPSへの反映ではない)。
+  - Part A: `[Codex] SaaSの文章生成をOpenAIへ移行`
+  - Part B: `[Codex] SaaSの画像生成・編集をOpenAIへ移行しHiggsfield依存を解消`
 - 人間への報告として、以下をまとめる:
   - 変更したファイル一覧
   - 設定が必要な新しい環境変数(`OPENAI_MODEL` 等)と、推奨する値
-  - 単価表に入れた価格と、その根拠URL
+  - 単価表に入れた価格(文章・画像とも)と、その根拠URL
+  - 画像編集の実際の出力品質の所見
   - 積み残し・懸念点(あれば)
