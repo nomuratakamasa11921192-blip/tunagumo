@@ -1,4 +1,8 @@
 .env
+# .env のバックアップ類(.env.save / .env.bak など)も必ず除外する。
+# 2026-09-15、VPS上に .env.save が未除外で存在しているのを発見したため追加。
+.env.*
+!.env.example
 node_modules/
 private/*.json
 .wrangler/
