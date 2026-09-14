@@ -24,10 +24,15 @@ PLAN_MONTHLY_BUDGET_USD: dict[str, float] = {
 }
 DEFAULT_PLAN = "light"
 
-# Higgsfield生成1回あたりの概算コスト($)。cloud.higgsfield.aiで実キーを取得したら、
-# 実際のクレジット消費を計測して補正すること(higgsfield_client.pyのIMAGE_EDIT_PATHと
-# 同じ「未検証」扱い)。$5/100クレジット換算、画像1枚≒5クレジット、動画1本≒40クレジットという
-# 仮の見積もり。
+# Higgsfield生成1回あたりの概算コスト($)。
+#
+# 【現在は未使用】2026-09-15、Higgsfieldは顧客自身のAPIキーで課金される顧客負担方式に
+# したため、運営の月間AI予算からは差し引かない(sessions.pyのrecord_cost呼び出しを削除済み)。
+# 動画は1本あたりの単価が高くコストが読みにくいのが理由。単価が十分下がって運営負担に
+# 切り替える判断をした際に、この定数を再び使う想定で残してある。
+#
+# $5/100クレジット換算、画像1枚≒5クレジット、動画1本≒40クレジットという仮の見積もり。
+# 運営負担に切り替える場合は、実際のクレジット消費を計測して必ず補正すること。
 ESTIMATED_HIGGSFIELD_IMAGE_COST_USD = 0.25
 ESTIMATED_HIGGSFIELD_VIDEO_COST_USD = 2.0
 # ルームツアー動画生成1回あたりの概算コスト($)。台本生成(Anthropic、数千トークン程度)+

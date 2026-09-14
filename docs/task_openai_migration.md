@@ -120,25 +120,41 @@ Part A だけでも独立して価値があるので、**Part A を先に完成�
 
 ## Part B: 画像生成・編集の移行(Part A 完了後)
 
-### 背景
+### 背景と費用負担の方針(2026-09-15決定)
 
-`saas/src/core/higgsfield_client.py` の `HiggsfieldClient` が、画像生成・画像編集・動画生成を
-担当している。これを OpenAI の Images API に置き換え、Higgsfield依存を無くす。
+費用負担は機能ごとに分ける:
 
-**重要な前提**:
-- `edit_image()` は現状 **「未検証機能」** とコメントされており、Higgsfield APIのフィールド名を
-  2通り推測して試す実装になっている(仕様が不明なまま書かれた)。つまり**現時点で動作保証が無い**。
-  OpenAIへ移行することで、公式ドキュメントのある確実なAPIになる。
-- `generate_video()` は**移行不要**。ルームツアー動画は「実際にアップロードされた写真・動画だけを
-  素材にする」方針で、ffmpegのスライドショー(`photos_to_video`)で作る設計になっている。
-  AI動画生成は使わない。該当コードは**削除せず温存**し、呼び出されない状態にしておく。
+| 機能 | 提供元 | 費用負担 |
+|---|---|---|
+| 文章生成・音声合成・文字起こし・埋め込み | OpenAI | **運営負担**(月額に含む) |
+| 画像編集(曇り空→青空、バーチャルステージング) | **OpenAI へ移行** | **運営負担** |
+| 動画生成 | **Higgsfield のまま維持** | **顧客負担**(顧客自身のAPIキー) |
+
+**動画だけ顧客負担にする理由**: 1本あたりの単価が高くコストが読みにくいため、
+運営が被るとプラン設計が破綻する。単価が十分下がったら運営負担への切り替えを再検討する。
+
+**すでに実施済みの変更**(このタスクの前提。再度やる必要はない):
+- `saas/src/api/deps.py` の `get_higgsfield_client` を、運営キーではなく
+  **テナント自身のキー**(`tenant.higgsfield_api_key_id/_secret` を復号)を使うように戻した。
+- `saas/src/api/routes/sessions.py` の Higgsfield 画像・動画生成後の `record_cost` 呼び出しを
+  削除した(顧客が自分のキーで払うため、運営予算から二重に引かない)。
+- 顧客がキーを登録するエンドポイント `PATCH /api/account/higgsfield-key` は元から存在する。
+
+**このタスクでやること**:
+- `generate_image()` / `edit_image()` を **OpenAI Images API に移行**する(運営負担なので
+  運営キーを使う)。
+- `generate_video()` は **Higgsfield のまま残す**(顧客負担)。移行しない。
+
+**`edit_image()` について**: 現状 **「未検証機能」** とコメントされており、Higgsfield APIの
+フィールド名を2通り推測して試す実装になっている(仕様が不明なまま書かれた)。つまり
+**現時点で動作保証が無い**。OpenAIへ移行することで、公式ドキュメントのある確実なAPIになる。
 
 ### やること
 
 1. **新規モジュール `saas/src/core/openai_image_client.py` を作る**
-   - `HiggsfieldClient` と**同じメソッド名・同じ引数・同じ戻り値の型**にする
-     (`generate_image(prompt, quality) -> str`、`edit_image(image_url, instruction) -> str`)。
-     こうすることで呼び出し元の変更を最小限にできる。
+   - `generate_image(prompt, quality) -> str` と `edit_image(image_url, instruction) -> str`
+     の2メソッドを、`HiggsfieldClient` と**同じ引数・同じ戻り値の型**で実装する。
+     動画は含めない(Higgsfield側に残すため)。
    - `generate_image`: OpenAI の画像生成APIを使う。
    - `edit_image`: OpenAI の **`images.edit`** エンドポイントを使う。
      - 入力画像URLを取得してバイト列にし、プロンプトと共に送る。
@@ -152,24 +168,39 @@ Part A だけでも独立して価値があるので、**Part A を先に完成�
        そのまま維持すること。
    - エラー型・リトライの方針は `saas/src/agent/llm.py`(Part Aで書き換えたもの)に合わせる。
 
-2. **`saas/src/api/deps.py` の `get_higgsfield_client` を差し替える**
-   - OpenAIクライアントを返すようにする。関数名は呼び出し元の変更を避けるため、
-     まずは維持してよい(内部実装だけ差し替え)。整理したい場合は別途提案すること。
+2. **`saas/src/api/deps.py` に画像用の依存関数を追加する**
+   - `get_image_client`(名前は任意)を新設し、**運営のOpenAIキー**で
+     `OpenAIImageClient` を返す。
+   - `get_higgsfield_client` は**そのまま残す**(動画生成で顧客キーを使うため)。
+   - `saas/src/api/routes/sessions.py` の画像生成・画像編集のエンドポイントを、
+     新しい依存関数を使うように差し替える。**動画生成のエンドポイントは触らない**。
 
-3. **コスト計算に画像分を組み込む**
-   - `saas/src/core/ai_budget.py` の `record_cost` に、画像生成・編集のコストも加算する。
+3. **画像のコストを運営予算に組み込む**
+   - 画像はOpenAI(運営負担)になるので、`sessions.py` の画像生成・編集の後に
+     `record_cost(tenant_row, <画像1枚あたりのコスト>)` を入れる。
+     ※ Higgsfield時代の `record_cost` は顧客負担化に伴い削除済みなので、
+       OpenAI移行後に改めて入れ直す形になる。
    - 画像の単価は**必ずOpenAI公式の料金ページで確認**し、推測で書かない。
      確認できなければ人間に報告して判断を仰ぐ。
+   - `ai_budget.py` に `ESTIMATED_OPENAI_IMAGE_COST_USD` のような定数を新設する
+     (既存の `ESTIMATED_HIGGSFIELD_*` は動画の参考値として残す。削除しない)。
 
-4. **設定の整理**
-   - `higgsfield_api_key_id` / `higgsfield_api_key_secret` は `Settings` と `Tenant` から
-     **削除しない**(過去データ・切り戻しのため)。読まれなくなるだけでよい。
-   - フロントエンドにHiggsfieldのキー入力欄がある場合は、非表示にするかコメントで
-     「現在は使用していません」と明記する。
+4. **設定とUIの整理**
+   - `Settings` の `higgsfield_api_key_id` / `higgsfield_api_key_secret`(運営キー)は
+     **読まれなくなる**が、削除しないで残す。
+   - `Tenant` の `higgsfield_api_key_id` / `_secret`(顧客キー)は**引き続き使う**。削除厳禁。
+   - フロントエンドのHiggsfieldキー入力欄は**残す**。ただし説明文を
+     「動画生成をご利用の場合に登録してください(動画の生成費用はお客様のHiggsfield
+     アカウントに課金されます)」という趣旨に更新する。
+     文面は `SYSTEM_PROMPT.md` §0.1 の顧客向け文章ルールに従うこと。
 
 5. **テストを通す**
    - Part A と同様、`docker compose exec api pytest -v` が全て通る状態にする。
-   - 既存の `tests/` にHiggsfieldをモックしている箇所があれば、OpenAI方式に合わせて修正する。
+   - 既存の `tests/` でHiggsfieldをモックしている箇所のうち、**画像**に関するものは
+     OpenAI方式に合わせて修正する。**動画**のモックはHiggsfieldのまま残す。
+   - `deps.py` の変更(顧客キーを復号して使う形に戻した)により既存テストが落ちる場合は、
+     テナントに暗号化済みキーを持たせるfixtureを用意して対応する
+     (`tests/test_account.py` に `decrypt_secret` を使った既存パターンがあるので参考にすること)。
 
 6. **実際に1枚、画像編集を試す**
    - 物件写真を想定した画像で「曇り空を青空にする」を実行し、出力を確認する。
