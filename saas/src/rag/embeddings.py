@@ -25,8 +25,10 @@ class EmbeddingError(Exception):
 
 
 class OpenAIEmbeddingProvider:
-    """顧客自身のOpenAI APIキーを使う(事業モデル: AI利用の実費は顧客が自分で負担する。
-    Anthropicキーと同じ考え方)。"""
+    """ツナグモ自身のOpenAI APIキーを使う(運営負担。2026-09-01のBYOK廃止により、
+    顧客自身のキーは使わなくなった。src/api/deps.py get_embedding_provider参照)。
+    モデルはOPENAI_EMBEDDING_MODELで固定。変える場合はEMBEDDING_DIMの列変更(マイグレーション)と
+    登録済み資料の埋め込みの作り直しが必要。"""
 
     def __init__(self, api_key: str):
         self._api_key = api_key
