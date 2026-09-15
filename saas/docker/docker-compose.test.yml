@@ -1,0 +1,31 @@
+# 開発用cloneでテストを回すための上書き設定。
+#
+# 使い方(daily_qa.sh が自動で付ける):
+#   docker compose -p tunagumo-dev -f docker-compose.yml -f docker-compose.test.yml <コマンド>
+#
+# 目的(SYSTEM_PROMPT.md §6.1 参照):
+#   1. env_file を本番の ../.env から開発用の ../.env.test に差し替える
+#   2. ポート8000を本番と衝突させない(テストではAPIを外部公開する必要が無いので閉じる)
+#   3. scheduler は常駐不要なのでプロファイルで除外する
+#
+# プロジェクト名 -p tunagumo-dev と併せて使うことで、本番(/opt/tsunagumo)の
+# コンテナ・イメージ・ボリュームと完全に分離される。
+
+services:
+  api:
+    env_file:
+      - ../.env.test
+    # 本番が8000を使っているため、テスト用は公開しない。
+    # pytestはコンテナ内で実行するので外部ポートは不要。
+    ports: !override []
+    restart: "no"
+
+  scheduler:
+    env_file:
+      - ../.env.test
+    # テスト中に定期実行が走る必要は無いので、明示的に指定した時だけ起動する。
+    profiles: ["never"]
+    restart: "no"
+
+  db:
+    restart: "no"
