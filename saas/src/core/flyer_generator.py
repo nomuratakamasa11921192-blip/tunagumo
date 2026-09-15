@@ -12,7 +12,12 @@ from urllib.parse import urlparse
 import httpx
 import weasyprint
 
-from src.core.openai_image_client import GENERATED_IMAGE_URL_PREFIX, generated_image_path, is_public_host
+from src.core.openai_image_client import (
+    GENERATED_IMAGE_URL_PREFIX,
+    connected_to_public_address,
+    generated_image_path,
+    is_public_host,
+)
 
 MAX_FLYER_IMAGES = 6
 MAX_FLYER_IMAGE_BYTES = 20 * 1024 * 1024
@@ -84,8 +89,10 @@ def _safe_url_fetcher(url: str, timeout: int = 10, ssl_context=None) -> dict:
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname or not is_public_host(parsed.hostname):
         raise FlyerGenerationError("読み込みできない画像URLです")
-    with httpx.Client(timeout=timeout, follow_redirects=False) as client:
+    with httpx.Client(timeout=timeout, follow_redirects=False, trust_env=False) as client:
         with client.stream("GET", url) as res:
+            if not connected_to_public_address(res):
+                raise FlyerGenerationError("読み込みできない画像URLです")
             content_type = res.headers.get("content-type", "").split(";")[0].strip().lower()
             if res.status_code != 200 or not content_type.startswith("image/"):
                 raise FlyerGenerationError("画像を読み込めませんでした")

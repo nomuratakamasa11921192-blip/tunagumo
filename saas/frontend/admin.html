@@ -285,44 +285,11 @@
           '<td class="num">' + (t.halted_count > 0 ? '<span class="badge warn">' + t.halted_count + '</span>' : '0') + '</td>' +
           '<td class="num">' + (t.pending_approval_count > 0 ? '<span class="badge warn">' + t.pending_approval_count + '</span>' : '0') + '</td>' +
           '<td class="num">$' + t.total_cost_usd.toFixed(4) + '</td>' +
-          '<td><button class="secondary rotate-key-btn" data-tenant-id="' + t.tenant_id + '" style="padding:4px 10px;font-size:12px;">Anthropicキー更新</button></td>' +
-          '</tr>' +
-          '<tr class="rotate-key-row" data-tenant-id="' + t.tenant_id + '" style="display:none;">' +
-          '<td colspan="8" style="background:var(--bg);">' +
-          '<input type="text" class="rotate-key-input" placeholder="sk-ant-...(新しいキー)" style="width:320px;display:inline-block;">' +
-          ' <button class="rotate-key-save" data-tenant-id="' + t.tenant_id + '" style="padding:6px 12px;font-size:12px;">保存</button>' +
-          '</td></tr>';
+          '</tr>';
       }).join('');
       mainEl.innerHTML = '<h2>① 横断ダッシュボード</h2><div class="card" style="overflow-x:auto;">' +
-        '<table><thead><tr><th>テナント</th><th>業種</th><th>セッション数</th><th>エラー</th><th>中断</th><th>承認待ち</th><th>累計コスト</th><th></th></tr></thead>' +
+        '<table><thead><tr><th>テナント</th><th>業種</th><th>セッション数</th><th>エラー</th><th>中断</th><th>承認待ち</th><th>累計コスト</th></tr></thead>' +
         '<tbody>' + rows + '</tbody></table></div>';
-
-      Array.prototype.forEach.call(document.querySelectorAll('.rotate-key-btn'), function (btn) {
-        btn.addEventListener('click', function () {
-          var row = document.querySelector('.rotate-key-row[data-tenant-id="' + btn.dataset.tenantId + '"]');
-          row.style.display = row.style.display === 'none' ? '' : 'none';
-        });
-      });
-      Array.prototype.forEach.call(document.querySelectorAll('.rotate-key-save'), function (btn) {
-        btn.addEventListener('click', function () {
-          var row = document.querySelector('.rotate-key-row[data-tenant-id="' + btn.dataset.tenantId + '"]');
-          var input = row.querySelector('.rotate-key-input');
-          var newKey = input.value.trim();
-          if (!newKey) { toast('新しいAPIキーを入力してください'); return; }
-          btn.disabled = true;
-          api('/admin/tenants/' + btn.dataset.tenantId + '/anthropic-key', {
-            method: 'PATCH',
-            body: JSON.stringify({ anthropic_api_key: newKey })
-          })
-            .then(function () {
-              toast('更新しました');
-              row.style.display = 'none';
-              input.value = '';
-            })
-            .catch(function (e) { toast(e.message); })
-            .then(function () { btn.disabled = false; });
-        });
-      });
     }).catch(function (e) { toast(e.message); });
   }
 
@@ -333,12 +300,7 @@
       '<input id="tenant-name" type="text" placeholder="例: 株式会社サンプル不動産">' +
       '<label for="tenant-industry">業種</label>' +
       '<select id="tenant-industry">' + industryOptions('real_estate') + '</select>' +
-      '<label for="tenant-anthropic-key">顧客のAnthropic APIキー</label>' +
-      '<input id="tenant-anthropic-key" type="text" placeholder="sk-ant-...(オンライン相談で確認したもの)">' +
-      '<p class="muted" style="margin-top:6px;">AI利用の実費はこのキーで顧客自身のAnthropicアカウントに課金されます(ツナグモの月額には含まれません)。</p>' +
-      '<label for="tenant-openai-key">顧客のOpenAI APIキー(任意)</label>' +
-      '<input id="tenant-openai-key" type="text" placeholder="sk-...(社内資料検索(RAG)を使う場合のみ)">' +
-      '<p class="muted" style="margin-top:6px;">社内資料検索(RAG)機能を使う場合のみ入力してください。未入力でも発行でき、顧客が後から自分のアカウント設定画面で登録できます。</p>' +
+      '<p class="muted" style="margin-top:6px;">文章・画像などのAI利用は運営のOpenAIキーで行うため、顧客のAIキーは不要です。動画生成を使う顧客は、発行後に顧客自身が「設定・利用状況」からHiggsfieldキーを登録します。</p>' +
       '<label for="tenant-email">顧客のメールアドレス(任意)</label>' +
       '<input id="tenant-email" type="text" placeholder="customer@example.com">' +
       '<p class="muted" style="margin-top:6px;">入力すると、APIキー入りのウェルカムメールを自動送信します(Resend未設定の間は送信されません)。</p>' +
@@ -349,9 +311,6 @@
     document.getElementById('tenant-submit').addEventListener('click', function () {
       var name = document.getElementById('tenant-name').value.trim();
       if (!name) { toast('会社名を入力してください'); return; }
-      var anthropicKey = document.getElementById('tenant-anthropic-key').value.trim();
-      if (!anthropicKey) { toast('顧客のAnthropic APIキーを入力してください'); return; }
-      var openaiKey = document.getElementById('tenant-openai-key').value.trim();
       var email = document.getElementById('tenant-email').value.trim();
       var industry = document.getElementById('tenant-industry').value;
       var btn = document.getElementById('tenant-submit');
@@ -361,8 +320,6 @@
         body: JSON.stringify({
           name: name,
           industry: industry,
-          anthropic_api_key: anthropicKey,
-          openai_api_key: openaiKey || null,
           email: email || null
         })
       })
@@ -378,8 +335,6 @@
             emailNote +
             '<div class="key-display">' + escapeHtml(data.api_key) + '</div>';
           document.getElementById('tenant-name').value = '';
-          document.getElementById('tenant-anthropic-key').value = '';
-          document.getElementById('tenant-openai-key').value = '';
           document.getElementById('tenant-email').value = '';
         })
         .catch(function (e) { btn.disabled = false; toast(e.message); });
@@ -463,7 +418,7 @@
     mainEl.innerHTML = '<h2>⑥ 回帰テスト一括実行</h2><div class="card">' +
       '<label for="regression-industry">業種</label>' +
       '<select id="regression-industry">' + industryOptions('real_estate') + '</select>' +
-      '<p class="muted">実際のClaude APIを使って課金・数分かかります。モデル更新後の動作確認に使ってください。</p>' +
+      '<p class="muted">実際のOpenAI APIを使うため費用がかかり、数分かかります。モデル更新後の動作確認に使ってください。</p>' +
       '<button id="regression-run">実行する</button>' +
       '<div id="regression-result" style="margin-top:14px;"></div>' +
       '</div>';

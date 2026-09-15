@@ -95,6 +95,18 @@ def is_public_host(host: str) -> bool:
     return True
 
 
+def connected_to_public_address(response: httpx.Response) -> bool:
+    """実際に接続した相手のIPが公開IPならTrue。is_public_hostでの事前確認と実際の接続の
+    間にDNSの向き先を社内アドレスへ変える手口(DNSリバインディング)を防ぐため、本文を
+    読む前にこれで再確認する。接続先が取れない場合(テスト用のMockTransport等)は
+    事前確認の結果に任せてTrueを返す。"""
+    stream = response.extensions.get("network_stream")
+    addr = stream.get_extra_info("server_addr") if stream is not None else None
+    if not addr:
+        return True
+    return ipaddress.ip_address(addr[0].split("%")[0]).is_global
+
+
 class OpenAIImageClient:
     def __init__(
         self,
@@ -195,11 +207,17 @@ class OpenAIImageClient:
             raise OpenAIImageError("この画像のURLからは読み込めません。")
 
         # リダイレクト先が社内アドレスを指す抜け道を塞ぐため、リダイレクトは追わない。
+        # 環境変数のプロキシ設定を使うと接続先IPの再確認ができないため、trust_env=False。
         async with httpx.AsyncClient(
-            timeout=SOURCE_FETCH_TIMEOUT_SECONDS, follow_redirects=False, transport=self._transport
+            timeout=SOURCE_FETCH_TIMEOUT_SECONDS,
+            follow_redirects=False,
+            trust_env=False,
+            transport=self._transport,
         ) as client:
             try:
                 async with client.stream("GET", image_url) as res:
+                    if not connected_to_public_address(res):
+                        raise OpenAIImageError("この画像のURLからは読み込めません。")
                     if res.status_code != 200:
                         raise OpenAIImageError("画像を読み込めませんでした。URLをご確認ください。")
                     content_type = res.headers.get("content-type", "").split(";")[0].strip().lower()

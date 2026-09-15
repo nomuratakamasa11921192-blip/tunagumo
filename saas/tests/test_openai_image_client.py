@@ -183,3 +183,39 @@ def test_flyer_fetcher_reads_generated_image_from_disk(images_dir):
 def test_flyer_fetcher_rejects_unsafe_urls(url):
     with pytest.raises(FlyerGenerationError):
         _safe_url_fetcher(url)
+
+
+class _FakeNetworkStream:
+    def __init__(self, ip: str):
+        self._ip = ip
+
+    def get_extra_info(self, name):
+        return (self._ip, 443) if name == "server_addr" else None
+
+
+@_async
+async def test_edit_image_rejects_when_connected_peer_is_private(monkeypatch):
+    # 事前のDNS確認は公開IPでも、実際の接続先が社内アドレスなら本文を使わない(DNSリバインディング対策)
+    monkeypatch.setattr(openai_image_client, "is_public_host", lambda host: True)
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(
+            200,
+            headers={"content-type": "image/jpeg"},
+            content=_JPEG,
+            extensions={"network_stream": _FakeNetworkStream("10.0.0.5")},
+        )
+    )
+    images = _FakeImages()
+    with pytest.raises(OpenAIImageError):
+        await _client(images, transport).edit_image("https://example.com/room.jpg", "空を青空に")
+    assert images.calls == []
+
+
+def test_connected_to_public_address():
+    def res(ip):
+        return httpx.Response(200, extensions={"network_stream": _FakeNetworkStream(ip)})
+
+    assert openai_image_client.connected_to_public_address(res("142.251.153.119")) is True
+    assert openai_image_client.connected_to_public_address(res("127.0.0.1")) is False
+    assert openai_image_client.connected_to_public_address(res("169.254.169.254")) is False
+    assert openai_image_client.connected_to_public_address(httpx.Response(200)) is True
