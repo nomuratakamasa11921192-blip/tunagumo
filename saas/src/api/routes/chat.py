@@ -80,7 +80,9 @@ async def chat_preflight(public_key: str, request: Request) -> Response:
 async def chat(public_key: str, req: ChatRequest, request: Request, response: Response) -> ChatResponse:
     origin = request.headers.get("origin")
     # Caddy等のリバースプロキシ経由では、実際のクライアントIPはX-Forwarded-Forに入る。
-    # VPSデプロイ時にCaddyfileでこのヘッダが正しく設定されることを前提にする
+    # Caddyは信頼していない接続元から来たX-Forwarded-Forを上書きするため、Caddy経由なら
+    # 偽装できない。APIのポートは127.0.0.1だけに公開し、Caddyを迂回させないこと
+    # (docker/docker-compose.yml参照。迂回できるとこのヘッダを偽装してレート制限を回避される)。
     ip_address = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
         request.client.host if request.client else "unknown"
     )

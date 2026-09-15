@@ -41,8 +41,12 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://tsunagumo:tsunagumo_dev@db:5432/tsunagumo
       ENV: development
+    # 2026-09-15: "8000:8000"だと全インターフェースで公開される。Dockerが公開したポートは
+    # ufwの許可設定を素通りするため、Caddy(HTTPS)を通らずインターネットから直接APIに
+    # 届いてしまう(APIキーが平文で流れる、X-Forwarded-For偽装でレート制限を回避される等)。
+    # このマシンの内側(Caddy)からだけ受け付けるよう、127.0.0.1に限定する。
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
