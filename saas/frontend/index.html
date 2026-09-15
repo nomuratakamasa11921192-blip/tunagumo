@@ -825,11 +825,8 @@
       '<select id="market-prefecture">' +
       PREFECTURES.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') +
       '</select>' +
-      '<label for="market-city-code" style="margin-top:10px;">市区町村コード(5桁)</label>' +
-      '<input id="market-city-code" type="text" placeholder="例: 11213(春日部市)" maxlength="5">' +
-      '<p class="muted" style="margin-top:4px; font-size:12px;">' +
-      '<a href="https://www.soumu.go.jp/denshijiti/code.html" target="_blank" rel="noopener">総務省の全国地方公共団体コード一覧</a>' +
-      'でご確認ください。</p>' +
+      '<label for="market-city" style="margin-top:10px;">市区町村</label>' +
+      '<select id="market-city" disabled><option value="">都道府県を選ぶと表示されます</option></select>' +
       '<label for="market-purpose" style="margin-top:10px;">用途</label>' +
       '<select id="market-purpose">' +
       '<option value="valuation">価格査定</option>' +
@@ -893,13 +890,45 @@
         })
         .then(function () { btn.disabled = false; btn.textContent = 'このPDFを読み込む'; });
     });
+    var marketPrefectureSelect = document.getElementById('market-prefecture');
+    var marketCitySelect = document.getElementById('market-city');
+    function loadMunicipalities() {
+      var prefectureCode = marketPrefectureSelect.value;
+      marketCitySelect.disabled = true;
+      marketCitySelect.innerHTML = '<option value="">読み込み中…</option>';
+      api('/api/market-data/municipalities?prefecture_code=' + encodeURIComponent(prefectureCode))
+        .then(function (data) {
+          if (marketPrefectureSelect.value !== prefectureCode) return;  // 途中で都道府県を変えた場合は捨てる
+          marketCitySelect.innerHTML = '<option value="">選択してください</option>' +
+            data.municipalities.map(function (m) {
+              return '<option value="' + escapeHtml(m.code) + '">' + escapeHtml(m.name) + '</option>';
+            }).join('');
+          marketCitySelect.disabled = false;
+        })
+        .catch(function (e) {
+          marketCitySelect.innerHTML = '<option value="">取得できませんでした</option>';
+          document.getElementById('market-data-result').innerHTML =
+            '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        });
+    }
+    marketPrefectureSelect.addEventListener('change', function () {
+      document.getElementById('market-data-result').innerHTML = '';
+      loadMunicipalities();
+    });
+    // 画面を開くたびに一覧APIを呼ばないよう、市区町村プルダウンを触った時に初めて読み込む
+    marketCitySelect.parentElement.addEventListener('focusin', function once(ev) {
+      if (ev.target !== marketCitySelect && ev.target !== marketPrefectureSelect) return;
+      marketCitySelect.parentElement.removeEventListener('focusin', once);
+      if (marketCitySelect.disabled) loadMunicipalities();
+    });
+
     document.getElementById('market-data-fetch').addEventListener('click', function () {
-      var prefectureCode = document.getElementById('market-prefecture').value;
-      var cityCode = document.getElementById('market-city-code').value.trim();
+      var prefectureCode = marketPrefectureSelect.value;
+      var cityCode = marketCitySelect.value;
       var purpose = document.getElementById('market-purpose').value;
-      if (!/^[0-9]{5}$/.test(cityCode)) {
+      if (!cityCode) {
         document.getElementById('market-data-result').innerHTML =
-          '<p class="error-text" style="margin-top:8px; font-size:12.5px;">市区町村コードは5桁の数字で入力してください。</p>';
+          '<p class="error-text" style="margin-top:8px; font-size:12.5px;">都道府県と市区町村を選択してください。</p>';
         return;
       }
       var endpoint = {
