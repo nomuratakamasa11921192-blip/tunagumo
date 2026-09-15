@@ -59,6 +59,15 @@ class Tenant(Base):
     # 緊急時の自動返信に載せる緊急連絡先の電話番号(src/agent/inquiry_triage.py)。
     inquiry_notify_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     emergency_contact_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # 2026-09-16: 物件提案・追客メール(src/agent/proposal_scan.py)。広告宣伝メールは特定電子メール法により
+    # 送信者の名称・住所・問い合わせ先の表示が必要なため、これらが揃うまで送信しない。
+    marketing_sender_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    marketing_sender_address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    marketing_sender_contact: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Trueなら、ひな形どおりの提案メール(物件情報はDBの値のみ)を承認なしで自動送信する。既定は承認制
+    proposal_auto_send: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    follow_up_interval_days: Mapped[int] = mapped_column(Integer, default=7, server_default="7")
+    follow_up_max: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
     # 2026-09-01: Stripeサブスクの状態と連動してアクセスを止めるための列。
     # stripe_customer_idが未設定(=Stripeと紐付いていない、管理者が手動発行したテナント等)の
     # 場合はsubscription_activeのデフォルトTrueのまま何もチェックしない。Stripe Webhookが
@@ -346,6 +355,78 @@ class Inquiry(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class Property(Base):
+    """2026-09-16: 提案に使う物件(顧客自身が登録した在庫)。"""
+
+    __tablename__ = "properties"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    deal_type: Mapped[str] = mapped_column(String(10))  # rent / sale
+    location: Mapped[str] = mapped_column(String(300), default="")  # 所在地(市区町村〜町名)
+    station: Mapped[str] = mapped_column(String(100), default="")
+    walk_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price_yen: Mapped[int] = mapped_column(Integer)  # 賃貸は月額賃料、売買は価格
+    layout: Mapped[str] = mapped_column(String(20), default="")  # 1K, 2LDK など
+    floor_area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    built_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    features: Mapped[str] = mapped_column(Text, default="")
+    url: Mapped[str] = mapped_column(String(500), default="")
+    status: Mapped[str] = mapped_column(String(20), default="available")  # available / closed
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Lead(Base):
+    """2026-09-16: 見込み客と希望条件。広告宣伝メールの事前同意(consent_at)が無い相手には送らない
+    (特定電子メール法)。配信停止されたらstatus=unsubscribedにし、以後は一切送らない。"""
+
+    __tablename__ = "leads"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    consent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    consent_source: Mapped[str] = mapped_column(String(300), default="")  # 同意を得た経緯(例: 来店時の申込書)
+    deal_type: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    areas: Mapped[list] = mapped_column(JSONB, default=list)  # 希望エリア・駅名(部分一致)
+    max_price_yen: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    layouts: Mapped[list] = mapped_column(JSONB, default=list)
+    max_walk_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_floor_area_sqm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active / paused / unsubscribed
+    unsubscribe_token: Mapped[str] = mapped_column(String(64), unique=True)
+    last_sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_reply_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    follow_up_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Proposal(Base):
+    """2026-09-16: 見込み客への物件提案・追客メール。bodyは本文だけを持ち、送信者情報と配信停止リンク
+    (法定表示)は送信時に必ず付ける(編集で消されないようにするため)。"""
+
+    __tablename__ = "proposals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    lead_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("leads.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))  # proposal / follow_up
+    property_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending / sent / discarded / failed
+    # AIで文面を書き換えた提案は、自動送信の対象にしない(人が確認してから送る)
+    ai_edited: Mapped[bool] = mapped_column(Boolean, default=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, index=True)
+    sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class WebChatRequestLog(Base):

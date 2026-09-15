@@ -32,7 +32,7 @@ from src.core.ai_budget import BudgetExceededError, ensure_budget_available, rec
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.core.db import async_session_factory, tenant_scoped_session_factory
-from src.core.models import Tenant, TenantMailAccount
+from src.core.models import Lead, Tenant, TenantMailAccount
 from src.core.tenant_context import set_tenant_scope
 from src.rag.embeddings import EmbeddingError, OpenAIEmbeddingProvider
 from src.rag.prompt_safety import render_retrieved_context
@@ -127,7 +127,10 @@ async def _handle_message(*, tenant, account, uid, raw, uidvalidity, app_config,
         await set_tenant_scope(db, tenant.id)
 
         claim = await claim_message(db, tenant_id=tenant.id, message_id=parsed.message_id, sender=parsed.reply_address)
-        if claim is None or parsed.skip_reason:
+        if claim is None:
+            return "skipped"
+        await _mark_lead_replied(db, tenant.id, {parsed.reply_address, parsed.from_address})
+        if parsed.skip_reason:
             return "skipped"
 
         user_message = f"件名: {parsed.subject}\n{parsed.body}"
@@ -178,6 +181,18 @@ async def _handle_message(*, tenant, account, uid, raw, uidvalidity, app_config,
 
         await record_auto_reply(db, user_message=user_message, reply=result.reply, category=result.category, **record_kwargs)
         return "auto_replied"
+
+
+async def _mark_lead_replied(db, tenant_id, addresses: set) -> None:
+    """見込み客からメールが届いたら返信ありとして記録し、追客メールを止める(src/agent/proposal_scan.py)。"""
+    addresses = {a for a in addresses if a}
+    if not addresses:
+        return
+    leads = (await db.execute(select(Lead).where(Lead.tenant_id == tenant_id, Lead.email.in_(addresses)))).scalars().all()
+    for lead in leads:
+        lead.last_reply_at = datetime.utcnow()
+    if leads:
+        await db.commit()
 
 
 async def _ai_or_escalation(db, tenant, parsed, user_message, app_config, llm_factory) -> PublicResponderResult:

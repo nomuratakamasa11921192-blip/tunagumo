@@ -21,6 +21,7 @@ from src.agent.config_loader import load_config
 from src.agent.deadline_scan import scan_approval_deadlines
 from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
 from src.agent.mail_scan import scan_mailboxes
+from src.agent.proposal_scan import scan_proposals
 from src.agent.schedule_tick import tick as schedule_tick
 from src.api.deps import DEFAULT_INDUSTRY, INDUSTRIES
 from src.core.config import settings
@@ -36,6 +37,7 @@ APPROVAL_SCAN_INTERVAL_SECONDS = 5 * 60
 DOCUMENT_EXPIRY_SCAN_INTERVAL_SECONDS = 24 * 60 * 60
 SCHEDULE_TICK_INTERVAL_SECONDS = 60  # cronの分単位の粒度に合わせる
 WEB_CHAT_CLEANUP_INTERVAL_SECONDS = 60 * 60  # Phase 16-4: 1時間ごとに24時間超の会話を削除
+PROPOSAL_SCAN_INTERVAL_SECONDS = 60 * 60  # 2026-09-16: 物件提案・追客メール
 MAIL_SCAN_INTERVAL_SECONDS = 2 * 60  # 2026-09-16: メール即レス(新着の問い合わせメールを2分ごとに確認)
 
 
@@ -129,6 +131,20 @@ async def _mail_scan_loop(app_configs: dict) -> None:
         await asyncio.sleep(MAIL_SCAN_INTERVAL_SECONDS)
 
 
+async def _proposal_scan_loop() -> None:
+    while True:
+        try:
+            result = await scan_proposals()
+            if result["created"]:
+                logger.info(
+                    "物件提案・追客の作成完了: 作成%d件, 自動送信%d件, 承認待ち%d件",
+                    result["created"], result["sent"], result["pending"],
+                )
+        except Exception:
+            logger.exception("物件提案・追客の作成に失敗しました")
+        await asyncio.sleep(PROPOSAL_SCAN_INTERVAL_SECONDS)
+
+
 async def main() -> None:
     # 8-4と同じ考え方: 必須の接続先が壊れたまま無言で動き続けない
     failed = [c for c in await run_startup_checks() if not c.ok]
@@ -155,6 +171,7 @@ async def main() -> None:
             _schedule_tick_loop(app_configs, checkpointer),
             _web_chat_cleanup_loop(),
             _mail_scan_loop(app_configs),
+            _proposal_scan_loop(),
         )
     finally:
         await lifecycle.stop()

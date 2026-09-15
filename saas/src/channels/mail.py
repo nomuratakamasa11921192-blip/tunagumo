@@ -262,6 +262,7 @@ class ImapSmtpTransport:
         in_reply_to: str | None,
         references: str | None,
         auto: bool,
+        extra_headers: dict | None = None,
     ) -> None:
         msg = EmailMessage()
         msg["From"] = account.from_address
@@ -275,6 +276,8 @@ class ImapSmtpTransport:
         if auto:
             # 相手側の自動返信がこのメールに反応してループしないよう、自動送信であることを示す(RFC 3834)
             msg["Auto-Submitted"] = "auto-replied"
+        for name, value in (extra_headers or {}).items():
+            msg[name] = value
         msg.set_content(body)
         server = self._smtp(account)
         try:

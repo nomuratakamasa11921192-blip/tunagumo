@@ -94,6 +94,43 @@
     color: var(--text);
   }
   textarea { resize: vertical; min-height: 90px; }
+  select {
+    display: block;
+    width: 100%;
+    font: inherit;
+    font-size: 14px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+  }
+  #menu-toggle { display: none; }
+
+  /* スマホ幅(2026-09-16): 左メニューを上に移し、「メニュー」ボタンで開閉する。
+     それまでは@mediaが無く、スマホでは横スクロールしないと読めなかった */
+  @media (max-width: 760px) {
+    #app.active { flex-direction: column; }
+    aside {
+      width: 100%;
+      height: auto;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+    }
+    #menu-toggle { display: block; width: 100%; }
+    aside > :not(#menu-toggle) { display: none; }
+    aside.open { max-height: 100vh; overflow-y: auto; }
+    aside.open > :not(#menu-toggle) { display: block; }
+    aside.open > #menu-toggle { margin-bottom: 12px; }
+    #session-list { max-height: 35vh; overflow-y: auto; }
+    main { padding: 16px; max-width: 100%; }
+    .card { padding: 16px; }
+    .inq-msg { max-width: 100%; }
+  }
   label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
   label:first-child { margin-top: 0; }
 
@@ -259,11 +296,13 @@
 
 <div id="app">
   <aside>
+    <button id="menu-toggle" class="secondary" type="button" aria-expanded="false">☰ メニュー</button>
     <button id="new-request-btn" style="width: 100%;">＋ 新しい依頼</button>
     <h2>依頼履歴</h2>
     <ul id="session-list"></ul>
     <h2>アカウント</h2>
     <button id="inquiries-btn" class="secondary" style="width: 100%; margin-bottom: 8px;">問い合わせ</button>
+    <button id="proposals-btn" class="secondary" style="width: 100%; margin-bottom: 8px;">物件提案・追客</button>
     <button id="guide-btn" class="secondary" style="width: 100%;">使い方ガイド</button>
     <button id="documents-btn" class="secondary" style="width: 100%; margin-top: 8px;">社内資料</button>
     <button id="reel-editor-btn" class="secondary" style="width: 100%; margin-top: 8px;">リール自動編集</button>
@@ -426,6 +465,12 @@
   document.getElementById('inquiries-btn').addEventListener('click', function () {
     currentSessionId = null;
     renderInquiries('active');
+    highlightSelected(null);
+  });
+
+  document.getElementById('proposals-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderProposals('pending');
     highlightSelected(null);
   });
 
@@ -870,6 +915,21 @@
       }
     }).catch(function (e) { toast(e.message); });
   }
+
+  // スマホ幅のメニュー開閉。メニュー内のボタン・履歴を押したら自動で閉じる
+  var asideEl = document.querySelector('aside');
+  var menuToggle = document.getElementById('menu-toggle');
+  menuToggle.addEventListener('click', function () {
+    var open = asideEl.classList.toggle('open');
+    menuToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  asideEl.addEventListener('click', function (e) {
+    if (e.target === menuToggle || !asideEl.classList.contains('open')) return;
+    if (e.target.closest('button, li')) {
+      asideEl.classList.remove('open');
+      menuToggle.setAttribute('aria-expanded', 'false');
+    }
+  });
 
   function highlightSelected(id) {
     Array.prototype.forEach.call(listEl.children, function (li) {
@@ -1421,6 +1481,11 @@
       '<p class="muted">※自動応答は補助機能です。緊急の案内は一般的な初期対応の範囲に留めているため、実際の対応は貴社でご判断ください。</p>' +
       '</div>' +
       '<div class="card guide-section">' +
+      '<h3>物件提案・追客メール</h3>' +
+      '<p style="font-size:14px;">左メニューの「物件提案・追客」で物件と見込み客の希望条件を登録すると、条件に合う物件のご案内メールを自動で作ります。返信が無い見込み客には、設定した間隔で追客メールを作ります。既定では作成されたメールを確認してから送信します(ひな形どおりのメールだけ自動送信にもできます)。</p>' +
+      '<p class="muted">※広告メールは、ご本人の同意を得た方にだけ送れます(特定電子メール法)。送信者情報と配信停止リンクは自動で付きます。</p>' +
+      '</div>' +
+      '<div class="card guide-section">' +
       '<h3>定期実行(毎週・毎月など、自動で依頼を作る)</h3>' +
       '<p style="font-size:14px;">左メニューの「定期実行」から、「毎週月曜9時にオーナー報告の下書きを作る」のように登録できます。細かく書ききらなくても大丈夫です。実行時に情報が足りなければ社長AIが確認の質問をし、それは通常の依頼と同じく「依頼履歴」に届くので、都度そこから答えてください。生成された内容も、必ず承認待ちを経て人が確認してから完成します。</p>' +
       '</div>';
@@ -1565,6 +1630,296 @@
     }).catch(function (e) {
       mainEl.innerHTML = '<div class="card"><p class="error-text">' + escapeHtml(e.message) + '</p></div>';
     });
+  }
+
+  // ===== 物件提案・追客(2026-09-16) =====
+  var DEAL_LABELS = { rent: '賃貸', sale: '売買' };
+  var PROPOSAL_STATUS_LABELS = { pending: '承認待ち', sent: '送信済み', discarded: '破棄', failed: '送信失敗' };
+
+  function toIntOrNull(v) {
+    var n = parseInt(String(v).replace(/[,，円\s]/g, ''), 10);
+    return isNaN(n) ? null : n;
+  }
+  function toFloatOrNull(v) {
+    var n = parseFloat(String(v).replace(/[,，㎡\s]/g, ''));
+    return isNaN(n) ? null : n;
+  }
+  function splitList(v) {
+    return String(v).split(/[、,，\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  }
+  function yenToManText(yen) {
+    return yen == null ? '' : (Math.round(yen / 1000) / 10).toLocaleString('ja-JP') + '万円';
+  }
+
+  function renderProposals(tab) {
+    if (pollTimer) clearTimeout(pollTimer);
+    tab = tab || 'pending';
+    var tabs = [['pending', '承認待ちの提案'], ['leads', '見込み客'], ['properties', '物件'], ['settings', '設定']];
+    mainEl.innerHTML =
+      '<div class="card"><p class="muted" style="margin-top:0;">物件提案・追客メール</p>' +
+      '<p style="font-size:13px;">見込み客の希望条件に合う物件を登録すると、1時間ごとに自動で照合して「物件のご案内」メールを作ります。新しい物件が無く返信も無い場合は、設定した間隔で「その後いかがですか」という追客メールを作ります。</p>' +
+      '<div class="template-chips" style="margin-top:6px;">' +
+      tabs.map(function (t) {
+        return '<button type="button" class="template-chip prop-tab" data-tab="' + t[0] + '"' + (t[0] === tab ? ' style="font-weight:700; border-color:var(--accent);"' : '') + '>' + t[1] + '</button>';
+      }).join('') +
+      '</div></div><div id="prop-body"><div class="card">読み込み中…</div></div>';
+    Array.prototype.forEach.call(document.querySelectorAll('.prop-tab'), function (b) {
+      b.addEventListener('click', function () { renderProposals(b.dataset.tab); });
+    });
+    ({ pending: renderProposalList, leads: renderLeadList, properties: renderPropertyList, settings: renderProposalSettings })[tab]();
+  }
+
+  function propBody(html) { document.getElementById('prop-body').innerHTML = html; }
+  function propError(e) { propBody('<div class="card"><p class="error-text">' + escapeHtml(e.message) + '</p></div>'); }
+
+  function renderProposalList() {
+    Promise.all([api('/api/proposals'), api('/api/proposal-settings')]).then(function (r) {
+      var items = r[0], st = r[1];
+      var warn = st.missing.length
+        ? '<div class="card"><p class="error-text" style="margin:0;">送信者情報(' + escapeHtml(st.missing.join('・')) + ')が未設定のため、メールを送信できません。「設定」タブから登録してください(特定電子メール法で表示が必要な項目です)。</p></div>'
+        : '';
+      var genCard = '<div class="card"><button id="prop-generate-btn" class="secondary">今すぐ提案を作る</button>' +
+        '<span class="muted" style="font-size:12px; margin-left:8px;">自動送信が' + (st.auto_send ? 'オン(ひな形どおりの提案は日中に自動送信)' : 'オフ(すべて承認してから送信)') + 'です。</span></div>';
+      var pending = items.filter(function (p) { return p.status === 'pending' || p.status === 'failed'; });
+      var history = items.filter(function (p) { return p.status === 'sent' || p.status === 'discarded'; }).slice(0, 30);
+      var cards = pending.length ? pending.map(function (p) {
+        return '<div class="card" data-id="' + escapeHtml(p.id) + '">' +
+          '<p style="margin-top:0;"><span class="status-badge inq-' + (p.status === 'failed' ? 'urgent' : 'open') + '">' + escapeHtml(PROPOSAL_STATUS_LABELS[p.status]) + '</span> ' +
+          '<strong>' + escapeHtml(p.lead_name) + '</strong> 様 <span class="muted" style="font-size:12px;">' + escapeHtml(p.lead_email) + ' ・ ' + (p.kind === 'follow_up' ? '追客メール' : '物件のご案内') +
+          (p.ai_edited ? ' ・ AIで文面を調整済み' : '') + '</span></p>' +
+          (p.error ? '<p class="error-text" style="font-size:12.5px;">' + escapeHtml(p.error) + '</p>' : '') +
+          '<label>件名</label><input type="text" class="prop-subject" value="' + escapeHtml(p.subject) + '">' +
+          '<label>本文</label><textarea class="prop-text" style="min-height:220px;">' + escapeHtml(p.body) + '</textarea>' +
+          '<p class="muted" style="font-size:12px; white-space:pre-wrap; margin-top:6px;">(送信時に自動で付く表示)' + escapeHtml(p.footer) + '</p>' +
+          '<button class="prop-send-btn">この内容で送信</button> ' +
+          '<button class="secondary prop-save-btn">下書きを保存</button> ' +
+          '<button class="secondary prop-polish-btn">AIで文面を整える</button> ' +
+          '<button class="secondary prop-discard-btn">破棄</button>' +
+          '</div>';
+      }).join('') : '<div class="card"><p class="muted" style="margin:0;">承認待ちの提案はありません。</p></div>';
+      var historyHtml = history.length ? '<div class="card"><p class="muted" style="margin-top:0;">最近の送信・破棄</p>' + history.map(function (p) {
+        return '<div style="font-size:13px; border-bottom:1px solid var(--border); padding:6px 0;">' + escapeHtml(PROPOSAL_STATUS_LABELS[p.status]) + ' ・ ' +
+          escapeHtml(p.lead_name) + '様 ・ ' + escapeHtml(p.subject) + (p.sent_at ? ' ・ ' + escapeHtml(formatDateTime(p.sent_at)) : '') + '</div>';
+      }).join('') + '</div>' : '';
+      propBody(warn + genCard + cards + historyHtml);
+
+      document.getElementById('prop-generate-btn').addEventListener('click', function () {
+        var b = this; b.disabled = true;
+        api('/api/proposals/generate', { method: 'POST' })
+          .then(function (res) { toast(res.created ? res.created + '件の提案を作りました' : '新しく提案できる物件・追客はありませんでした'); renderProposalList(); })
+          .catch(function (e) { b.disabled = false; toast(e.message); });
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('#prop-body .card[data-id]'), function (card) {
+        var id = card.dataset.id;
+        function payload() {
+          return JSON.stringify({ subject: card.querySelector('.prop-subject').value.trim(), body: card.querySelector('.prop-text').value.trim() });
+        }
+        function save() { return api('/api/proposals/' + id, { method: 'PUT', body: payload() }); }
+        card.querySelector('.prop-save-btn').addEventListener('click', function () {
+          save().then(function () { toast('保存しました'); }).catch(function (e) { toast(e.message); });
+        });
+        card.querySelector('.prop-send-btn').addEventListener('click', function () {
+          var b = this;
+          if (!window.confirm('この内容でお客様にメールを送信します。よろしいですか？')) return;
+          b.disabled = true; b.textContent = '送信中…';
+          save().then(function () { return api('/api/proposals/' + id + '/send', { method: 'POST' }); })
+            .then(function () { toast('送信しました'); renderProposalList(); })
+            .catch(function (e) { b.disabled = false; b.textContent = 'この内容で送信'; toast(e.message); });
+        });
+        card.querySelector('.prop-polish-btn').addEventListener('click', function () {
+          var b = this; b.disabled = true; b.textContent = '整えています…';
+          save().then(function () { return api('/api/proposals/' + id + '/polish', { method: 'POST' }); })
+            .then(function (p) { card.querySelector('.prop-text').value = p.body; toast('文面を整えました。物件の情報が変わっていないか確認してから送信してください'); })
+            .catch(function (e) { toast(e.message); })
+            .then(function () { b.disabled = false; b.textContent = 'AIで文面を整える'; });
+        });
+        card.querySelector('.prop-discard-btn').addEventListener('click', function () {
+          if (!window.confirm('この提案を破棄します。よろしいですか？')) return;
+          api('/api/proposals/' + id + '/discard', { method: 'POST' }).then(function () { renderProposalList(); }).catch(function (e) { toast(e.message); });
+        });
+      });
+    }).catch(propError);
+  }
+
+  function leadFormHtml(l) {
+    l = l || {};
+    return '<label>お名前</label><input type="text" id="lead-name" value="' + escapeHtml(l.name || '') + '">' +
+      '<label>メールアドレス</label><input type="text" id="lead-email" value="' + escapeHtml(l.email || '') + '">' +
+      '<label style="margin-top:10px;"><input type="checkbox" id="lead-consent" style="width:auto; margin-right:6px;"' + (l.consent ? ' checked' : '') + '>物件のご案内メールを送ることに、ご本人の同意を得ている</label>' +
+      '<p class="muted" style="font-size:12px;">同意の無い相手には、法律(特定電子メール法)により広告メールを送れません。チェックが無い見込み客にはメールを作りません。</p>' +
+      '<label>同意を得た経緯(記録用)</label><input type="text" id="lead-consent-source" placeholder="例: 9月15日来店時、申込書で同意" value="' + escapeHtml(l.consent_source || '') + '">' +
+      '<label>取引</label><select id="lead-deal"><option value="">指定なし</option><option value="rent"' + (l.deal_type === 'rent' ? ' selected' : '') + '>賃貸</option><option value="sale"' + (l.deal_type === 'sale' ? ' selected' : '') + '>売買</option></select>' +
+      '<label>希望エリア・駅(読点区切り)</label><input type="text" id="lead-areas" placeholder="例: 春日部、せんげん台" value="' + escapeHtml((l.areas || []).join('、')) + '">' +
+      '<label>上限の価格・賃料(円)</label><input type="text" inputmode="numeric" id="lead-max-price" placeholder="例: 80000" value="' + (l.max_price_yen != null ? l.max_price_yen : '') + '">' +
+      '<label>希望の間取り(読点区切り)</label><input type="text" id="lead-layouts" placeholder="例: 1LDK、2DK" value="' + escapeHtml((l.layouts || []).join('、')) + '">' +
+      '<label>駅徒歩(分以内)</label><input type="text" inputmode="numeric" id="lead-walk" value="' + (l.max_walk_minutes != null ? l.max_walk_minutes : '') + '">' +
+      '<label>面積(㎡以上)</label><input type="text" inputmode="decimal" id="lead-area" value="' + (l.min_floor_area_sqm != null ? l.min_floor_area_sqm : '') + '">' +
+      '<label>メモ</label><textarea id="lead-notes">' + escapeHtml(l.notes || '') + '</textarea>' +
+      '<label>状態</label><select id="lead-status"><option value="active">案内する</option><option value="paused"' + (l.status === 'paused' ? ' selected' : '') + '>一時停止</option></select>' +
+      (l.status === 'unsubscribed' ? '<p class="error-text" style="font-size:12.5px;">ご本人が配信を停止しています。今後メールは送られません。</p>' : '');
+  }
+
+  function leadPayload() {
+    return {
+      name: document.getElementById('lead-name').value.trim(),
+      email: document.getElementById('lead-email').value.trim(),
+      consent: document.getElementById('lead-consent').checked,
+      consent_source: document.getElementById('lead-consent-source').value.trim(),
+      deal_type: document.getElementById('lead-deal').value || null,
+      areas: splitList(document.getElementById('lead-areas').value),
+      max_price_yen: toIntOrNull(document.getElementById('lead-max-price').value),
+      layouts: splitList(document.getElementById('lead-layouts').value),
+      max_walk_minutes: toIntOrNull(document.getElementById('lead-walk').value),
+      min_floor_area_sqm: toFloatOrNull(document.getElementById('lead-area').value),
+      notes: document.getElementById('lead-notes').value,
+      status: document.getElementById('lead-status').value
+    };
+  }
+
+  function renderLeadList() {
+    api('/api/leads').then(function (leads) {
+      var rows = leads.length ? leads.map(function (l) {
+        var cond = [l.deal_type ? DEAL_LABELS[l.deal_type] : '', (l.areas || []).join('・'), l.max_price_yen != null ? yenToManText(l.max_price_yen) + '以下' : '', (l.layouts || []).join('・')].filter(Boolean).join(' / ');
+        return '<button type="button" class="inq-row lead-row" data-id="' + escapeHtml(l.id) + '">' +
+          '<strong>' + escapeHtml(l.name) + '</strong> <span class="muted" style="font-size:12px;">' + escapeHtml(l.email) + '</span> ' +
+          (l.status === 'unsubscribed' ? '<span class="status-badge inq-normal">配信停止</span>' : l.status === 'paused' ? '<span class="status-badge inq-normal">一時停止</span>' : '') +
+          (!l.consent ? ' <span class="status-badge inq-open">同意なし</span>' : '') +
+          '<div style="font-size:13px; margin-top:3px;">' + escapeHtml(cond || '条件未設定') + '</div>' +
+          '<div class="muted" style="font-size:12px;">' + (l.last_sent_at ? '最終送信 ' + escapeHtml(formatDateTime(l.last_sent_at)) : '未送信') + (l.last_reply_at ? ' ・ 返信あり' : '') + '</div>' +
+          '</button>';
+      }).join('') : '<p class="muted">まだ見込み客が登録されていません。</p>';
+      propBody('<div class="card"><button id="lead-new-btn">＋ 見込み客を登録</button><div id="lead-form" style="display:none; margin-top:12px;"></div><div style="margin-top:10px;">' + rows + '</div></div>');
+      document.getElementById('lead-new-btn').addEventListener('click', function () { showLeadForm(null); });
+      Array.prototype.forEach.call(document.querySelectorAll('.lead-row'), function (row) {
+        row.addEventListener('click', function () {
+          showLeadForm(leads.filter(function (l) { return l.id === row.dataset.id; })[0]);
+        });
+      });
+    }).catch(propError);
+  }
+
+  function showLeadForm(lead) {
+    var box = document.getElementById('lead-form');
+    box.style.display = '';
+    box.innerHTML = leadFormHtml(lead) +
+      '<button id="lead-save-btn" style="margin-top:12px;">' + (lead ? '更新する' : '登録する') + '</button> ' +
+      (lead ? '<button id="lead-delete-btn" class="secondary" style="margin-top:12px;">削除</button>' : '');
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('lead-save-btn').addEventListener('click', function () {
+      var p = leadPayload();
+      if (!p.name || !p.email) { toast('お名前とメールアドレスを入力してください'); return; }
+      api(lead ? '/api/leads/' + lead.id : '/api/leads', { method: lead ? 'PUT' : 'POST', body: JSON.stringify(p) })
+        .then(function () { toast(lead ? '更新しました' : '登録しました'); renderLeadList(); })
+        .catch(function (e) { toast(e.message.indexOf('エラー: 422') === 0 ? 'メールアドレスや数値の形式をご確認ください' : e.message); });
+    });
+    var del = document.getElementById('lead-delete-btn');
+    if (del) {
+      del.addEventListener('click', function () {
+        if (!window.confirm('この見込み客と、関連する提案を削除します。よろしいですか？')) return;
+        api('/api/leads/' + lead.id, { method: 'DELETE' }).then(function () { toast('削除しました'); renderLeadList(); }).catch(function (e) { toast(e.message); });
+      });
+    }
+  }
+
+  function propertyFormHtml(p) {
+    p = p || {};
+    function v(x) { return x == null ? '' : escapeHtml(String(x)); }
+    return '<label>物件名</label><input type="text" id="pf-name" value="' + v(p.name) + '">' +
+      '<label>取引</label><select id="pf-deal"><option value="rent">賃貸</option><option value="sale"' + (p.deal_type === 'sale' ? ' selected' : '') + '>売買</option></select>' +
+      '<label>所在地</label><input type="text" id="pf-location" placeholder="例: 埼玉県春日部市中央" value="' + v(p.location) + '">' +
+      '<label>最寄り駅</label><input type="text" id="pf-station" placeholder="例: 春日部駅" value="' + v(p.station) + '">' +
+      '<label>駅徒歩(分)</label><input type="text" inputmode="numeric" id="pf-walk" value="' + v(p.walk_minutes) + '">' +
+      '<label>賃料(月額)・価格(円)</label><input type="text" inputmode="numeric" id="pf-price" placeholder="例: 65000" value="' + v(p.price_yen) + '">' +
+      '<label>間取り</label><input type="text" id="pf-layout" placeholder="例: 1LDK" value="' + v(p.layout) + '">' +
+      '<label>面積(㎡)</label><input type="text" inputmode="decimal" id="pf-area" value="' + v(p.floor_area_sqm) + '">' +
+      '<label>築年(西暦)</label><input type="text" inputmode="numeric" id="pf-built" placeholder="例: 2015" value="' + v(p.built_year) + '">' +
+      '<label>特徴</label><textarea id="pf-features">' + v(p.features) + '</textarea>' +
+      '<label>詳細ページのURL(任意)</label><input type="text" id="pf-url" value="' + v(p.url) + '">' +
+      '<label>状態</label><select id="pf-status"><option value="available">募集中</option><option value="closed"' + (p.status === 'closed' ? ' selected' : '') + '>成約・募集終了</option></select>';
+  }
+
+  function renderPropertyList() {
+    api('/api/properties').then(function (props) {
+      var rows = props.length ? props.map(function (p) {
+        return '<button type="button" class="inq-row prop-row" data-id="' + escapeHtml(p.id) + '">' +
+          '<strong>' + escapeHtml(p.name) + '</strong> <span class="status-badge ' + (p.status === 'available' ? 'inq-resolved' : 'inq-normal') + '">' + (p.status === 'available' ? '募集中' : '募集終了') + '</span>' +
+          '<div style="font-size:13px; margin-top:3px;">' + escapeHtml([DEAL_LABELS[p.deal_type], p.location, p.station + (p.walk_minutes != null ? ' 徒歩' + p.walk_minutes + '分' : ''), yenToManText(p.price_yen), p.layout].filter(Boolean).join(' / ')) + '</div>' +
+          '</button>';
+      }).join('') : '<p class="muted">まだ物件が登録されていません。</p>';
+      propBody('<div class="card"><button id="pf-new-btn">＋ 物件を登録</button><div id="pf-form" style="display:none; margin-top:12px;"></div><div style="margin-top:10px;">' + rows + '</div></div>');
+      document.getElementById('pf-new-btn').addEventListener('click', function () { showPropertyForm(null); });
+      Array.prototype.forEach.call(document.querySelectorAll('.prop-row'), function (row) {
+        row.addEventListener('click', function () { showPropertyForm(props.filter(function (p) { return p.id === row.dataset.id; })[0]); });
+      });
+    }).catch(propError);
+  }
+
+  function showPropertyForm(prop) {
+    var box = document.getElementById('pf-form');
+    box.style.display = '';
+    box.innerHTML = propertyFormHtml(prop) +
+      '<p class="muted" style="font-size:12px;">登録した内容がそのまま提案メールに載ります。価格・間取りなどに誤りが無いかご確認ください。</p>' +
+      '<button id="pf-save-btn" style="margin-top:8px;">' + (prop ? '更新する' : '登録する') + '</button> ' +
+      (prop ? '<button id="pf-delete-btn" class="secondary" style="margin-top:8px;">削除</button>' : '');
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('pf-save-btn').addEventListener('click', function () {
+      var price = toIntOrNull(document.getElementById('pf-price').value);
+      var payload = {
+        name: document.getElementById('pf-name').value.trim(),
+        deal_type: document.getElementById('pf-deal').value,
+        location: document.getElementById('pf-location').value.trim(),
+        station: document.getElementById('pf-station').value.trim(),
+        walk_minutes: toIntOrNull(document.getElementById('pf-walk').value),
+        price_yen: price,
+        layout: document.getElementById('pf-layout').value.trim(),
+        floor_area_sqm: toFloatOrNull(document.getElementById('pf-area').value),
+        built_year: toIntOrNull(document.getElementById('pf-built').value),
+        features: document.getElementById('pf-features').value.trim(),
+        url: document.getElementById('pf-url').value.trim(),
+        status: document.getElementById('pf-status').value
+      };
+      if (!payload.name || price == null) { toast('物件名と賃料・価格を入力してください'); return; }
+      api(prop ? '/api/properties/' + prop.id : '/api/properties', { method: prop ? 'PUT' : 'POST', body: JSON.stringify(payload) })
+        .then(function () { toast(prop ? '更新しました' : '登録しました'); renderPropertyList(); })
+        .catch(function (e) { toast(e.message.indexOf('エラー: 422') === 0 ? '入力内容の形式をご確認ください(URLは https:// から)' : e.message); });
+    });
+    var del = document.getElementById('pf-delete-btn');
+    if (del) {
+      del.addEventListener('click', function () {
+        if (!window.confirm('この物件を削除します。よろしいですか？')) return;
+        api('/api/properties/' + prop.id, { method: 'DELETE' }).then(function () { toast('削除しました'); renderPropertyList(); }).catch(function (e) { toast(e.message); });
+      });
+    }
+  }
+
+  function renderProposalSettings() {
+    api('/api/proposal-settings').then(function (s) {
+      propBody('<div class="card">' +
+        '<p style="font-size:13px; margin-top:0;">広告宣伝メールには、送信者の名称・住所・問い合わせ先の表示が法律(特定電子メール法)で求められています。ここで登録した内容と配信停止リンクが、すべての提案メールの末尾に自動で付きます。</p>' +
+        '<label>送信者名(会社名・店舗名)</label><input type="text" id="ps-name" value="' + escapeHtml(s.sender_name) + '">' +
+        '<label>住所</label><input type="text" id="ps-address" value="' + escapeHtml(s.sender_address) + '">' +
+        '<label>問い合わせ先(電話番号・メールアドレス)</label><input type="text" id="ps-contact" value="' + escapeHtml(s.sender_contact) + '">' +
+        '<label>追客メールの間隔(日、3〜60)</label><input type="text" inputmode="numeric" id="ps-interval" value="' + s.follow_up_interval_days + '">' +
+        '<label>追客メールの最大回数(0〜10、0で追客しない)</label><input type="text" inputmode="numeric" id="ps-max" value="' + s.follow_up_max + '">' +
+        '<label style="margin-top:12px;"><input type="checkbox" id="ps-auto" style="width:auto; margin-right:6px;"' + (s.auto_send ? ' checked' : '') + '>ひな形どおりの提案は承認なしで自動送信する</label>' +
+        '<p class="muted" style="font-size:12px;">オンにすると、登録済みの物件情報をそのまま載せた提案・追客メールを、日本時間9時〜20時に自動で送ります。AIで文面を整えた提案は、オンでも必ず承認してから送信します。送信には「設定・利用状況」でメールの連携が必要です。</p>' +
+        '<button id="ps-save-btn" style="margin-top:8px;">保存する</button></div>');
+      document.getElementById('ps-save-btn').addEventListener('click', function () {
+        api('/api/proposal-settings', {
+          method: 'PUT',
+          body: JSON.stringify({
+            sender_name: document.getElementById('ps-name').value.trim(),
+            sender_address: document.getElementById('ps-address').value.trim(),
+            sender_contact: document.getElementById('ps-contact').value.trim(),
+            auto_send: document.getElementById('ps-auto').checked,
+            follow_up_interval_days: toIntOrNull(document.getElementById('ps-interval').value),
+            follow_up_max: toIntOrNull(document.getElementById('ps-max').value)
+          })
+        })
+          .then(function (r) { toast(r.missing.length ? '保存しました(未入力: ' + r.missing.join('・') + ')' : '保存しました'); })
+          .catch(function (e) { toast(e.message.indexOf('エラー: 422') === 0 ? '間隔は3〜60日、回数は0〜10回で入力してください' : e.message); });
+      });
+    }).catch(propError);
   }
 
   function renderSchedules() {
