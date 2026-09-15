@@ -1,3 +1,4 @@
+import asyncio
 import secrets
 from datetime import datetime, timedelta
 
@@ -9,11 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.api.deps import get_current_tenant, get_optional_tenant_user, get_scoped_db, hash_api_key
 from src.core.ai_budget import DEFAULT_PLAN, PLAN_MONTHLY_BUDGET_USD, effective_cost_this_period
 from src.core.config import settings
-from src.core.crypto import encrypt_secret
+from src.channels.mail import ImapSmtpTransport, MailAccountSettings, MailConfigError
+from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.db import get_db
 from src.core.email import send_email
 from src.core.models import Session as SessionModel
-from src.core.models import Tenant, TenantUser, TenantUserToken
+from src.core.models import Tenant, TenantMailAccount, TenantUser, TenantUserToken
 from src.core.passwords import hash_password, verify_password
 from src.core.stripe_client import (
     ADDON_CREDIT_USD,
@@ -169,6 +171,102 @@ async def delete_line_channel(
     row.line_channel_access_token = None
     await db.commit()
     return _inquiry_settings(row)
+
+
+class MailAccountRequest(BaseModel):
+    from_address: str = Field(max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    imap_host: str = Field(min_length=3, max_length=255, pattern=r"^[A-Za-z0-9.-]+$")
+    imap_port: int = 993
+    smtp_host: str = Field(min_length=3, max_length=255, pattern=r"^[A-Za-z0-9.-]+$")
+    smtp_port: int = 465
+    username: str = Field(min_length=1, max_length=320)
+    # 更新時に空ならパスワードは変更しない(画面にパスワードを再表示しないため)
+    password: str = Field(default="", max_length=500)
+    enabled: bool = True
+
+
+class MailAccountResponse(BaseModel):
+    configured: bool
+    from_address: str | None = None
+    imap_host: str | None = None
+    imap_port: int | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    username: str | None = None
+    enabled: bool = False
+    last_checked_at: datetime | None = None
+    last_error: str | None = None
+
+
+def _mail_response(row) -> MailAccountResponse:
+    if row is None:
+        return MailAccountResponse(configured=False)
+    return MailAccountResponse(
+        configured=True, from_address=row.from_address, imap_host=row.imap_host, imap_port=row.imap_port,
+        smtp_host=row.smtp_host, smtp_port=row.smtp_port, username=row.username, enabled=row.enabled,
+        last_checked_at=row.last_checked_at, last_error=row.last_error,
+    )
+
+
+@router.get("/mail-account", response_model=MailAccountResponse)
+async def get_mail_account(
+    tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)
+) -> MailAccountResponse:
+    """メール即レスの接続設定(パスワードは返さない)。"""
+    return _mail_response(await db.get(TenantMailAccount, tenant.id))
+
+
+@router.put("/mail-account", response_model=MailAccountResponse)
+async def update_mail_account(
+    req: MailAccountRequest, tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)
+) -> MailAccountResponse:
+    """接続を試してから保存する(つながらない設定のまま即レスが止まっているのに気付かない、を防ぐ)。"""
+    row = await db.get(TenantMailAccount, tenant.id)
+    password = req.password or (decrypt_secret(row.password_encrypted) if row is not None else "")
+    if not password:
+        raise HTTPException(status_code=400, detail="パスワードを入力してください。")
+    account = MailAccountSettings(
+        from_address=req.from_address.strip(), imap_host=req.imap_host.strip(), imap_port=req.imap_port,
+        smtp_host=req.smtp_host.strip(), smtp_port=req.smtp_port, username=req.username.strip(), password=password,
+    )
+    try:
+        await asyncio.to_thread(mail_transport().test_connection, account)
+    except MailConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    server_changed = row is None or (row.imap_host, row.username) != (account.imap_host, account.username)
+    if row is None:
+        row = TenantMailAccount(tenant_id=tenant.id)
+        db.add(row)
+    row.from_address = account.from_address
+    row.imap_host, row.imap_port = account.imap_host, account.imap_port
+    row.smtp_host, row.smtp_port = account.smtp_host, account.smtp_port
+    row.username = account.username
+    row.password_encrypted = encrypt_secret(password)
+    row.enabled = req.enabled
+    row.last_error = None
+    if server_changed:
+        # 別のメールボックスに変わったら、既存のメールに返信しないよう初回扱いに戻す
+        row.last_uid = None
+        row.uidvalidity = None
+    await db.commit()
+    return _mail_response(row)
+
+
+@router.delete("/mail-account", response_model=MailAccountResponse)
+async def delete_mail_account(
+    tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)
+) -> MailAccountResponse:
+    row = await db.get(TenantMailAccount, tenant.id)
+    if row is not None:
+        await db.delete(row)
+        await db.commit()
+    return _mail_response(None)
+
+
+def mail_transport():
+    """テストで差し替えられるようにしてある(実際のメールサーバーに接続しない)。"""
+    return ImapSmtpTransport()
 
 
 class UsageResponse(BaseModel):

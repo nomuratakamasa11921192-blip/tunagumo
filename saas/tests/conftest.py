@@ -9,7 +9,7 @@ from src.agent.config_loader import load_config
 from src.api.deps import INDUSTRIES, get_llm, hash_api_key
 from src.core.crypto import encrypt_secret
 from src.core.db import async_session_factory
-from src.core.models import Approval, AuditLog, Chunk, Document, Inquiry
+from src.core.models import Approval, AuditLog, Chunk, Document, Inquiry, MailProcessedMessage, TenantMailAccount
 from src.core.models import Schedule, ScheduleRun
 from src.core.models import Session as SessionModel
 from src.core.models import LineWebhookEvent, Tenant, TenantUser, TenantUserToken, WebChatRequestLog, WebChatSession
@@ -58,6 +58,8 @@ async def tenant():
             await db.execute(delete(ScheduleRun).where(ScheduleRun.schedule_id.in_(schedule_ids)))
         await db.execute(delete(Schedule).where(Schedule.tenant_id == t.id))
         await db.execute(delete(Inquiry).where(Inquiry.tenant_id == t.id))
+        await db.execute(delete(MailProcessedMessage).where(MailProcessedMessage.tenant_id == t.id))
+        await db.execute(delete(TenantMailAccount).where(TenantMailAccount.tenant_id == t.id))
         # Phase 16
         await db.execute(delete(WebChatRequestLog).where(WebChatRequestLog.tenant_id == t.id))
         await db.execute(delete(WebChatSession).where(WebChatSession.tenant_id == t.id))

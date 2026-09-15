@@ -20,7 +20,7 @@ from src.core.models import Inquiry, Tenant
 
 logger = logging.getLogger(__name__)
 
-CHANNEL_LABELS = {"web": "Webチャット", "line": "LINE"}
+CHANNEL_LABELS = {"web": "Webチャット", "line": "LINE", "email": "メール"}
 
 
 def _now_iso() -> str:
@@ -39,12 +39,14 @@ async def record_escalation(
     category: str,
     web_chat_session_id: uuid.UUID | None = None,
     external_user_id: str | None = None,
+    email_subject: str | None = None,
+    email_message_id: str | None = None,
 ) -> tuple[Inquiry, bool, bool]:
     """同じ会話の未対応の問い合わせがあればそこへ追記し、無ければ新規に作る。
     戻り値: (inquiry, 新規作成したか, 緊急度が今回上がったか)。"""
     query = select(Inquiry).where(Inquiry.tenant_id == tenant_id, Inquiry.status != "resolved")
-    if channel == "line" and external_user_id:
-        query = query.where(Inquiry.channel == "line", Inquiry.external_user_id == external_user_id)
+    if channel in ("line", "email") and external_user_id:
+        query = query.where(Inquiry.channel == channel, Inquiry.external_user_id == external_user_id)
     elif web_chat_session_id is not None:
         query = query.where(Inquiry.web_chat_session_id == web_chat_session_id)
     else:
@@ -67,6 +69,8 @@ async def record_escalation(
             category=category,
             reason=reason,
             messages=new_messages,
+            email_subject=email_subject,
+            email_message_id=email_message_id,
         )
         db.add(inquiry)
         await db.commit()
@@ -79,8 +83,10 @@ async def record_escalation(
         inquiry.urgency = URGENT
         inquiry.category = category
         inquiry.reason = reason
-    if inquiry.status == "resolved":
-        inquiry.status = "open"
+    if email_message_id:
+        # 担当者の返信は最新のメールへの返信としてつなげる
+        inquiry.email_subject = email_subject or inquiry.email_subject
+        inquiry.email_message_id = email_message_id
     await db.commit()
     return inquiry, False, became_urgent
 
@@ -98,8 +104,8 @@ async def append_to_open_inquiry(
     """AIが自分で回答できた後続メッセージも、対応中の問い合わせがあれば担当者が経緯を
     追えるよう追記する(新規の問い合わせは作らない)。"""
     query = select(Inquiry).where(Inquiry.tenant_id == tenant_id, Inquiry.status != "resolved")
-    if channel == "line" and external_user_id:
-        query = query.where(Inquiry.channel == "line", Inquiry.external_user_id == external_user_id)
+    if channel in ("line", "email") and external_user_id:
+        query = query.where(Inquiry.channel == channel, Inquiry.external_user_id == external_user_id)
     elif web_chat_session_id is not None:
         query = query.where(Inquiry.web_chat_session_id == web_chat_session_id)
     else:
@@ -143,3 +149,52 @@ async def notify_escalation(tenant: Tenant, inquiry: Inquiry, *, is_new: bool, b
         + (f'<p><a href="{html.escape(link)}">{html.escape(link)}</a></p>' if link else "")
     )
     return await send_email(to=to, subject=subject, html=body)
+
+
+async def record_auto_reply(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    channel: str,
+    external_user_id: str,
+    user_message: str,
+    reply: str,
+    category: str,
+    email_subject: str | None = None,
+    email_message_id: str | None = None,
+) -> None:
+    """AIが自動で返信を送った記録を残す(メールは相手に届く文面なので、担当者が後から確認できるように)。
+    対応中の問い合わせがあればそこへ追記し、無ければ「対応済み」として新規に作る。"""
+    query = select(Inquiry).where(
+        Inquiry.tenant_id == tenant_id,
+        Inquiry.status != "resolved",
+        Inquiry.channel == channel,
+        Inquiry.external_user_id == external_user_id,
+    )
+    inquiry = (await db.execute(query.limit(1))).scalar_one_or_none()
+    now = _now_iso()
+    new_messages = [
+        {"role": "user", "content": user_message, "at": now},
+        {"role": "assistant", "content": reply, "at": now},
+    ]
+    if inquiry is not None:
+        inquiry.messages = list(inquiry.messages or []) + new_messages
+        if email_message_id:
+            inquiry.email_subject = email_subject or inquiry.email_subject
+            inquiry.email_message_id = email_message_id
+    else:
+        db.add(
+            Inquiry(
+                tenant_id=tenant_id,
+                channel=channel,
+                external_user_id=external_user_id,
+                category=category,
+                status="resolved",
+                resolved_at=datetime.utcnow(),
+                reason="AIが自動で返信しました",
+                messages=new_messages,
+                email_subject=email_subject,
+                email_message_id=email_message_id,
+            )
+        )
+    await db.commit()

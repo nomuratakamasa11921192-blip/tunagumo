@@ -20,6 +20,7 @@ from src.agent.checkpointer import CheckpointerLifecycle
 from src.agent.config_loader import load_config
 from src.agent.deadline_scan import scan_approval_deadlines
 from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
+from src.agent.mail_scan import scan_mailboxes
 from src.agent.schedule_tick import tick as schedule_tick
 from src.api.deps import DEFAULT_INDUSTRY, INDUSTRIES
 from src.core.config import settings
@@ -35,6 +36,7 @@ APPROVAL_SCAN_INTERVAL_SECONDS = 5 * 60
 DOCUMENT_EXPIRY_SCAN_INTERVAL_SECONDS = 24 * 60 * 60
 SCHEDULE_TICK_INTERVAL_SECONDS = 60  # cronの分単位の粒度に合わせる
 WEB_CHAT_CLEANUP_INTERVAL_SECONDS = 60 * 60  # Phase 16-4: 1時間ごとに24時間超の会話を削除
+MAIL_SCAN_INTERVAL_SECONDS = 2 * 60  # 2026-09-16: メール即レス(新着の問い合わせメールを2分ごとに確認)
 
 
 def _llm_factory() -> StructuredLLM:
@@ -111,6 +113,22 @@ async def _web_chat_cleanup_loop() -> None:
         await asyncio.sleep(WEB_CHAT_CLEANUP_INTERVAL_SECONDS)
 
 
+async def _mail_scan_loop(app_configs: dict) -> None:
+    while True:
+        try:
+            result = await scan_mailboxes(
+                app_configs=app_configs, default_industry=DEFAULT_INDUSTRY, llm_factory=_llm_factory
+            )
+            if result["auto_replied"] or result["escalated"] or result["errors"]:
+                logger.info(
+                    "メール即レス確認完了: 自動返信%d件, 担当者へ%d件, エラー%d件",
+                    result["auto_replied"], result["escalated"], result["errors"],
+                )
+        except Exception:
+            logger.exception("メール即レスの確認に失敗しました")
+        await asyncio.sleep(MAIL_SCAN_INTERVAL_SECONDS)
+
+
 async def main() -> None:
     # 8-4と同じ考え方: 必須の接続先が壊れたまま無言で動き続けない
     failed = [c for c in await run_startup_checks() if not c.ok]
@@ -136,6 +154,7 @@ async def main() -> None:
             _document_expiry_scan_loop(),
             _schedule_tick_loop(app_configs, checkpointer),
             _web_chat_cleanup_loop(),
+            _mail_scan_loop(app_configs),
         )
     finally:
         await lifecycle.stop()

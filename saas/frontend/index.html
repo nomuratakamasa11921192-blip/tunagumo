@@ -482,6 +482,27 @@
       '<button id="line-remove-btn" class="secondary" style="margin-top:8px;">連携を解除する</button>' +
       '<div id="inq-settings-result"></div>' +
       '</div>' +
+      '<div class="card"><p class="muted" style="margin-top:0;">メールの即レス <span id="mail-status"></span></p>' +
+      '<p style="font-size:13px;">貴社のお問い合わせ用メールアドレスに届いたメールを2分ごとに確認し、AIが公開用資料の範囲で確実に答えられるものだけ、貴社のアドレスから自動で返信します。金額・契約・クレームなどは「担当者から折り返しご連絡いたします」とだけ返信し、「問い合わせ」に届きます。</p>' +
+      '<p class="muted" style="font-size:12px;">メールマガジン・システム通知・自動返信には返信しません。同じ相手への自動返信は24時間で3回までです。メールは既読になりません。連携した時点より前に届いていたメールには返信しません。</p>' +
+      '<p class="muted" style="font-size:12px;">メールサーバーの情報は、ご契約中のメールサービス(Gmail、Xserverなど)の案内ページに記載されています。Gmailの場合は、Googleアカウントで2段階認証を有効にしたうえで「アプリパスワード」を発行して使ってください。</p>' +
+      '<label for="mail-from">返信に使うメールアドレス</label>' +
+      '<input id="mail-from" type="text" autocomplete="off" placeholder="例: info@example.co.jp">' +
+      '<label for="mail-user">ログインユーザー名(多くの場合はメールアドレスと同じ)</label>' +
+      '<input id="mail-user" type="text" autocomplete="off">' +
+      '<label for="mail-pass">パスワード(アプリパスワード)</label>' +
+      '<input id="mail-pass" type="password" autocomplete="new-password" placeholder="変更しない場合は空欄">' +
+      '<label for="mail-imap-host">受信サーバー(IMAP)</label>' +
+      '<input id="mail-imap-host" type="text" autocomplete="off" placeholder="例: imap.gmail.com">' +
+      '<label for="mail-smtp-host">送信サーバー(SMTP)</label>' +
+      '<input id="mail-smtp-host" type="text" autocomplete="off" placeholder="例: smtp.gmail.com">' +
+      '<label for="mail-smtp-port">送信サーバーのポート</label>' +
+      '<select id="mail-smtp-port"><option value="465">465(SSL/TLS)</option><option value="587">587(STARTTLS)</option></select>' +
+      '<label style="margin-top:10px;"><input id="mail-enabled" type="checkbox" checked style="width:auto; margin-right:6px;">自動返信を有効にする</label>' +
+      '<button id="mail-save-btn" style="margin-top:8px;">接続を確認して保存する</button> ' +
+      '<button id="mail-remove-btn" class="secondary" style="margin-top:8px;">連携を解除する</button>' +
+      '<div id="mail-result"></div>' +
+      '</div>' +
       '<div class="card"><p class="muted" style="margin-top:0;">動画生成用のHiggsfield APIキー</p>' +
       '<p style="font-size:13px;">「付随動画」(AIで映像を新しく作る機能)をご利用の場合に登録してください。動画の生成費用は、お客様ご自身のHiggsfieldアカウントに課金されます。</p>' +
       '<p class="muted" style="font-size:12px;">画像の作成・編集やルームツアー動画の作成は、月額プランのAI利用予算の範囲でご利用いただけます(登録は不要です)。</p>' +
@@ -582,6 +603,62 @@
       api('/api/account/line-channel', { method: 'DELETE' })
         .then(function (s) { showInquirySettings(s); toast('LINE連携を解除しました'); })
         .catch(inqSettingsError);
+    });
+
+    function showMailAccount(m) {
+      var status = document.getElementById('mail-status');
+      if (!m.configured) {
+        status.textContent = '(未連携)';
+      } else if (m.last_error) {
+        status.innerHTML = '<span class="error-text">(接続エラー: ' + escapeHtml(m.last_error) + ')</span>';
+      } else {
+        status.textContent = m.enabled ? '(連携中' + (m.last_checked_at ? '・最終確認 ' + formatDateTime(m.last_checked_at) : '') + ')' : '(一時停止中)';
+      }
+      document.getElementById('mail-from').value = m.from_address || '';
+      document.getElementById('mail-user').value = m.username || '';
+      document.getElementById('mail-imap-host').value = m.imap_host || '';
+      document.getElementById('mail-smtp-host').value = m.smtp_host || '';
+      document.getElementById('mail-smtp-port').value = String(m.smtp_port || 465);
+      document.getElementById('mail-enabled').checked = m.configured ? m.enabled : true;
+      document.getElementById('mail-remove-btn').style.display = m.configured ? '' : 'none';
+    }
+    function mailError(e) {
+      document.getElementById('mail-result').innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+    }
+    api('/api/account/mail-account').then(showMailAccount).catch(mailError);
+
+    document.getElementById('mail-save-btn').addEventListener('click', function () {
+      var btn = document.getElementById('mail-save-btn');
+      btn.disabled = true;
+      btn.textContent = '接続を確認中…';
+      api('/api/account/mail-account', {
+        method: 'PUT',
+        body: JSON.stringify({
+          from_address: document.getElementById('mail-from').value.trim(),
+          username: document.getElementById('mail-user').value.trim(),
+          password: document.getElementById('mail-pass').value,
+          imap_host: document.getElementById('mail-imap-host').value.trim(),
+          imap_port: 993,
+          smtp_host: document.getElementById('mail-smtp-host').value.trim(),
+          smtp_port: parseInt(document.getElementById('mail-smtp-port').value, 10),
+          enabled: document.getElementById('mail-enabled').checked
+        })
+      })
+        .then(function (m) {
+          document.getElementById('mail-pass').value = '';
+          document.getElementById('mail-result').innerHTML = '';
+          showMailAccount(m);
+          toast('メールサーバーに接続できました。保存しました');
+        })
+        .catch(function (e) {
+          mailError(e.message.indexOf('エラー: 422') === 0 ? new Error('入力内容の形式をご確認ください(メールアドレス・サーバー名)。') : e);
+        })
+        .then(function () { btn.disabled = false; btn.textContent = '接続を確認して保存する'; });
+    });
+
+    document.getElementById('mail-remove-btn').addEventListener('click', function () {
+      if (!window.confirm('メールの連携を解除します。メールへの自動返信が止まります。よろしいですか？')) return;
+      api('/api/account/mail-account', { method: 'DELETE' }).then(showMailAccount).catch(mailError);
     });
 
     document.getElementById('higgsfield-key-btn').addEventListener('click', function () {
@@ -1338,8 +1415,8 @@
       '<p class="muted">画像の作成・編集は、月額プランのAI利用予算の範囲でご利用いただけます。動画の生成にはHiggsfield社の利用料が別途かかります(お客様ご自身でHiggsfieldと契約し、「設定・利用状況」からAPIキーを登録していただく形です)。</p>' +
       '</div>' +
       '<div class="card guide-section">' +
-      '<h3>問い合わせの一次受け(Webチャット・LINE、24時間)</h3>' +
-      '<p style="font-size:14px;">ホームページの埋め込みチャットや、貴社のLINE公式アカウントに届いたお問い合わせに、登録した公開用資料の範囲でAIが自動で回答します。金額・契約・クレームなど、AIが確実に答えられない内容は「担当者から折り返しご連絡いたします」とお伝えし、左メニューの「問い合わせ」に届きます(通知メールも送ります)。</p>' +
+      '<h3>問い合わせの一次受け(Webチャット・LINE・メール、24時間)</h3>' +
+      '<p style="font-size:14px;">ホームページの埋め込みチャット、貴社のLINE公式アカウント、お問い合わせ用メールアドレスに届いたお問い合わせに、登録した公開用資料の範囲でAIが自動で回答します。金額・契約・クレームなど、AIが確実に答えられない内容は「担当者から折り返しご連絡いたします」とお伝えし、左メニューの「問い合わせ」に届きます(通知メールも送ります)。</p>' +
       '<p style="font-size:14px;">火災・ガス・水漏れ・漏電などの緊急の内容には、安全のための初期対応の案内を自動で返し、「緊急」として通知します。通知先・緊急連絡先の電話番号・LINE連携は「設定・利用状況」から設定できます。</p>' +
       '<p class="muted">※自動応答は補助機能です。緊急の案内は一般的な初期対応の範囲に留めているため、実際の対応は貴社でご判断ください。</p>' +
       '</div>' +
@@ -1358,7 +1435,7 @@
   var scheduleStatusLabels = { true: '有効', false: '無効(停止中)' };
 
   var INQ_STATUS_LABELS = { open: '未対応', in_progress: '対応中', resolved: '対応済み' };
-  var INQ_CHANNEL_LABELS = { web: 'Webチャット', line: 'LINE' };
+  var INQ_CHANNEL_LABELS = { web: 'Webチャット', line: 'LINE', email: 'メール' };
   var INQ_ROLE_LABELS = { user: 'お客様', assistant: '自動応答', staff: '担当者' };
 
   function inqBadges(i) {
@@ -1377,7 +1454,7 @@
     if (pollTimer) clearTimeout(pollTimer);
     mainEl.innerHTML =
       '<div class="card"><p class="muted" style="margin-top:0;">問い合わせ(AIから担当者へ回されたもの)</p>' +
-      '<p style="font-size:13px;">Webチャット・LINEに届いたお問い合わせのうち、AIが回答できなかったものです。お客様には「担当者から折り返しご連絡いたします」と自動でお伝えしています。火災・ガス・水漏れなどの緊急の内容には、安全のための案内を自動で返し、「緊急」として先頭に表示します。</p>' +
+      '<p style="font-size:13px;">Webチャット・LINE・メールに届いたお問い合わせのうち、AIが回答できなかったものです。お客様には「担当者から折り返しご連絡いたします」と自動でお伝えしています。火災・ガス・水漏れなどの緊急の内容には、安全のための案内を自動で返し、「緊急」として先頭に表示します。メールにAIが自動で返信したものは「対応済み」に記録されます。</p>' +
       '<div class="template-chips" style="margin-top:6px;">' +
       '<button type="button" class="template-chip inq-filter" data-filter="active">未対応・対応中</button>' +
       '<button type="button" class="template-chip inq-filter" data-filter="resolved">対応済み</button>' +
@@ -1421,16 +1498,17 @@
           '<div class="muted" style="font-size:11px;">' + escapeHtml(INQ_ROLE_LABELS[m.role] || m.role) + (m.at ? ' ・ ' + escapeHtml(formatDateTime(m.at)) : '') + '</div>' +
           escapeHtml(m.content) + '</div>';
       }).join('');
+      var channelName = INQ_CHANNEL_LABELS[i.channel] || i.channel;
       var replyHtml = i.can_reply
-        ? '<label for="inq-reply-text" style="margin-top:14px;">LINEで返信する</label>' +
+        ? '<label for="inq-reply-text" style="margin-top:14px;">' + escapeHtml(channelName) + 'で返信する</label>' +
           '<textarea id="inq-reply-text" placeholder="お客様への返信を入力してください"></textarea>' +
           '<button id="inq-draft-btn" class="secondary" style="margin-top:8px;">AIで返信案を作る</button> ' +
-          '<button id="inq-send-btn" style="margin-top:8px;">この内容でLINEに送信</button>' +
+          '<button id="inq-send-btn" style="margin-top:8px;">この内容で' + escapeHtml(channelName) + 'を送信</button>' +
           '<p class="muted" style="font-size:12px;">返信案はAIが作った下書きです。内容を確認・修正してから送信してください(送信ボタンを押すまでお客様には届きません)。</p>'
         : '<p class="muted" style="font-size:13px; margin-top:14px;">' +
           (i.channel === 'web'
             ? 'Webチャットのお客様は匿名のため、この画面から返信できません。お客様からの再度のご連絡をお待ちいただくか、会話の中で連絡先をお伺いしている場合はそちらからご連絡ください。'
-            : 'LINE連携が解除されているため、この画面から返信できません。') + '</p>';
+            : channelName + 'の連携が解除されているため、この画面から返信できません。') + '</p>';
 
       mainEl.innerHTML =
         '<div class="card">' +
@@ -1472,15 +1550,15 @@
         sendBtn.addEventListener('click', function () {
           var text = document.getElementById('inq-reply-text').value.trim();
           if (!text) { toast('返信内容を入力してください'); return; }
-          if (!window.confirm('この内容をLINEでお客様に送信します。よろしいですか？')) return;
+          if (!window.confirm('この内容を' + channelName + 'でお客様に送信します。よろしいですか？')) return;
           sendBtn.disabled = true;
           sendBtn.textContent = '送信中…';
           api('/api/inquiries/' + encodeURIComponent(id) + '/reply', { method: 'POST', body: JSON.stringify({ text: text }) })
-            .then(function () { toast('LINEで送信しました'); renderInquiryDetail(id); })
+            .then(function () { toast(channelName + 'で送信しました'); renderInquiryDetail(id); })
             .catch(function (e) {
               document.getElementById('inq-result').innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
               sendBtn.disabled = false;
-              sendBtn.textContent = 'この内容でLINEに送信';
+              sendBtn.textContent = 'この内容で' + channelName + 'を送信';
             });
         });
       }

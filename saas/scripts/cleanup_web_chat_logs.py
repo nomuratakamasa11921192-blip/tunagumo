@@ -15,13 +15,16 @@ from sqlalchemy import delete
 
 from src.channels.web import SESSION_TTL_HOURS
 from src.core.db import async_session_factory
-from src.core.models import Inquiry, WebChatRequestLog, WebChatSession
+from src.core.models import Inquiry, MailProcessedMessage, WebChatRequestLog, WebChatSession
 
 REQUEST_LOG_RETENTION_HOURS = 25
 # 2026-09-15: 担当者へ回した問い合わせ(inquiries)の保持期間。個人情報を含みうるため、
 # 対応済みは30日、未対応のまま放置されたものも90日で削除する。
 RESOLVED_INQUIRY_RETENTION_DAYS = 30
 MAX_INQUIRY_RETENTION_DAYS = 90
+# メール即レスの処理済み記録(二重返信防止・ループ防止の判定用)。判定に必要なのは直近24時間だが、
+# 遅れて再配信されたメールにも二重返信しないよう30日残す
+MAIL_PROCESSED_RETENTION_DAYS = 30
 
 
 async def cleanup_web_chat_logs() -> dict:
@@ -37,6 +40,12 @@ async def cleanup_web_chat_logs() -> dict:
             delete(Inquiry).where(
                 ((Inquiry.status == "resolved") & (Inquiry.updated_at < now - timedelta(days=RESOLVED_INQUIRY_RETENTION_DAYS)))
                 | (Inquiry.created_at < now - timedelta(days=MAX_INQUIRY_RETENTION_DAYS))
+            )
+        )
+
+        await db.execute(
+            delete(MailProcessedMessage).where(
+                MailProcessedMessage.processed_at < now - timedelta(days=MAIL_PROCESSED_RETENTION_DAYS)
             )
         )
 

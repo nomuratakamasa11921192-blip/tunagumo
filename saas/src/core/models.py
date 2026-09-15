@@ -282,6 +282,44 @@ class WebChatSession(Base):
     external_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
+class TenantMailAccount(Base):
+    """2026-09-16: メール即レス。顧客(不動産会社)が普段使っているメールボックスにIMAPで接続して
+    新着メールを確認し、SMTPで顧客自身のアドレスから返信する(src/channels/mail.py)。
+    パスワードは暗号化して保存する(src/core/crypto.py)。1テナント1アカウント。"""
+
+    __tablename__ = "tenant_mail_accounts"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    from_address: Mapped[str] = mapped_column(String(320))
+    imap_host: Mapped[str] = mapped_column(String(255))
+    imap_port: Mapped[int] = mapped_column(Integer, default=993)
+    smtp_host: Mapped[str] = mapped_column(String(255))
+    smtp_port: Mapped[int] = mapped_column(Integer, default=465)
+    username: Mapped[str] = mapped_column(String(320))
+    password_encrypted: Mapped[str] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 次回はこのUIDより後のメールだけを見る。NULLは「まだ一度も接続していない」(初回は既存の
+    # メールに返信しないよう、その時点の最新UIDを記録するだけにする)
+    last_uid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uidvalidity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MailProcessedMessage(Base):
+    """処理済みメールの記録。(tenant_id, message_id)の主キーで同じメールに二重返信しないようにし、
+    sender_addressで「同じ相手への自動返信は24時間で3回まで」(メールのループ防止)を数える。"""
+
+    __tablename__ = "mail_processed_messages"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(300), primary_key=True)
+    sender_address: Mapped[str | None] = mapped_column(String(320), nullable=True, index=True)
+    auto_replied: Mapped[bool] = mapped_column(Boolean, default=False)
+    processed_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, index=True)
+
+
 class Inquiry(Base):
     """2026-09-15: AIが担当者へ回した問い合わせ(エスカレーション)。担当者が対応を終えるまで
     会話を残し、状態を管理する。web_chat_sessionsは24時間で消えるため、別テーブルにしている。
@@ -292,9 +330,12 @@ class Inquiry(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
-    channel: Mapped[str] = mapped_column(String(10))  # web / line
-    # LINEのuserId(担当者が画面から返信する時のプッシュ先)。webはNULL
-    external_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    channel: Mapped[str] = mapped_column(String(10))  # web / line / email
+    # 担当者が画面から返信する時の宛先。LINEはuserId、メールは返信先メールアドレス。webはNULL
+    external_user_id: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    # メールの場合の件名とMessage-ID(担当者の返信を同じスレッドにつなげるため)
+    email_subject: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    email_message_id: Mapped[str | None] = mapped_column(String(300), nullable=True)
     web_chat_session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     urgency: Mapped[str] = mapped_column(String(10), default="normal")  # urgent / normal
     category: Mapped[str] = mapped_column(String(50), default="その他")
