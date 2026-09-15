@@ -41,6 +41,26 @@ class PropertyCsvExportError(Exception):
     pass
 
 
+_FORMULA_PREFIXES = ("=", "+", "@", "\t", "\r")
+
+
+def _neutralize_formula(value) -> str:
+    """Excel等で開いた時にセルが数式として実行されないようにする(CSVインジェクション対策)。
+    物件説明などには、URL取込で他社ページから取り込んだ文章が入ることがあり、
+    「=HYPERLINK(...)」のような文字列を仕込まれる可能性がある。数式として解釈される
+    先頭文字で始まる値だけ、先頭に「'」を付けて文字列として扱わせる。「-」は「-3,000円」
+    のような数値もあり得るため、数値として読めない場合だけ対象にする。"""
+    text = "" if value is None else str(value)
+    if text.startswith(_FORMULA_PREFIXES):
+        return "'" + text
+    if text.startswith("-"):
+        try:
+            float(text.replace(",", ""))
+        except ValueError:
+            return "'" + text
+    return text
+
+
 def generate_property_csv(fields: dict) -> bytes:
     """fieldsはCSV_FIELDSのキー(の一部)を持つdict。無い項目は空欄になる。
     Excelでの文字化けを防ぐため、UTF-8 BOM付きで返す。
@@ -48,5 +68,5 @@ def generate_property_csv(fields: dict) -> bytes:
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=CSV_FIELDS, extrasaction="ignore")
     writer.writeheader()
-    writer.writerow({k: fields.get(k, "") for k in CSV_FIELDS})
+    writer.writerow({k: _neutralize_formula(fields.get(k, "")) for k in CSV_FIELDS})
     return buffer.getvalue().encode("utf-8-sig")

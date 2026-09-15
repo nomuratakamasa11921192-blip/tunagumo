@@ -7,8 +7,8 @@ import uuid
 
 from croniter import CroniterBadCronError, croniter
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -16,6 +16,10 @@ from src.api.deps import get_current_tenant, get_scoped_db
 from src.core.models import Schedule, Tenant
 
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
+
+# 1テナントあたりの定期実行の登録数上限(2026-09-15)。定期実行はAI予算を消費するため、
+# 誤操作や悪用で大量に登録されないようにする。業務上の定期作業としては十分な数。
+MAX_SCHEDULES_PER_TENANT = 20
 
 
 def _validate_cron_and_timezone(cron_expr: str, tz_name: str) -> None:
@@ -30,9 +34,9 @@ def _validate_cron_and_timezone(cron_expr: str, tz_name: str) -> None:
 
 
 class ScheduleCreateRequest(BaseModel):
-    cron: str
-    timezone: str = "Asia/Tokyo"
-    goal: str
+    cron: str = Field(max_length=100)
+    timezone: str = Field(default="Asia/Tokyo", max_length=64)
+    goal: str = Field(min_length=1, max_length=2000)
 
 
 class ScheduleResponse(BaseModel):
@@ -72,6 +76,12 @@ async def create_schedule(
     """顧客自身の定期実行を登録する。予算・月間実行回数の上限は、悪用防止のため
     顧客からは指定させず、schedule_tick.py側の既定値をそのまま使う。"""
     _validate_cron_and_timezone(req.cron, req.timezone)
+    count = (await db.execute(select(func.count()).where(Schedule.tenant_id == tenant.id))).scalar_one()
+    if count >= MAX_SCHEDULES_PER_TENANT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"定期実行は{MAX_SCHEDULES_PER_TENANT}件まで登録できます。不要なものを削除してから登録してください。",
+        )
 
     schedule = Schedule(tenant_id=tenant.id, cron=req.cron, timezone=req.timezone, goal=req.goal)
     db.add(schedule)

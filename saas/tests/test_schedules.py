@@ -151,3 +151,25 @@ async def test_delete_own_schedule(client, tenant):
 
     list_res = await client.get("/api/schedules", headers=_headers(tenant))
     assert schedule_id not in [s["id"] for s in list_res.json()["schedules"]]
+
+
+async def test_create_schedule_rejects_over_per_tenant_limit(client, tenant, monkeypatch):
+    from src.api.routes import schedules as schedules_module
+
+    monkeypatch.setattr(schedules_module, "MAX_SCHEDULES_PER_TENANT", 2)
+    body = {"cron": "0 9 * * 1", "goal": "週次レポート"}
+    try:
+        for _ in range(2):
+            assert (await client.post("/api/schedules", json=body, headers=_headers(tenant))).status_code == 201
+        res = await client.post("/api/schedules", json=body, headers=_headers(tenant))
+        assert res.status_code == 400
+        assert "2件まで" in res.json()["detail"]
+    finally:
+        async with async_session_factory() as db:
+            await db.execute(delete(Schedule).where(Schedule.tenant_id == tenant["id"]))
+            await db.commit()
+
+
+async def test_create_schedule_rejects_overlong_goal(client, tenant):
+    res = await client.post("/api/schedules", json={"cron": "0 9 * * 1", "goal": "あ" * 2001}, headers=_headers(tenant))
+    assert res.status_code == 422

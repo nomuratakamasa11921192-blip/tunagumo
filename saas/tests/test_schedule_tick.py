@@ -360,3 +360,58 @@ async def test_default_monthly_cap_applies_when_unset(config, tenant):
         assert result["skipped_monthly_cap"] == 1
     finally:
         await _cleanup(tenant["id"])
+
+
+async def _set_tenant(tenant_id, **values):
+    from src.core.models import Tenant as TenantModel
+
+    async with async_session_factory() as db:
+        row = await db.get(TenantModel, tenant_id)
+        for k, v in values.items():
+            setattr(row, k, v)
+        await db.commit()
+
+
+@asyncio_test
+async def test_tick_skips_tenant_with_inactive_subscription(config, tenant):
+    """解約済み(subscription_active=False)のテナントのスケジュールは、AIを呼ばずにスキップする。"""
+    await _make_schedule(tenant["id"])
+    await _set_tenant(tenant["id"], subscription_active=False)
+    llm = FakeLLM()  # 何もキューしない: 呼ばれたら失敗する
+    try:
+        result = await tick(
+            now=datetime.utcnow(), app_configs={i: config for i in INDUSTRIES}, default_industry=DEFAULT_INDUSTRY,
+            llm_factory=lambda: llm, checkpointer=MemorySaver(),
+        )
+        assert result["started"] == 0
+        assert result["skipped_inactive"] == 1
+    finally:
+        await _cleanup(tenant["id"])
+
+
+@asyncio_test
+async def test_tick_skips_when_monthly_ai_budget_exhausted(config, tenant):
+    """今月のAI予算を使い切ったテナントは実行せず、SKIPPED_BUDGETとして1回だけ記録する(失敗扱いにしない)。"""
+    from src.agent.schedule_tick import _last_due_time
+
+    schedule = await _make_schedule(tenant["id"])
+    await _set_tenant(tenant["id"], plan="light", ai_cost_this_period_usd=10.0, addon_credit_usd=0.0)
+    llm = FakeLLM()
+    now = datetime.utcnow()
+    kwargs = dict(
+        now=now, app_configs={i: config for i in INDUSTRIES}, default_industry=DEFAULT_INDUSTRY,
+        llm_factory=lambda: llm, checkpointer=MemorySaver(),
+    )
+    try:
+        result = await tick(**kwargs)
+        assert result["started"] == 0
+        assert result["skipped_budget"] == 1
+        assert (await tick(**kwargs))["skipped_budget"] == 0  # 同じ回を数え直さない
+
+        due = _last_due_time(schedule.cron, schedule.timezone, now)
+        async with async_session_factory() as db:
+            run = await db.get(ScheduleRun, {"schedule_id": schedule.id, "scheduled_for": due})
+            assert run.status == "SKIPPED_BUDGET"
+            assert (await db.get(Schedule, schedule.id)).consecutive_failures == 0
+    finally:
+        await _cleanup(tenant["id"])

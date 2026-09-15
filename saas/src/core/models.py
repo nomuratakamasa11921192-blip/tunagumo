@@ -252,7 +252,7 @@ class ScheduleRun(Base):
     scheduled_for: Mapped[datetime] = mapped_column(primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
     session_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="CLAIMED")  # CLAIMED/SUCCEEDED/FAILED/SKIPPED
+    status: Mapped[str] = mapped_column(String(20), default="CLAIMED")  # CLAIMED/SUCCEEDED/FAILED/SKIPPED_CAP/SKIPPED_BUDGET
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 

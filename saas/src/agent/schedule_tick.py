@@ -24,7 +24,7 @@
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 from zoneinfo import ZoneInfo
 
@@ -35,6 +35,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from src.agent.config_models import AppConfig
 from src.agent.llm import StructuredLLM
 from src.agent.runner import run_new_session
+from src.core.ai_budget import BudgetExceededError, ensure_budget_available
 from src.core.config import settings
 from src.core.db import async_session_factory
 from src.core.email import send_email
@@ -174,11 +175,13 @@ async def tick(
     skipped_late = 0
     skipped_disabled = 0
     skipped_monthly_cap = 0
+    skipped_inactive = 0
+    skipped_budget = 0
 
     async with async_session_factory() as db:
         schedules = list((await db.execute(select(Schedule).where(Schedule.enabled.is_(True)))).scalars().all())
-        tenants = await db.execute(select(Tenant.id, Tenant.industry))
-        tenant_info = {row[0]: row[1] for row in tenants.all()}
+        tenants = {t.id: t for t in (await db.execute(select(Tenant))).scalars().all()}
+    tenant_info = {tid: t.industry for tid, t in tenants.items()}
 
     for sch in schedules:
         due = _last_due_time(sch.cron, sch.timezone, now)
@@ -201,6 +204,22 @@ async def tick(
 
         if now - due > timedelta(hours=MAX_DELAY_HOURS):
             skipped_late += 1
+            continue
+
+        # 2026-09-15: AI利用は運営負担のため、画面からの依頼(sessions.py)と同じく、契約が
+        # 有効で今月のAI予算が残っているテナントだけ実行する。それまでは解約済み・予算切れの
+        # テナントでも、登録済みのスケジュールが運営の費用で動き続けていた。
+        tenant_row = tenants.get(sch.tenant_id)
+        if tenant_row is None or not tenant_row.subscription_active:
+            skipped_inactive += 1
+            continue
+        try:
+            ensure_budget_available(tenant_row, now=now if now.tzinfo else now.replace(tzinfo=timezone.utc))
+        except BudgetExceededError:
+            # 失敗回数には数えない(予算が戻れば自動で再開してよい)。同じ回を毎分数え直さないよう確保だけする
+            if await _claim_run(sch.id, sch.tenant_id, due):
+                await _mark_run(sch.id, due, "SKIPPED_BUDGET", None)
+                skipped_budget += 1
             continue
 
         if not await _claim_run(sch.id, sch.tenant_id, due):
@@ -261,4 +280,6 @@ async def tick(
         "skipped_late": skipped_late,
         "skipped_disabled": skipped_disabled,
         "skipped_monthly_cap": skipped_monthly_cap,
+        "skipped_inactive": skipped_inactive,
+        "skipped_budget": skipped_budget,
     }
