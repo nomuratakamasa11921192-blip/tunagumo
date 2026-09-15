@@ -22,7 +22,9 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-test-dummy-key}"
       ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-test-model}"
       ANTHROPIC_MODEL_LIGHT: "${ANTHROPIC_MODEL_LIGHT:-test-model-light}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-test-dummy-key}"
+      # 既定値を入れない。空のまま渡すことで「キー未設定なら402」のテストが通る
+      # (.env.test.example のコメント参照)。
+      OPENAI_API_KEY: "${OPENAI_API_KEY-}"
       ADMIN_API_KEY: "${ADMIN_API_KEY:-test-admin-key}"
       TENANT_SECRET_KEY: "${TENANT_SECRET_KEY:?TENANT_SECRET_KEYが未設定です。saas/.env.testを確認してください}"
       SAAS_PUBLIC_URL: "${SAAS_PUBLIC_URL:-http://localhost:8000}"
