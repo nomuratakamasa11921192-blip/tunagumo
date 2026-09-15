@@ -84,3 +84,5 @@
 2026-09-15 [Claude] embeddings.pyの「顧客自身のOpenAIキーを使う」という古い説明を運営キー方式に修正(コメントのみ)。埋め込みモデルはtext-embedding-3-small(1536次元)のまま据え置く方針をユーザーに説明。
 2026-09-15 [Claude] 人間(野村さん)が本番へデプロイ(.envにOPENAI_API_KEY/OPENAI_MODEL=gpt-5.6-terra/OPENAI_MODEL_LIGHT=gpt-5.6-luna追加、DBバックアップ、コード展開、再ビルド、alembic 0020→0021、Caddyfile更新)。Claudeは手順案内と外部からの読み取り確認のみ。
 [Claude] 外部確認: APIは127.0.0.1:8000のみで外部IPから直接到達不可、app.tunagumo.com 200、セキュリティヘッダー5種あり、/docs等404、未認証API 401、営業サイトの規約・プライバシー更新を確認。
+2026-09-15 [Claude] ユーザー指示でInstagram承認チェックを30分おき→1日3回(8・12・18時、crontab変更)にし、承認済み投稿はBufferで19時(19時以降は翌日19時)に予約投稿する形に変更。予約時刻はスクリプト側で確定しAIに計算させない。
+[Claude] daily_qa.sh・instagram_check.shのCodex予備モデルをgpt-5.6-luna→gpt-5.6-sol(ユーザー指定)に変更。

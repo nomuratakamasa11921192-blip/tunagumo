@@ -20,7 +20,9 @@ if [ -f .env ]; then
   set +a
 fi
 
-FALLBACK_MODEL="gpt-5.6-luna"
+# メインモデル(Codexの既定、アストラ等)が制限・失敗した時の切り替え先。
+# 2026-09-15、ユーザー指定でルナからソル(アストラに次ぐ上位モデル)に変更。
+FALLBACK_MODEL="gpt-5.6-sol"
 
 # $1 = Slackに送るメッセージ本文。SLACK_WEBHOOK_URL未設定なら何もしない(黙って続行)
 notify_slack() {
