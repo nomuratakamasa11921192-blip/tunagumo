@@ -58,7 +58,38 @@ async def lifespan(app: FastAPI):
     await _checkpointer_lifecycle.stop()
 
 
-app = FastAPI(title="tsunagumo", lifespan=lifespan)
+from src.core.config import settings  # noqa: E402
+
+# 本番ではAPI仕様書(/docs・/redoc・/openapi.json)を公開しない。攻撃の下調べに使える
+# エンドポイント一覧を誰にでも見せる必要は無い(開発環境では従来どおり使える)。
+def docs_urls(env: str) -> dict:
+    if env == "production":
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+
+
+app = FastAPI(title="tsunagumo", lifespan=lifespan, **docs_urls(settings.env))
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """全レスポンスに基本的なセキュリティヘッダーを付ける(2026-09-15)。
+    - X-Frame-Options / frame-ancestors: 他サイトのiframeに埋め込み、「承認する」等の
+      ボタンを気付かれずに押させる手口(クリックジャッキング)を防ぐ。埋め込みチャットは
+      iframeではなくShadow DOM方式(frontend/widget.js)なので影響しない。
+    - X-Content-Type-Options: 画像等を別の形式として解釈させる手口を防ぐ。
+    - Referrer-Policy: 他サイトへのリンクを開いた時にURLの詳細を渡さない。
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if settings.env == "production":
+        # HTTPS(Caddy)経由でのみ提供する本番に限り、ブラウザにHTTPSを記憶させる
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+    return response
+
 
 app.include_router(sessions_router)
 app.include_router(account_router)
