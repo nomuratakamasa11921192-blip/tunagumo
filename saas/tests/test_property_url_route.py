@@ -38,3 +38,17 @@ async def test_extract_rejects_when_import_fails(client, tenant, monkeypatch):
         "/api/property-url/extract", json={"url": "https://example.com/property/1"}, headers=headers
     )
     assert res.status_code == 400
+
+
+async def test_extract_pdf_rejects_oversized_file_before_reading(client, tenant, monkeypatch):
+    from src.api.routes import property_url
+
+    monkeypatch.setattr(property_url, "MAX_FILE_SIZE_BYTES", 10)
+    headers = {"Authorization": f"Bearer {tenant['api_key']}"}
+    res = await client.post(
+        "/api/property-url/extract-pdf",
+        files={"file": ("big.pdf", b"%PDF-" + b"x" * 100, "application/pdf")},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "上限" in res.json()["detail"]

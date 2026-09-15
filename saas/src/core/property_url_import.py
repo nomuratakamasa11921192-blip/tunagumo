@@ -18,23 +18,36 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from bs4 import BeautifulSoup
 
+from src.core.safe_http import UnsafeURLError, safe_get
+
 USER_AGENT = "tsunagumo-property-import/1.0 (+https://tunagumo.com; AI SaaS for real estate)"
 FETCH_TIMEOUT_SECONDS = 15.0
 MAX_TEXT_CHARS = 4000
 MAX_IMAGE_URLS = 8
+# 物件ページ1枚としては十分な上限。巨大なファイルでサーバーのメモリを使い切られないようにする。
+MAX_PAGE_BYTES = 5 * 1024 * 1024
+MAX_ROBOTS_BYTES = 512 * 1024
 
 
 class PropertyImportError(Exception):
     pass
 
 
-async def _is_allowed_by_robots(client: httpx.AsyncClient, url: str) -> bool:
+async def _is_allowed_by_robots(url: str, transport: httpx.AsyncBaseTransport | None) -> bool:
     parsed = urlparse(url)
     robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
     try:
-        res = await client.get(robots_url, timeout=FETCH_TIMEOUT_SECONDS)
-    except httpx.HTTPError:
+        res = await safe_get(
+            robots_url,
+            max_bytes=MAX_ROBOTS_BYTES,
+            timeout=FETCH_TIMEOUT_SECONDS,
+            allowed_schemes=("http", "https"),
+            headers={"User-Agent": USER_AGENT},
+            transport=transport,
+        )
+    except UnsafeURLError:
         # robots.txtが取得できない場合は、存在しない(=許可)とみなす
+        # (社内アドレス等への接続はこの後の本体取得でも同じチェックで拒否される)
         return True
     if res.status_code >= 400:
         return True
@@ -62,7 +75,8 @@ def _extract_text_and_images(html: str, base_url: str) -> tuple[str, list[str]]:
         if not src:
             continue
         absolute = urljoin(base_url, src)
-        if absolute in seen:
+        # data:やjavascript:などは画像URLとして扱わない
+        if urlparse(absolute).scheme not in ("http", "https") or absolute in seen:
             continue
         seen.add(absolute)
         image_urls.append(absolute)
@@ -76,6 +90,9 @@ async def import_property_url(url: str, *, transport: httpx.AsyncBaseTransport |
     """物件ページのURLから、本文テキストと画像URL一覧を抽出して返す。
     取得できない/拒否された場合はPropertyImportErrorを送出する。
 
+    顧客が入力したURLを取りに行くため、社内アドレス等への接続はsafe_getで拒否する
+    (2026-09-15、SSRF対策。それまでは localhost 等の中身も読み出せる状態だった)。
+
     transportはテスト用のフック(httpx.MockTransportを渡すと実際のネットワーク
     アクセスをせずに検証できる)。本番では常に未指定(=実際に取得)で呼ぶ。
     """
@@ -83,32 +100,32 @@ async def import_property_url(url: str, *, transport: httpx.AsyncBaseTransport |
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise PropertyImportError("有効なURLを入力してください(http/httpsのみ対応)。")
 
-    async with httpx.AsyncClient(
-        headers={"User-Agent": USER_AGENT},
-        follow_redirects=True,
-        timeout=FETCH_TIMEOUT_SECONDS,
-        transport=transport,
-    ) as client:
-        if not await _is_allowed_by_robots(client, url):
-            raise PropertyImportError(
-                "このサイトはrobots.txtで自動取得を許可していないため、取得できませんでした。"
-                "お手数ですが、内容を手動でコピーしてご入力ください。"
-            )
+    if not await _is_allowed_by_robots(url, transport):
+        raise PropertyImportError(
+            "このサイトはrobots.txtで自動取得を許可していないため、取得できませんでした。"
+            "お手数ですが、内容を手動でコピーしてご入力ください。"
+        )
 
-        try:
-            res = await client.get(url)
-        except httpx.HTTPError as e:
-            raise PropertyImportError(f"ページの取得に失敗しました: {e}") from e
+    try:
+        res = await safe_get(
+            url,
+            max_bytes=MAX_PAGE_BYTES,
+            timeout=FETCH_TIMEOUT_SECONDS,
+            allowed_schemes=("http", "https"),
+            headers={"User-Agent": USER_AGENT},
+            transport=transport,
+        )
+    except UnsafeURLError as e:
+        raise PropertyImportError(f"ページを取得できませんでした({e})") from e
 
-        if res.status_code >= 400:
-            raise PropertyImportError(f"ページの取得に失敗しました(status={res.status_code})。")
+    if res.status_code >= 400:
+        raise PropertyImportError(f"ページの取得に失敗しました(status={res.status_code})。")
 
-        content_type = res.headers.get("content-type", "")
-        if "text/html" not in content_type:
-            raise PropertyImportError("HTMLページではないため、内容を抽出できませんでした。")
+    if res.content_type != "text/html":
+        raise PropertyImportError("HTMLページではないため、内容を抽出できませんでした。")
 
-        text, image_urls = _extract_text_and_images(res.text, url)
-        if not text:
-            raise PropertyImportError("ページから本文を抽出できませんでした。")
+    text, image_urls = _extract_text_and_images(res.text, res.url)
+    if not text:
+        raise PropertyImportError("ページから本文を抽出できませんでした。")
 
-        return {"text": text, "image_urls": image_urls}
+    return {"text": text, "image_urls": image_urls}

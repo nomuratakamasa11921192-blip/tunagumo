@@ -71,6 +71,9 @@ async def extract_property_pdf(
     import_property_urlと対称的な設計)。反映後の解釈は通常のセッション作成フロー
     (LLMが自由記述から解釈する)に委ねる。
     """
+    # 巨大なファイルを丸ごとメモリに読み込む前に、分かっているサイズで先に弾く
+    if file.size is not None and file.size > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="ファイルサイズが大きすぎます(上限20MB)。")
     data = await file.read()
     if len(data) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="ファイルサイズが大きすぎます(上限20MB)。")

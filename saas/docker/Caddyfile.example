@@ -24,5 +24,10 @@ tunagumo.com, www.tunagumo.com {
 }
 
 app.tunagumo.com {
+    # アップロードの上限。アプリ側の最大(動画300MB)より少し大きくし、それを超える巨大な
+    # 送信をアプリに届く前に拒否する(ディスク・メモリを使い切られないようにする)。
+    request_body {
+        max_size 320MB
+    }
     reverse_proxy localhost:8000
 }

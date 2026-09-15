@@ -53,8 +53,8 @@ def _require_embedding_provider(embedding_provider: EmbeddingProvider | None) ->
     if embedding_provider is None:
         raise HTTPException(
             status_code=402,
-            detail="OpenAI APIキーが設定されていません。社内資料検索(RAG)を使うには、"
-            "アカウント設定でOpenAI APIキーを登録してください。",
+            # AIキーは運営側で持つ(2026-09-01 BYOK廃止)ため、顧客にキー登録は案内しない
+            detail="この機能は現在ご利用いただけません。お手数ですが運営までお問い合わせください。",
         )
     return embedding_provider
 
@@ -79,10 +79,11 @@ async def upload_document(
     """
     embedding_provider = _require_embedding_provider(embedding_provider)
 
-    data = await file.read()
     mime_type = (file.content_type or "").split(";")[0].strip()
-
     try:
+        # 巨大なファイルを丸ごとメモリに読み込む前に、分かっているサイズで先に弾く
+        validate_upload(mime_type=mime_type, size_bytes=file.size or 0)
+        data = await file.read()
         validate_upload(mime_type=mime_type, size_bytes=len(data))
     except IngestionValidationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

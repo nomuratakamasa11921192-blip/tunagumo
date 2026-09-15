@@ -16,19 +16,17 @@ Higgsfield時代のCDN URLと同じく「URLを知っている人だけが見ら
 
 import asyncio
 import base64
-import ipaddress
 import logging
 import random
 import re
-import socket
 import uuid
 from pathlib import Path
-from urllib.parse import urlparse
 
 import httpx
 from openai import AsyncOpenAI
 
 from src.agent import llm as llm_module
+from src.core.safe_http import UnsafeURLError, safe_get
 from src.video.paths import WORKSPACE_ROOT
 
 logger = logging.getLogger(__name__)
@@ -80,31 +78,6 @@ def compute_image_cost_usd(usage) -> float:
     return (
         text_in * TEXT_INPUT_PER_MTOK + image_in * IMAGE_INPUT_PER_MTOK + output * IMAGE_OUTPUT_PER_MTOK
     ) / 1_000_000
-
-
-def is_public_host(host: str) -> bool:
-    """ホスト名の解決先が全て公開IPならTrue(SSRF対策。マイソクPDFの画像取得でも使う)。"""
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        return False
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0].split("%")[0])
-        if not ip.is_global:
-            return False
-    return True
-
-
-def connected_to_public_address(response: httpx.Response) -> bool:
-    """実際に接続した相手のIPが公開IPならTrue。is_public_hostでの事前確認と実際の接続の
-    間にDNSの向き先を社内アドレスへ変える手口(DNSリバインディング)を防ぐため、本文を
-    読む前にこれで再確認する。接続先が取れない場合(テスト用のMockTransport等)は
-    事前確認の結果に任せてTrueを返す。"""
-    stream = response.extensions.get("network_stream")
-    addr = stream.get_extra_info("server_addr") if stream is not None else None
-    if not addr:
-        return True
-    return ipaddress.ip_address(addr[0].split("%")[0]).is_global
 
 
 class OpenAIImageClient:
@@ -193,44 +166,23 @@ class OpenAIImageClient:
 
     async def _load_source_image(self, image_url: str) -> tuple[str, bytes, str]:
         """編集元の画像を読み込む。自分で生成した画像はディスクから読み、外部URLは
-        社内ネットワーク等への不正アクセス(SSRF)を防ぐため公開IPのhttpsだけ許可する。"""
+        社内ネットワーク等への不正アクセス(SSRF)を防ぐためsafe_get(公開IPのhttpsのみ、
+        リダイレクト先も同じ確認)で取得する。"""
         if image_url.startswith(GENERATED_IMAGE_URL_PREFIX):
             path = generated_image_path(image_url.removeprefix(GENERATED_IMAGE_URL_PREFIX))
             if path is None or not path.is_file():
                 raise OpenAIImageError("編集する画像が見つかりませんでした。")
             return path.name, path.read_bytes(), "image/jpeg"
 
-        parsed = urlparse(image_url)
-        if parsed.scheme != "https" or not parsed.hostname:
-            raise OpenAIImageError("編集できる画像はhttpsで公開されている画像のみです。")
-        if not await asyncio.to_thread(is_public_host, parsed.hostname):
-            raise OpenAIImageError("この画像のURLからは読み込めません。")
-
-        # リダイレクト先が社内アドレスを指す抜け道を塞ぐため、リダイレクトは追わない。
-        # 環境変数のプロキシ設定を使うと接続先IPの再確認ができないため、trust_env=False。
-        async with httpx.AsyncClient(
-            timeout=SOURCE_FETCH_TIMEOUT_SECONDS,
-            follow_redirects=False,
-            trust_env=False,
-            transport=self._transport,
-        ) as client:
-            try:
-                async with client.stream("GET", image_url) as res:
-                    if not connected_to_public_address(res):
-                        raise OpenAIImageError("この画像のURLからは読み込めません。")
-                    if res.status_code != 200:
-                        raise OpenAIImageError("画像を読み込めませんでした。URLをご確認ください。")
-                    content_type = res.headers.get("content-type", "").split(";")[0].strip().lower()
-                    ext = _ALLOWED_SOURCE_CONTENT_TYPES.get(content_type)
-                    if ext is None:
-                        raise OpenAIImageError("対応している画像形式はJPEG・PNG・WebPです。")
-                    chunks: list[bytes] = []
-                    total = 0
-                    async for chunk in res.aiter_bytes():
-                        total += len(chunk)
-                        if total > MAX_SOURCE_IMAGE_BYTES:
-                            raise OpenAIImageError("画像のサイズが大きすぎます(上限20MB)。")
-                        chunks.append(chunk)
-            except httpx.HTTPError as e:
-                raise OpenAIImageError("画像を読み込めませんでした。URLをご確認ください。") from e
-        return f"source.{ext}", b"".join(chunks), content_type
+        try:
+            res = await safe_get(
+                image_url, max_bytes=MAX_SOURCE_IMAGE_BYTES, timeout=SOURCE_FETCH_TIMEOUT_SECONDS, transport=self._transport
+            )
+        except UnsafeURLError as e:
+            raise OpenAIImageError(str(e)) from e
+        if res.status_code != 200:
+            raise OpenAIImageError("画像を読み込めませんでした。URLをご確認ください。")
+        ext = _ALLOWED_SOURCE_CONTENT_TYPES.get(res.content_type)
+        if ext is None:
+            raise OpenAIImageError("対応している画像形式はJPEG・PNG・WebPです。")
+        return f"source.{ext}", res.content, res.content_type

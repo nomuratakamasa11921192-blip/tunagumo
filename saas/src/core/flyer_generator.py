@@ -12,12 +12,8 @@ from urllib.parse import urlparse
 import httpx
 import weasyprint
 
-from src.core.openai_image_client import (
-    GENERATED_IMAGE_URL_PREFIX,
-    connected_to_public_address,
-    generated_image_path,
-    is_public_host,
-)
+from src.core.openai_image_client import GENERATED_IMAGE_URL_PREFIX, generated_image_path
+from src.core.safe_http import connected_to_public_address, is_public_host
 
 MAX_FLYER_IMAGES = 6
 MAX_FLYER_IMAGE_BYTES = 20 * 1024 * 1024

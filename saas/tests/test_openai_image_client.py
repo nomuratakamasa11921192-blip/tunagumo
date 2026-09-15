@@ -5,7 +5,7 @@ import httpx
 import openai
 import pytest
 
-from src.core import flyer_generator, openai_image_client
+from src.core import flyer_generator, openai_image_client, safe_http
 from src.core.flyer_generator import FlyerGenerationError, _safe_url_fetcher
 from src.core.openai_image_client import (
     OpenAIImageClient,
@@ -137,7 +137,7 @@ async def test_edit_image_rejects_unsafe_source_urls(url):
 
 @_async
 async def test_edit_image_rejects_non_image_content(monkeypatch):
-    monkeypatch.setattr(openai_image_client, "is_public_host", lambda host: True)
+    monkeypatch.setattr(safe_http, "is_public_host", lambda host: True)
     transport = httpx.MockTransport(lambda req: httpx.Response(200, headers={"content-type": "text/html"}, content=b"<html>"))
     images = _FakeImages()
     with pytest.raises(OpenAIImageError, match="JPEG"):
@@ -147,7 +147,7 @@ async def test_edit_image_rejects_non_image_content(monkeypatch):
 
 @_async
 async def test_edit_image_does_not_follow_redirects(monkeypatch):
-    monkeypatch.setattr(openai_image_client, "is_public_host", lambda host: True)
+    monkeypatch.setattr(safe_http, "is_public_host", lambda host: True)
     transport = httpx.MockTransport(
         lambda req: httpx.Response(302, headers={"location": "http://127.0.0.1/secret"})
     )
@@ -196,7 +196,7 @@ class _FakeNetworkStream:
 @_async
 async def test_edit_image_rejects_when_connected_peer_is_private(monkeypatch):
     # 事前のDNS確認は公開IPでも、実際の接続先が社内アドレスなら本文を使わない(DNSリバインディング対策)
-    monkeypatch.setattr(openai_image_client, "is_public_host", lambda host: True)
+    monkeypatch.setattr(safe_http, "is_public_host", lambda host: True)
     transport = httpx.MockTransport(
         lambda req: httpx.Response(
             200,
@@ -215,7 +215,7 @@ def test_connected_to_public_address():
     def res(ip):
         return httpx.Response(200, extensions={"network_stream": _FakeNetworkStream(ip)})
 
-    assert openai_image_client.connected_to_public_address(res("142.251.153.119")) is True
-    assert openai_image_client.connected_to_public_address(res("127.0.0.1")) is False
-    assert openai_image_client.connected_to_public_address(res("169.254.169.254")) is False
-    assert openai_image_client.connected_to_public_address(httpx.Response(200)) is True
+    assert safe_http.connected_to_public_address(res("142.251.153.119")) is True
+    assert safe_http.connected_to_public_address(res("127.0.0.1")) is False
+    assert safe_http.connected_to_public_address(res("169.254.169.254")) is False
+    assert safe_http.connected_to_public_address(httpx.Response(200)) is True

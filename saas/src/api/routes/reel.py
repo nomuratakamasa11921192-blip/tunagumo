@@ -52,8 +52,7 @@ async def edit_reel_endpoint(
     if stt_provider is None:
         raise HTTPException(
             status_code=402,
-            detail="OpenAI APIキーが設定されていません。設定画面から登録してください"
-            "(字幕の自動生成に使います)。",
+            detail="この機能は現在ご利用いただけません。お手数ですが運営までお問い合わせください。",
         )
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="対応していない動画形式です(mp4/movのみ対応)。")

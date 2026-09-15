@@ -67,7 +67,7 @@ async def generate_room_tour_endpoint(
     if tts_provider is None:
         raise HTTPException(
             status_code=402,
-            detail="OpenAI APIキーが運営側で設定されていません(設定不備、ナレーション音声合成に使います)。",
+            detail="この機能は現在ご利用いただけません。お手数ですが運営までお問い合わせください。",
         )
     if not property_info.strip():
         raise HTTPException(status_code=400, detail="物件情報を入力してください。")

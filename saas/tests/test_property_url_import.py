@@ -98,3 +98,44 @@ async def test_rejects_http_error_status():
 
     with pytest.raises(PropertyImportError, match="404"):
         await import_property_url("https://example.com/gone", transport=_transport(handler))
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["http://localhost:8000/admin", "http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[::1]/"],
+)
+async def test_rejects_internal_addresses(url):
+    # 社内アドレスの中身を読み出せないこと(SSRF対策)。接続そのものをしない。
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("社内アドレスに接続してはいけない")
+
+    with pytest.raises(PropertyImportError):
+        await import_property_url(url, transport=_transport(handler))
+
+
+async def test_rejects_redirect_to_internal_address(monkeypatch):
+    from src.core import safe_http
+
+    monkeypatch.setattr(safe_http, "is_public_host", lambda host: host == "example.com")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host != "example.com":
+            raise AssertionError("社内アドレスに接続してはいけない")
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(302, headers={"location": "http://127.0.0.1:8000/admin"})
+
+    with pytest.raises(PropertyImportError):
+        await import_property_url("https://example.com/property/1", transport=_transport(handler))
+
+
+async def test_ignores_non_http_image_sources():
+    html = '<html><body><p>物件</p><img src="javascript:alert(1)"><img src="data:image/png;base64,AAAA"><img src="/ok.jpg"></body></html>'
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=html)
+
+    result = await import_property_url("https://example.com/p", transport=_transport(handler))
+    assert result["image_urls"] == ["https://example.com/ok.jpg"]
