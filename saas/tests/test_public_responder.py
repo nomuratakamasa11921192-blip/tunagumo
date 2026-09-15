@@ -29,7 +29,7 @@ async def test_keyword_hit_escalates_without_calling_llm():
     llm = FakeLLM()  # 何もqueueしない: 呼ばれたら失敗する
 
     result = await respond(
-        llm=llm, model="claude-haiku-4-5-20251001", company_name="テスト社",
+        llm=llm, model="gpt-5.6-luna", company_name="テスト社",
         message="契約について聞きたいです",
     )
 
@@ -46,7 +46,7 @@ async def test_llm_decides_to_answer():
     )
 
     result = await respond(
-        llm=llm, model="claude-haiku-4-5-20251001", company_name="テスト社", message="営業時間を教えてください"
+        llm=llm, model="gpt-5.6-luna", company_name="テスト社", message="営業時間を教えてください"
     )
 
     assert result.escalated is False
@@ -61,7 +61,7 @@ async def test_llm_decides_to_escalate():
     )
 
     result = await respond(
-        llm=llm, model="claude-haiku-4-5-20251001", company_name="テスト社", message="他社と比べてどうですか"
+        llm=llm, model="gpt-5.6-luna", company_name="テスト社", message="他社と比べてどうですか"
     )
 
     assert result.escalated is True
@@ -76,7 +76,7 @@ async def test_empty_reply_is_treated_as_escalation_even_if_flag_is_false():
     llm.queue_structured(PublicResponseDecision(should_escalate=False, reply="   ", reason="不明"))
 
     result = await respond(
-        llm=llm, model="claude-haiku-4-5-20251001", company_name="テスト社", message="何か質問です"
+        llm=llm, model="gpt-5.6-luna", company_name="テスト社", message="何か質問です"
     )
 
     assert result.escalated is True
@@ -91,7 +91,7 @@ async def test_exchange_limit_forces_escalation_without_calling_llm():
         history.append({"role": "assistant", "content": f"回答{i}"})
 
     result = await respond(
-        llm=llm, model="claude-haiku-4-5-20251001", company_name="テスト社",
+        llm=llm, model="gpt-5.6-luna", company_name="テスト社",
         message="まだ続けます", history=history,
     )
 
@@ -112,7 +112,7 @@ async def test_llm_failure_falls_back_to_escalation():
     llm.call_structured = failing_call_structured
 
     result = await respond(
-        llm=llm, model="claude-haiku-4-5-20251001", company_name="テスト社", message="質問です"
+        llm=llm, model="gpt-5.6-luna", company_name="テスト社", message="質問です"
     )
 
     assert result.escalated is True
@@ -125,7 +125,7 @@ async def test_rag_context_is_passed_through_to_prompt():
     llm.queue_structured(PublicResponseDecision(should_escalate=False, reply="回答", reason="資料に基づく"))
 
     await respond(
-        llm=llm, model="claude-haiku-4-5-20251001", company_name="テスト社",
+        llm=llm, model="gpt-5.6-luna", company_name="テスト社",
         message="質問", rag_context="<retrieved_document>公開資料の内容</retrieved_document>",
     )
 

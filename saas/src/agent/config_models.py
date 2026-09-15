@@ -56,7 +56,7 @@ class Department(BaseModel):
 
 
 class ModelPricing(BaseModel):
-    """百万トークンあたりの単価(USD)。Anthropicの価格改定に追従するため設定側に持つ(4-1)。"""
+    """百万トークンあたりの単価(USD)。OpenAIの価格改定に追従するため設定側に持つ(4-1)。"""
 
     model_config = ConfigDict(extra="forbid")
 

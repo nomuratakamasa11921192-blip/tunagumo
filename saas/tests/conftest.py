@@ -19,8 +19,8 @@ from tests.fakes import FakeLLM
 
 @pytest.fixture
 def config(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-5")
-    monkeypatch.setenv("ANTHROPIC_MODEL_LIGHT", "claude-haiku-4-5-20251001")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
+    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
     return load_config("config/default.yaml")
 
 
@@ -79,7 +79,7 @@ async def client(config):
     # web_agency.yaml準拠であることだけに依存するので、全業種に同じconfigを充てて
     # 差し替えられるようにしておく(get_app_configはテナントのindustryで引く)。
     app.state.app_configs = {industry: config for industry in INDUSTRIES}
-    # 本番はテナントごとに別のStructuredLLM(顧客自身のAnthropic APIキー)を組み立てるが、
+    # 本番はリクエストごとにStructuredLLM(運営自身のOpenAI APIキー)を組み立てるが、
     # テストでは全員同じFakeLLMを共有し、既存テストの`app.state.llm.queue_structured(...)`
     # という呼び方をそのまま使えるようにする(get_llm/get_internal_llmの両方をこれに向ける)。
     fake_llm = FakeLLM()

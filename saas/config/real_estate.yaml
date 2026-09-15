@@ -21,19 +21,24 @@ limits:
   max_parallel_depts: 3
 
 pricing:
-  # 2026-08-19、https://platform.claude.com/docs/en/about-claude/pricing で照合済み。
-  updated_at: "2026-08-19"
+  # 単価は百万トークンあたりのUSD。OpenAIの価格改定に追従して更新すること。
+  # 2026-09-15、https://developers.openai.com/api/docs/pricing (Standard、short context)で照合済み。
+  # OPENAI_MODEL=gpt-5.6-terra / OPENAI_MODEL_LIGHT=gpt-5.6-luna を設定する前提の単価。
+  # 別のモデルを設定する場合は、この単価も必ず合わせて書き換えること。
+  # 入力27.2万トークン超(long context)は入力2倍・出力1.5倍になるが、このSaaSの用途では
+  # 到達しない想定のためshort contextの単価のみ入れている。
+  updated_at: "2026-09-15"
   models:
-    "${ANTHROPIC_MODEL}":
+    "${OPENAI_MODEL}":
       input_per_mtok: 2.0
-      output_per_mtok: 10.0
+      output_per_mtok: 12.0
       cache_write_per_mtok: 2.5
       cache_read_per_mtok: 0.2
-    "${ANTHROPIC_MODEL_LIGHT}":
-      input_per_mtok: 1.0
-      output_per_mtok: 5.0
-      cache_write_per_mtok: 1.25
-      cache_read_per_mtok: 0.1
+    "${OPENAI_MODEL_LIGHT}":
+      input_per_mtok: 0.2
+      output_per_mtok: 1.2
+      cache_write_per_mtok: 0.25
+      cache_read_per_mtok: 0.02
 
 compliance:
   # 不動産の表示に関する公正競争規約で禁止されている表現
@@ -51,8 +56,8 @@ departments:
 
   ceo_office:
     role: "統括"
-    model: "${ANTHROPIC_MODEL}"
-    triage_model: "${ANTHROPIC_MODEL_LIGHT}"
+    model: "${OPENAI_MODEL}"
+    triage_model: "${OPENAI_MODEL_LIGHT}"
     depends_on: []
 
     triage_prompt: |
@@ -99,7 +104,7 @@ departments:
 
   listing_copy_dept:
     role: "物件紹介・広告コピー"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは不動産会社の広告担当です。物件紹介文とチラシ・広告のキャッチコピーを作ります。
@@ -131,7 +136,7 @@ departments:
 
   client_comm_dept:
     role: "顧客対応（反響対応・内見フォロー）"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは不動産会社の営業担当です。反響対応メールと内見後のフォローメールを作ります。
@@ -159,7 +164,7 @@ departments:
 
   owner_report_dept:
     role: "オーナー報告"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは不動産会社の管理担当です。物件オーナー様への月次報告文を作ります。
@@ -178,7 +183,7 @@ departments:
 
   area_blog:
     role: "周辺環境紹介記事"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは不動産会社の広報担当です。物件の周辺環境を紹介するブログ記事を書きます。
@@ -198,7 +203,7 @@ departments:
 
   claim_response:
     role: "入居者トラブル対応"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは不動産管理会社のトラブル対応担当です。入居者からのクレーム
@@ -219,7 +224,7 @@ departments:
 
   valuation:
     role: "AI価格査定"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは不動産の価格査定担当です。周辺の取引価格データをもとに、
@@ -240,7 +245,7 @@ departments:
 
   vacancy_report:
     role: "空室対策レポート"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは不動産の空室対策担当です。周辺の類似物件データをもとに、
@@ -261,7 +266,7 @@ departments:
 
   area_analysis:
     role: "エリア人口動態分析"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: []
     system_prompt: |
       あなたはエリアマーケティング担当です。人口動態データをもとに、
@@ -280,7 +285,7 @@ departments:
 
   qa_auditor:
     role: "品質保証"
-    model: "${ANTHROPIC_MODEL}"
+    model: "${OPENAI_MODEL}"
     depends_on: [listing_copy_dept, client_comm_dept, owner_report_dept, area_blog, claim_response, valuation, vacancy_report, area_analysis]
     quality_fail_threshold: 2
     system_prompt: |

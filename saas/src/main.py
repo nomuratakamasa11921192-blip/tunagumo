@@ -49,8 +49,8 @@ async def lifespan(app: FastAPI):
     app.state.app_configs = {
         industry: load_config(f"config/{industry}.yaml") for industry in INDUSTRIES
     }
-    # ツナグモ自身のキー(.envのANTHROPIC_API_KEY)。健全性チェック・管理画面の回帰テスト専用。
-    # 顧客の実セッションは各テナントのanthropic_api_keyを使う(src/api/deps.py get_llm)。
+    # ツナグモ自身のキー(.envのOPENAI_API_KEY)。健全性チェック・管理画面の回帰テスト専用。
+    # 顧客の実セッションもsrc/api/deps.py get_llmで同じ運営キーから都度作る。
     app.state.internal_llm = StructuredLLM()
     app.state.checkpointer = await _checkpointer_lifecycle.start()
     yield

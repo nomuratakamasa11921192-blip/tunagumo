@@ -1,4 +1,4 @@
-"""実際のAnthropic APIを使って、統括AIグラフが最低限動くことを確認する手動スモークテスト。
+"""実際のOpenAI APIを使って、統括AIグラフが最低限動くことを確認する手動スモークテスト。
 pytestスイートには含めない(実APIを叩くため、CIでは実行しない)。
 
 使い方: docker compose exec api python -m scripts.smoke_test_agent

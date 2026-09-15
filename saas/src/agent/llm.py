@@ -1,35 +1,40 @@
 import asyncio
+import json
 import random
 from typing import TypeVar
 
-import anthropic
-from anthropic import AsyncAnthropic
+import openai
+from openai import AsyncOpenAI
+from openai.lib._pydantic import to_strict_json_schema
 from pydantic import BaseModel, ValidationError
+
+from src.core.config import settings
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 MAX_API_RETRIES = 3
 BASE_BACKOFF_SECONDS = 1.0
-# tool_useのinputがスキーマに従わないことが稀にある(実際のClaude APIで、配列型の
-# フィールドに文字列を返すケースを確認済み)。API呼び出し自体は成功しているので
+# 構造化出力がスキーマに従わないことが稀にある(Anthropic時代に、配列型のフィールドに
+# 文字列を返すケースを確認済み)。OpenAIのStructured Outputs(strict)ではほぼ発火しない
+# はずだが、出力が途中で切れた場合などに備えて残す。API呼び出し自体は成功しているので
 # _create_with_retryのリトライ対象外。ここだけ別に少数回リトライする。
 MAX_VALIDATION_RETRIES = 2
 
 # 429・5xx・接続エラーは一時的なものとして指数バックオフ+ジッターでリトライする(4-3)。
 _RETRYABLE_ERRORS = (
-    anthropic.RateLimitError,
-    anthropic.InternalServerError,
-    anthropic.APIConnectionError,
-    anthropic.APITimeoutError,
+    openai.RateLimitError,
+    openai.InternalServerError,
+    openai.APIConnectionError,
+    openai.APITimeoutError,
 )
 # 401(認証)やクレジット不足(400系)は、リトライしても直らないため即座にエラーにする(4-3)。
 _NO_RETRY_ERRORS = (
-    anthropic.AuthenticationError,
-    anthropic.PermissionDeniedError,
-    anthropic.BadRequestError,
-    anthropic.NotFoundError,
-    anthropic.ConflictError,
-    anthropic.UnprocessableEntityError,
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+    openai.BadRequestError,
+    openai.NotFoundError,
+    openai.ConflictError,
+    openai.UnprocessableEntityError,
 )
 
 
@@ -45,11 +50,11 @@ class LLMFatalError(Exception):
         self.original = original
 
 
-async def _create_with_retry(client: AsyncAnthropic, **kwargs):
+async def _create_with_retry(client: AsyncOpenAI, **kwargs):
     last_error: Exception | None = None
     for attempt in range(MAX_API_RETRIES + 1):
         try:
-            return await client.messages.create(**kwargs)
+            return await client.chat.completions.create(**kwargs)
         except _NO_RETRY_ERRORS as e:
             raise LLMFatalError(f"リトライ不可のエラー: {type(e).__name__}: {e}", e) from e
         except _RETRYABLE_ERRORS as e:
@@ -67,13 +72,40 @@ async def _create_with_retry(client: AsyncAnthropic, **kwargs):
 DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
-class StructuredLLM:
-    """Claude呼び出しのラッパー。テストではこのクラスをフェイクに差し替える。"""
+def _base_request(*, model: str, system_prompt: str, user_message: str, max_tokens: int) -> dict:
+    request = {
+        "model": model,
+        # 推論モデルでは旧来のmax_tokensは受け付けられず、max_completion_tokensを使う。
+        # 推論トークンもこの上限に含まれる点に注意(OPENAI_REASONING_EFFORTで抑える)。
+        "max_completion_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+    }
+    if settings.openai_reasoning_effort:
+        request["reasoning_effort"] = settings.openai_reasoning_effort
+    return request
 
-    def __init__(self, client: AsyncAnthropic | None = None):
+
+class StructuredLLM:
+    """OpenAI呼び出しのラッパー。テストではこのクラスをフェイクに差し替える。"""
+
+    def __init__(self, client: AsyncOpenAI | None = None):
         # タイムアウトを明示しないと、ネットワークが一時的に無応答になった場合に
         # 呼び出しが無期限にハングしうる(4-3 5xx/タイムアウトのリトライが発火しない)。
-        self._client = client or AsyncAnthropic(timeout=DEFAULT_TIMEOUT_SECONDS)
+        # 既定のSDK内部リトライは切り、リトライ方針は_create_with_retryに一本化する。
+        # AsyncOpenAIはキー未設定だと生成時点で例外を出すため、注入が無い場合は
+        # 初回呼び出しまで生成を遅らせる(キー無しでもグラフの組み立て自体はできるように)。
+        self._injected_client = client
+
+    @property
+    def _client(self) -> AsyncOpenAI:
+        if self._injected_client is None:
+            self._injected_client = AsyncOpenAI(
+                api_key=settings.openai_api_key or None, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0
+            )
+        return self._injected_client
 
     async def call_structured(
         self,
@@ -84,34 +116,36 @@ class StructuredLLM:
         output_model: type[ModelT],
         max_tokens: int = 2048,
     ) -> tuple[ModelT, dict]:
-        tool_name = "submit_result"
+        # Structured Outputs(strict)。Pydanticのスキーマを、OpenAI公式SDKが
+        # chat.completions.parse()内部で使うのと同じ変換でstrict形式にして渡す。
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": output_model.__name__,
+                "schema": to_strict_json_schema(output_model),
+                "strict": True,
+            },
+        }
         last_error: Exception | None = None
 
         for attempt in range(MAX_VALIDATION_RETRIES + 1):
             response = await _create_with_retry(
                 self._client,
-                model=model,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_message}],
-                tools=[
-                    {
-                        "name": tool_name,
-                        "description": "構造化された判定結果を返す",
-                        "input_schema": output_model.model_json_schema(),
-                    }
-                ],
-                tool_choice={"type": "tool", "name": tool_name},
+                **_base_request(
+                    model=model, system_prompt=system_prompt, user_message=user_message, max_tokens=max_tokens
+                ),
+                response_format=response_format,
             )
 
-            tool_use = next((b for b in response.content if b.type == "tool_use"), None)
-            if tool_use is None:
-                last_error = LLMOutputError("構造化出力（tool_use）が返りませんでした")
+            message = response.choices[0].message if response.choices else None
+            if message is None or getattr(message, "refusal", None) or not message.content:
+                reason = getattr(message, "refusal", None) if message else None
+                last_error = LLMOutputError(f"構造化出力が返りませんでした(refusal={reason!r})")
                 continue
 
             try:
-                result = output_model.model_validate(tool_use.input)
-            except ValidationError as e:
+                result = output_model.model_validate(json.loads(message.content))
+            except (ValidationError, json.JSONDecodeError) as e:
                 last_error = e
                 continue
 
@@ -131,21 +165,33 @@ class StructuredLLM:
     ) -> tuple[str, dict]:
         response = await _create_with_retry(
             self._client,
-            model=model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
+            **_base_request(model=model, system_prompt=system_prompt, user_message=user_message, max_tokens=max_tokens),
         )
 
-        text = "".join(block.text for block in response.content if block.type == "text")
+        text = (response.choices[0].message.content or "") if response.choices else ""
         return text, _extract_usage(response)
 
 
 def _extract_usage(response) -> dict:
+    """OpenAIのusageを、cost.pyが前提とするキー名に変換する。
+
+    Anthropicと違い、OpenAIのprompt_tokensはキャッシュ読み込み・書き込み分を
+    **含んだ**総数で返る。そのまま単価を掛けると二重計上になるため、input_tokensには
+    キャッシュに関係しない分だけを入れる。
+
+    指示書作成時点ではOpenAIに「キャッシュ書き込み」課金は無い想定だったが、
+    2026-09-15にhttps://developers.openai.com/api/docs/pricing で「cache writes」列の
+    存在と、SDKのprompt_tokens_details.cache_write_tokensを確認したため、実値を使う
+    (返らないモデルでは0になる)。
+    """
     usage = response.usage
+    details = getattr(usage, "prompt_tokens_details", None)
+    cache_read = (getattr(details, "cached_tokens", 0) or 0) if details else 0
+    cache_write = (getattr(details, "cache_write_tokens", 0) or 0) if details else 0
+    prompt_tokens = usage.prompt_tokens or 0
     return {
-        "input_tokens": usage.input_tokens,
-        "output_tokens": usage.output_tokens,
-        "cache_write_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
-        "cache_read_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
+        "input_tokens": max(prompt_tokens - cache_read - cache_write, 0),
+        "output_tokens": usage.completion_tokens or 0,
+        "cache_write_tokens": cache_write,
+        "cache_read_tokens": cache_read,
     }

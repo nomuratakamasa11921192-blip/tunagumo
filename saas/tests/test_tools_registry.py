@@ -222,8 +222,8 @@ async def test_llm_output_cannot_bypass_args_schema_validation():
 def test_config_loader_rejects_unknown_tool_name(monkeypatch, tmp_path):
     from src.agent.config_loader import ConfigError, load_config
 
-    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-5")
-    monkeypatch.setenv("ANTHROPIC_MODEL_LIGHT", "claude-haiku-4-5-20251001")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
+    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
 
     yaml_text = """
 company:
@@ -242,21 +242,21 @@ compliance:
 pricing:
   updated_at: 2026-01-01
   models:
-    claude-sonnet-5:
+    gpt-5.6-terra:
       input_per_mtok: 3
       output_per_mtok: 15
 departments:
   ceo_office:
     role: 統括
-    model: claude-sonnet-5
+    model: gpt-5.6-terra
     system_prompt: x
   qa_auditor:
     role: 品質
-    model: claude-sonnet-5
+    model: gpt-5.6-terra
     system_prompt: x
   planning_dept:
     role: 企画
-    model: claude-sonnet-5
+    model: gpt-5.6-terra
     system_prompt: x
     tools: ["nonexistent_tool"]
 """
@@ -270,8 +270,8 @@ departments:
 def test_config_loader_accepts_registered_tool_name(monkeypatch, tmp_path):
     from src.agent.config_loader import load_config
 
-    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-5")
-    monkeypatch.setenv("ANTHROPIC_MODEL_LIGHT", "claude-haiku-4-5-20251001")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
+    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
     _register_sheet_read_tool()
 
     yaml_text = """
@@ -291,21 +291,21 @@ compliance:
 pricing:
   updated_at: 2026-01-01
   models:
-    claude-sonnet-5:
+    gpt-5.6-terra:
       input_per_mtok: 3
       output_per_mtok: 15
 departments:
   ceo_office:
     role: 統括
-    model: claude-sonnet-5
+    model: gpt-5.6-terra
     system_prompt: x
   qa_auditor:
     role: 品質
-    model: claude-sonnet-5
+    model: gpt-5.6-terra
     system_prompt: x
   planning_dept:
     role: 企画
-    model: claude-sonnet-5
+    model: gpt-5.6-terra
     system_prompt: x
     tools: ["sheet_read"]
 """

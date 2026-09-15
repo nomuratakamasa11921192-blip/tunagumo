@@ -22,6 +22,8 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-test-dummy-key}"
       ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-test-model}"
       ANTHROPIC_MODEL_LIGHT: "${ANTHROPIC_MODEL_LIGHT:-test-model-light}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-test-model}"
+      OPENAI_MODEL_LIGHT: "${OPENAI_MODEL_LIGHT:-test-model-light}"
       # 既定値を入れない。空のまま渡すことで「キー未設定なら402」のテストが通る
       # (.env.test.example のコメント参照)。
       OPENAI_API_KEY: "${OPENAI_API_KEY-}"

@@ -19,7 +19,7 @@ async def test_generate_script_returns_llm_output_and_usage():
         )
     )
 
-    script, usage = await generate_script(llm=llm, model="claude-sonnet-5", topic="特別休暇制度の紹介動画を作って")
+    script, usage = await generate_script(llm=llm, model="gpt-5.6-terra", topic="特別休暇制度の紹介動画を作って")
 
     assert script.title == "特別休暇制度の紹介"
     assert len(script.scenes) == 2
@@ -34,7 +34,7 @@ async def test_generate_script_includes_target_seconds_in_prompt():
         VideoScript(title="x", scenes=[VideoScene(narration="ナレーション", duration_hint_seconds=1.0)])
     )
 
-    await generate_script(llm=llm, model="claude-sonnet-5", topic="お知らせ動画", target_seconds=30)
+    await generate_script(llm=llm, model="gpt-5.6-terra", topic="お知らせ動画", target_seconds=30)
 
     assert "約30秒" in llm.structured_calls[0]["user_message"]
 
@@ -50,4 +50,4 @@ async def test_generate_script_raises_script_generation_error_on_llm_failure():
     llm.call_structured = failing_call_structured
 
     with pytest.raises(ScriptGenerationError):
-        await generate_script(llm=llm, model="claude-sonnet-5", topic="失敗するはずの依頼")
+        await generate_script(llm=llm, model="gpt-5.6-terra", topic="失敗するはずの依頼")

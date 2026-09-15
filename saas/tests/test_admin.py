@@ -71,8 +71,8 @@ async def test_update_config_rejects_invalid_yaml(client):
 
 
 async def test_update_config_validates_and_hot_reloads(client, monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-5")
-    monkeypatch.setenv("ANTHROPIC_MODEL_LIGHT", "claude-haiku-4-5-20251001")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
+    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
 
     original = await client.get("/admin/config/real_estate", headers=admin_headers())
     original_text = original.json()["yaml_text"]

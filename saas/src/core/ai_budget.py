@@ -35,7 +35,7 @@ DEFAULT_PLAN = "light"
 # 運営負担に切り替える場合は、実際のクレジット消費を計測して必ず補正すること。
 ESTIMATED_HIGGSFIELD_IMAGE_COST_USD = 0.25
 ESTIMATED_HIGGSFIELD_VIDEO_COST_USD = 2.0
-# ルームツアー動画生成1回あたりの概算コスト($)。台本生成(Anthropic、数千トークン程度)+
+# ルームツアー動画生成1回あたりの概算コスト($)。台本生成(OpenAI、数千トークン程度)+
 # ナレーション音声合成(OpenAI TTS)の見積もり。実測してから補正すること。
 ESTIMATED_ROOM_TOUR_COST_USD = 0.15
 

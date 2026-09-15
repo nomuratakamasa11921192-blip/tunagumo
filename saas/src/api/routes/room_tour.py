@@ -119,7 +119,7 @@ async def generate_room_tour_endpoint(
                 raise HTTPException(status_code=400, detail="写真1枚のサイズが大きすぎます(上限20MB)。")
             image_paths.append(dest_rel)
 
-    model = settings.anthropic_model_light or settings.anthropic_model
+    model = settings.openai_model_light or settings.openai_model
 
     try:
         result_path = await generate_room_tour(

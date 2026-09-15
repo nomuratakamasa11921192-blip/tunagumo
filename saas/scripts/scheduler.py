@@ -14,7 +14,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 from src.agent.checkpointer import CheckpointerLifecycle
 from src.agent.config_loader import load_config
@@ -38,8 +38,8 @@ WEB_CHAT_CLEANUP_INTERVAL_SECONDS = 60 * 60  # Phase 16-4: 1時間ごとに24時
 
 
 def _llm_factory() -> StructuredLLM:
-    # 運営(ツナグモ)自身のAnthropic APIキーでクライアントを作る(2026-09-01、BYOK廃止)。
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=DEFAULT_TIMEOUT_SECONDS)
+    # 運営(ツナグモ)自身のOpenAI APIキーでクライアントを作る(2026-09-01 BYOK廃止、2026-09-15 OpenAIへ移行)。
+    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0)
     return StructuredLLM(client=client)
 
 

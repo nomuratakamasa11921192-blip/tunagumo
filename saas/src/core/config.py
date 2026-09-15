@@ -9,12 +9,20 @@ class Settings(BaseSettings):
     # AI利用料を負担する方式に切り替えた(src/api/deps.pyのget_llm等参照)。
     # 月間予算上限(src/core/ai_budget.py)がAnthropic Console側の顧客自身の
     # 利用上限に代わる主防御層になる。
+    # 2026-09-15: 文章生成をAnthropicからOpenAIへ移行した(docs/task_openai_migration.md)。
+    # anthropic_*は読まれなくなったが、切り戻しに備えて削除せず残す。
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     higgsfield_api_key_id: str = ""
     higgsfield_api_key_secret: str = ""
     anthropic_model: str = ""
     anthropic_model_light: str = ""
+    # 文章生成に使うOpenAIのモデル(config/*.yamlの${OPENAI_MODEL}等と同じ値)。
+    openai_model: str = ""
+    openai_model_light: str = ""
+    # 推論モデルの思考量(none/low/medium/high等)。推論トークンは出力トークンとして課金され、
+    # max_completion_tokensの上限も消費するため、既定は控えめにする。空なら送らない。
+    openai_reasoning_effort: str = "low"
     admin_api_key: str = ""
     # 顧客のAnthropic APIキーなどをDBに保存する際の暗号化鍵(Fernet)。
     # 生成方法: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

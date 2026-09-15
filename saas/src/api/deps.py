@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 
 from src.agent.config_models import AppConfig
 from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
@@ -34,7 +34,7 @@ def resolve_app_config(request: Request, industry: str) -> AppConfig:
 
 
 def get_internal_llm(request: Request) -> StructuredLLM:
-    """ツナグモ自身のANTHROPIC_API_KEY(.env)を使うLLM。起動時ヘルスチェックや
+    """ツナグモ自身のOPENAI_API_KEY(.env)を使うLLM。起動時ヘルスチェックや
     管理画面の回帰テストなど、特定の顧客テナントに紐付かない用途にのみ使う。"""
     return request.app.state.internal_llm
 
@@ -122,7 +122,7 @@ async def get_app_config(
 
 
 async def get_llm(tenant: Tenant = Depends(get_current_tenant)) -> StructuredLLM:
-    """ツナグモ自身のAnthropic APIキーでLLMクライアントを作る。
+    """ツナグモ自身のOpenAI APIキーでLLMクライアントを作る(2026-09-15、Anthropicから移行)。
 
     2026-09-01: 「顧客自身のAPIキーを使う(BYOK)」方式から「運営がAI利用料を負担し、
     月額料金に含める」方式へ全面移行した(旧docs/ai_org_spec_master.md付録Dの前提を
@@ -130,12 +130,12 @@ async def get_llm(tenant: Tenant = Depends(get_current_tenant)) -> StructuredLLM
     あるだけ)。この切り替えにより失われた「顧客自身のAnthropic Console上の利用上限」
     という防御層は、src/core/ai_budget.py の月間予算上限で代替する。
     """
-    if not settings.anthropic_api_key:
+    if not settings.openai_api_key:
         raise HTTPException(
             status_code=503,
-            detail="Anthropic APIキーが運営側で設定されていません(設定不備)。",
+            detail="OpenAI APIキーが運営側で設定されていません(設定不備)。",
         )
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=DEFAULT_TIMEOUT_SECONDS)
+    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0)
     return StructuredLLM(client=client)
 
 

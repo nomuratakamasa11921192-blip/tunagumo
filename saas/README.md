@@ -5,7 +5,7 @@ cd saas
 cp .env.example .env
 ```
 
-`.env` に `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` / `ANTHROPIC_MODEL_LIGHT`（Phase 2の分類など軽量処理用）を入れる。`DATABASE_URL` は docker-compose が自動で設定するので空のままでよい。
+`.env` に `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_MODEL_LIGHT`（Phase 2の分類など軽量処理用）を入れる（2026-09-15にAnthropicから移行）。`DATABASE_URL` は docker-compose が自動で設定するので空のままでよい。
 
 ```
 cd docker
@@ -47,7 +47,7 @@ docker compose exec api pytest -v
 3. `POST /api/sessions/{id}/answer` に`{"answer": {...}}`を送ると再開する
 4. 最終的に`AWAITING_APPROVAL`（承認要求サマリ）か`COMPLETED`（挨拶等）になる
 
-Anthropic APIへの応答が遅い場合、1回の処理に数十秒〜数分かかることがある(タイムアウトは60秒+リトライ)。
+OpenAI APIの応答が遅い場合、1回の処理に数十秒〜数分かかることがある(タイムアウトは60秒+リトライ)。
 
 ## テナント内ユーザー管理・多段階承認(Phase 13の前提+Phase 13、2026-08-26)
 
@@ -164,7 +164,7 @@ VPS契約・SSH鍵の登録・ドメイン取得は済んでいる前提(`docker
    `saas/docker/.env`の両方(下記4・5参照)を上書き・削除しないこと**。既存デプロイを更新する場合は、
    コード一式(`.env`系を除く)だけを差し替え、この2つの`.env`は旧ディレクトリからコピーして引き継ぐ
 4. `docker/.env.production.template` の内容を `/opt/tsunagumo/saas/.env` として配置する。
-   `DATABASE_URL`・`ANTHROPIC_API_KEY`(ツナグモ自身の分)・`SAAS_PUBLIC_URL`(実ドメイン)を埋める
+   `DATABASE_URL`・`OPENAI_API_KEY`(ツナグモ自身の分)・`SAAS_PUBLIC_URL`(実ドメイン)を埋める
 5. **(重要)** `saas/docker/.env` を新規に作成し、`POSTGRES_PASSWORD=<実際のDB用パスワード>` の
    1行だけを書く(4の`../.env`とは別ファイル。`docker-compose.prod.yml`の`${POSTGRES_PASSWORD}`
    変数展開専用で、`docker compose`がカレントディレクトリの`.env`を自動で読む仕組みを利用している)。

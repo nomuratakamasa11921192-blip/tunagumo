@@ -14,6 +14,7 @@ from src.agent.public_responder import MAX_INPUT_LENGTH, PublicResponderResult
 from src.core.crypto import encrypt_secret
 from src.core.db import async_session_factory
 from src.core.models import Tenant, WebChatRequestLog, WebChatSession
+from tests.fakes import FakeEmbeddingProvider
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -46,6 +47,22 @@ def _mock_respond(monkeypatch):
         return PublicResponderResult(reply="ご質問ありがとうございます。", escalated=False, reason="test", usage={})
 
     monkeypatch.setattr(chat_module, "respond", fake_respond)
+
+
+@pytest.fixture(autouse=True)
+def _operator_openai_key(monkeypatch):
+    """2026-09-15: 文章生成もOpenAIへ移行したため、運営側キーの有無はopenai_api_keyで判定する。
+    テスト用envではOPENAI_API_KEYを意図的に空にしている(402テストのため)ので、ここで
+    ダミー値を入れる。実APIを叩かないよう、埋め込みと検索もフェイクに差し替える。"""
+    from src.core.config import settings
+
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test-dummy")
+    monkeypatch.setattr(chat_module, "OpenAIEmbeddingProvider", lambda api_key: FakeEmbeddingProvider())
+
+    async def fake_hybrid_search(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(chat_module, "hybrid_search", fake_hybrid_search)
 
 
 async def test_unknown_public_key_returns_404(client):
@@ -137,12 +154,13 @@ async def test_session_continues_across_requests(client, tenant):
         await _cleanup(tenant["id"])
 
 
-async def test_missing_anthropic_key_falls_back_to_busy_message_without_error(client, tenant, monkeypatch):
+async def test_missing_operator_openai_key_falls_back_to_busy_message_without_error(client, tenant, monkeypatch):
     # 2026-09-01: BYOK廃止によりAI呼び出しは運営(ツナグモ)自身のキーで行うため、
-    # ここでのフェイルセーフは運営側キー未設定(settings.anthropic_api_key)をシミュレートする。
+    # ここでのフェイルセーフは運営側キー未設定(settings.openai_api_key)をシミュレートする
+    # (2026-09-15、文章生成をOpenAIへ移行)。
     from src.core.config import settings
 
-    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    monkeypatch.setattr(settings, "openai_api_key", "")
 
     public_key = await _configure_widget(tenant["id"])
     try:

@@ -21,8 +21,8 @@ from src.core.config import settings
 
 @pytest.fixture
 def real_configs(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_MODEL", "claude-sonnet-5")
-    monkeypatch.setenv("ANTHROPIC_MODEL_LIGHT", "claude-haiku-4-5-20251001")
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
+    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
     return {
         "web_agency": load_config("config/web_agency.yaml"),
         "real_estate": load_config("config/real_estate.yaml"),
@@ -62,10 +62,10 @@ def test_legal_config_forbids_document_drafting_language_in_prompts(real_configs
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_llm_builds_client_from_operators_own_anthropic_key(monkeypatch):
+async def test_get_llm_builds_client_from_operators_own_openai_key(monkeypatch):
     """2026-09-01、BYOK廃止: AI利用料は運営(ツナグモ)が負担するため、テナントの
-    キーではなくsettings.anthropic_api_key(運営自身のキー)からクライアントを作る。"""
-    monkeypatch.setattr(settings, "anthropic_api_key", "sk-ant-api03-operatorkey00000000")
+    キーではなくsettings.openai_api_key(運営自身のキー)からクライアントを作る(2026-09-15、Anthropicから移行)。"""
+    monkeypatch.setattr(settings, "openai_api_key", "sk-proj-operatorkey00000000")
     tenant = SimpleNamespace()  # テナント自身のキーはもう参照されない
     llm = await get_llm(tenant=tenant)
     assert isinstance(llm, StructuredLLM)
@@ -73,7 +73,7 @@ async def test_get_llm_builds_client_from_operators_own_anthropic_key(monkeypatc
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_llm_rejects_when_operator_key_unconfigured(monkeypatch):
-    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    monkeypatch.setattr(settings, "openai_api_key", "")
     tenant = SimpleNamespace()
     with pytest.raises(HTTPException) as exc_info:
         await get_llm(tenant=tenant)

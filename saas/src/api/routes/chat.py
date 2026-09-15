@@ -3,7 +3,7 @@
 **認証はBearerトークンではない**(匿名の訪問者からのリクエストのため)。代わりに、
 ウィジェット埋め込みタグのdata-key(tenant.web_widget_public_key、ブラウザに出しても
 問題ない公開鍵)とOriginヘッダの組み合わせで、どのテナント宛かを識別・検証する。
-Anthropic/OpenAIキーは一切ブラウザに渡らない(16-6)。
+OpenAIキーは一切ブラウザに渡らない(16-6)。
 
 各テナントの許可オリジンが異なるため、静的なCORSMiddlewareでは扱えない。この
 ルートだけ手動でCORSヘッダを組み立てる(OPTIONSプリフライトも自前で処理する)。
@@ -11,7 +11,7 @@ Anthropic/OpenAIキーは一切ブラウザに渡らない(16-6)。
 
 import uuid
 
-from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -117,8 +117,8 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
 
         session = await get_or_create_session(db, tenant_id=tenant.id, session_id=req.session_id)
 
-        if not settings.anthropic_api_key:
-            # 運営側のAnthropicキーが未設定(設定不備)の場合のフェイルセーフとして
+        if not settings.openai_api_key:
+            # 運営側のOpenAIキーが未設定(設定不備)の場合のフェイルセーフとして
             # エスカレーション扱いにする(AIを呼ばずに定型文で終える)
             await log_request(db, tenant_id=tenant.id, ip_address=ip_address)
             await append_exchange(
@@ -127,27 +127,27 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
             return ChatResponse(session_id=session.id, reply=BUSY_MESSAGE, escalated=True)
 
         app_config = resolve_app_config(request, tenant.industry)
-        model = settings.anthropic_model_light or settings.anthropic_model
+        model = settings.openai_model_light or settings.openai_model
         llm = StructuredLLM(
-            client=AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=DEFAULT_TIMEOUT_SECONDS)
+            client=AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0)
         )
 
         rag_context = ""
-        if settings.openai_api_key:
-            try:
-                embedding_provider = OpenAIEmbeddingProvider(api_key=settings.openai_api_key)
-                vectors = await embedding_provider.embed([message])
-                results = await hybrid_search(
-                    db,
-                    tenant_id=tenant.id,
-                    query_text=message,
-                    query_embedding=vectors[0],
-                    index_scope="public",
-                    top_k=3,
-                )
-                rag_context = render_retrieved_context(results)
-            except EmbeddingError:
-                rag_context = ""  # 検索失敗は無視して空の文脈で続行(社外向けなので静かに縮退)
+        # 埋め込みも文章生成と同じ運営のOpenAIキーを使う(上で設定済みを確認済み)
+        try:
+            embedding_provider = OpenAIEmbeddingProvider(api_key=settings.openai_api_key)
+            vectors = await embedding_provider.embed([message])
+            results = await hybrid_search(
+                db,
+                tenant_id=tenant.id,
+                query_text=message,
+                query_embedding=vectors[0],
+                index_scope="public",
+                top_k=3,
+            )
+            rag_context = render_retrieved_context(results)
+        except EmbeddingError:
+            rag_context = ""  # 検索失敗は無視して空の文脈で続行(社外向けなので静かに縮退)
 
         result = await respond(
             llm=llm,

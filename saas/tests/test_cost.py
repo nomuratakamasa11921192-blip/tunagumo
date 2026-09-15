@@ -3,8 +3,8 @@ from src.agent.cost import compute_cost_usd
 
 def test_compute_cost_usd_matches_pricing_table(config):
     usage = {"input_tokens": 1000, "output_tokens": 500}
-    cost = compute_cost_usd("claude-sonnet-5", usage, config.pricing)
-    rate = config.pricing.models["claude-sonnet-5"]
+    cost = compute_cost_usd("gpt-5.6-terra", usage, config.pricing)
+    rate = config.pricing.models["gpt-5.6-terra"]
     expected = (1000 * rate.input_per_mtok + 500 * rate.output_per_mtok) / 1_000_000
     assert cost == expected
 
