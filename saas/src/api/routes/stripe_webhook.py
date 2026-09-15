@@ -16,12 +16,13 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.db import get_db
-from src.core.models import Tenant
-from src.core.stripe_client import ADDON_CREDIT_USD
+from src.core.models import StripeWebhookEvent, Tenant
+from src.core.stripe_client import ADDON_CREDIT_USD, ADDON_METADATA_KEY, ADDON_METADATA_VALUE
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,6 @@ async def _add_addon_credit(db: AsyncSession, customer_id: str, credit_usd: floa
         logger.info("stripe webhook: no tenant for customer_id=%s (addon credit ignored)", customer_id)
         return
     tenant.addon_credit_usd += credit_usd
-    await db.commit()
     logger.info(
         "stripe webhook: tenant_id=%s addon_credit_usd += %.2f (customer_id=%s)",
         tenant.id,
@@ -79,7 +79,6 @@ async def _set_subscription_active(db: AsyncSession, customer_id: str, active: b
         logger.info("stripe webhook: no tenant for customer_id=%s (ignored)", customer_id)
         return
     tenant.subscription_active = active
-    await db.commit()
     logger.info(
         "stripe webhook: tenant_id=%s subscription_active=%s (customer_id=%s)",
         tenant.id,
@@ -101,14 +100,32 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)) -
     _verify_signature(raw_body, signature_header, settings.stripe_webhook_secret)
 
     event = json.loads(raw_body)
+    event_id = event.get("id")
     event_type = event.get("type", "")
     data_object = event.get("data", {}).get("object", {})
+    if not event_id:
+        raise HTTPException(status_code=400, detail="イベントIDがありません")
+
+    # Stripeは同じイベントを複数回送ることがあるため、処理済みなら何もしない。
+    # 記録と処理結果は同じトランザクションでcommitするので、途中で失敗すれば記録も残らず、
+    # Stripeの再送で改めて処理される。同時に届いた場合も主キー制約で片方だけが通る。
+    db.add(StripeWebhookEvent(event_id=event_id, event_type=event_type))
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        logger.info("stripe webhook: duplicate event_id=%s type=%s (ignored)", event_id, event_type)
+        return {"received": True, "duplicate": True}
 
     if event_type == "checkout.session.completed":
         customer_id = data_object.get("customer")
-        # payment_status == "paid"の場合のみ加算する(無料トライアルmodeの
-        # checkoutなど、支払いが伴わないセッションでは加算しない)。
-        if customer_id and data_object.get("payment_status") == "paid":
+        # 追加AI予算チケット(目印付きの一回払い)の支払い完了時だけ加算する。月額契約の
+        # 申込み(mode=subscription)や無料トライアル(payment_status!=paid)では加算しない。
+        is_addon = (
+            data_object.get("mode") == "payment"
+            and (data_object.get("metadata") or {}).get(ADDON_METADATA_KEY) == ADDON_METADATA_VALUE
+        )
+        if customer_id and is_addon and data_object.get("payment_status") == "paid":
             await _add_addon_credit(db, customer_id, ADDON_CREDIT_USD)
     elif event_type == "customer.subscription.deleted":
         customer_id = data_object.get("customer")
@@ -124,4 +141,5 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)) -
     else:
         logger.info("stripe webhook: unhandled event type=%s (ignored)", event_type)
 
+    await db.commit()
     return {"received": True}

@@ -324,6 +324,19 @@ class LineWebhookEvent(Base):
     received_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 
+class StripeWebhookEvent(Base):
+    """Stripe Webhookイベントの冪等性処理(2026-09-15)。Stripeは同じイベントを複数回
+    送ることがある(公式ドキュメントで明言)ため、処理済みのevent_idを記録し、主キーの
+    UNIQUE制約で二重処理(追加AI予算の二重加算等)を防ぐ。LineWebhookEventと同じ考え方。
+    テナントに紐づかないイベントもあるためtenant_idは持たない(管理用のget_db接続で扱う)。"""
+
+    __tablename__ = "stripe_webhook_events"
+
+    event_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(100))
+    received_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
 class TenantUserToken(Base):
     """TenantUserのログインセッション(不透明トークン、テナントAPIキーと同じくハッシュ照合)。
     複数端末からの同時ログインを許すため、TenantUser 1人につき複数行持てる。"""

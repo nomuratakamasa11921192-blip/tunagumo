@@ -16,6 +16,8 @@ async def test_create_addon_checkout_session_returns_url(monkeypatch):
         assert data["customer"] == "cus_test123"
         assert data["mode"] == "payment"
         assert data["line_items[0][price_data][unit_amount]"] == str(ADDON_PRICE_JPY)
+        # Webhook側が追加AI予算の購入だと判別するための目印
+        assert data["metadata[tsunagumo_purpose]"] == "addon_ai_credit"
         request = httpx.Request("POST", url)
         return httpx.Response(200, request=request, json={"url": "https://checkout.stripe.com/session/abc"})
 

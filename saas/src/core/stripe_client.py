@@ -15,6 +15,10 @@ FETCH_TIMEOUT_SECONDS = 15.0
 # 従量課金オプションと同じ考え方)。
 ADDON_PRICE_JPY = 25000
 ADDON_CREDIT_USD = 5.0
+# 追加AI予算チケットのCheckoutセッションに付ける目印(metadata)。Webhook側はこの目印が
+# 付いた一回払いの完了だけを加算対象にする(月額契約の申込み等で誤って加算しないため)。
+ADDON_METADATA_KEY = "tsunagumo_purpose"
+ADDON_METADATA_VALUE = "addon_ai_credit"
 
 
 class StripeClientError(Exception):
@@ -37,6 +41,7 @@ async def create_addon_checkout_session(
         "line_items[0][price_data][currency]": "jpy",
         "line_items[0][price_data][unit_amount]": str(ADDON_PRICE_JPY),
         "line_items[0][price_data][product_data][name]": "ツナグモ 追加AI予算チケット",
+        f"metadata[{ADDON_METADATA_KEY}]": ADDON_METADATA_VALUE,
     }
 
     async with httpx.AsyncClient(auth=(api_key, ""), timeout=FETCH_TIMEOUT_SECONDS) as client:

@@ -75,3 +75,6 @@
 [Claude] テナント分離(RLS)・埋め込みチャット(Origin検証・レート制限・日次コスト上限)・Stripe/LINE署名検証・管理者キー比較は点検し問題なし。チャットのIP判定がCaddy経由前提である旨を明記。
 2026-09-15 [Claude] 全レスポンスにセキュリティヘッダー(クリックジャッキング対策のX-Frame-Options/frame-ancestors、nosniff、Referrer-Policy、本番のみHSTS)を追加し、本番ではAPI仕様書(/docs・/redoc・/openapi.json)を非公開に。
 [Claude] 画面のXSSを点検し問題なし(ウィジェットはtextContent、Markdown表示は先にエスケープ)。reinfolibは9/3に承認済みだがキー記載メールがGmailに無いため、事務局への再送依頼の下書きを作成。テスト488件成功(失敗22件は既知の環境要因)。
+2026-09-15 [Claude] 【課金】Stripe Webhookに重複対策が無く、Stripeが同じ通知を再送すると追加AI予算が二重加算される不具合を修正(stripe_webhook_eventsテーブル・マイグレーション0021を追加し、処理済みevent_idを主キー制約で記録)。
+[Claude] 支払い完了の通知なら何でも$5加算していたため、追加予算チケットのCheckoutに目印(metadata)を付け、目印付きの一回払いだけを加算対象に。テスト5件追加、492件成功(失敗22件は既知の環境要因)。
+[Claude] 本番反映時は `docker compose exec api alembic upgrade head` が必要。reinfolibのキー再送依頼メールをユーザー了承のうえ送信。
