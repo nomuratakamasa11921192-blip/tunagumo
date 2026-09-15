@@ -9,6 +9,7 @@ OpenAIキーは一切ブラウザに渡らない(16-6)。
 ルートだけ手動でCORSヘッダを組み立てる(OPTIONSプリフライトも自前で処理する)。
 """
 
+import logging
 import uuid
 
 from openai import AsyncOpenAI
@@ -18,7 +19,7 @@ from sqlalchemy import select
 
 from src.agent.cost import compute_cost_usd
 from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
-from src.agent.public_responder import MAX_INPUT_LENGTH, respond
+from src.agent.public_responder import MAX_INPUT_LENGTH, emergency_result, respond
 from src.api.deps import resolve_app_config
 from src.channels.web import (
     BUSY_MESSAGE,
@@ -32,6 +33,7 @@ from src.channels.web import (
     get_or_create_session,
     log_request,
 )
+from src.channels.inquiries import append_to_open_inquiry, notify_escalation, record_escalation
 from src.core.config import settings
 from src.core.db import async_session_factory, tenant_scoped_session_factory
 from src.core.models import Tenant
@@ -39,6 +41,8 @@ from src.core.tenant_context import set_tenant_scope
 from src.rag.embeddings import EmbeddingError, OpenAIEmbeddingProvider
 from src.rag.prompt_safety import render_retrieved_context
 from src.rag.search import hybrid_search
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -111,13 +115,27 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
 
         try:
             await check_rate_limit(db, tenant_id=tenant.id, ip_address=ip_address)
-            await check_daily_cost_cap(db, tenant_id=tenant.id)
-        except (RateLimitedError, DailyCostCapExceededError):
+        except RateLimitedError:
             await log_request(db, tenant_id=tenant.id, ip_address=ip_address)
             session = await get_or_create_session(db, tenant_id=tenant.id, session_id=req.session_id)
             return ChatResponse(session_id=session.id, reply=BUSY_MESSAGE, escalated=False)
 
         session = await get_or_create_session(db, tenant_id=tenant.id, session_id=req.session_id)
+
+        # 緊急(火災・ガス・水漏れ等)はAIを使わない定型の安全案内なので、日次コスト上限や
+        # 運営キーの不備でAIを呼べない時でも返し、担当者へ通知する(2026-09-15)。
+        emergency = emergency_result(message, emergency_phone=tenant.emergency_contact_phone)
+        if emergency is not None:
+            await log_request(db, tenant_id=tenant.id, ip_address=ip_address)
+            await append_exchange(db, session=session, user_message=message, reply=emergency.reply, escalated=True)
+            await _escalate(db, tenant, session.id, message, emergency)
+            return ChatResponse(session_id=session.id, reply=emergency.reply, escalated=True)
+
+        try:
+            await check_daily_cost_cap(db, tenant_id=tenant.id)
+        except DailyCostCapExceededError:
+            await log_request(db, tenant_id=tenant.id, ip_address=ip_address)
+            return ChatResponse(session_id=session.id, reply=BUSY_MESSAGE, escalated=False)
 
         if not settings.openai_api_key:
             # 運営側のOpenAIキーが未設定(設定不備)の場合のフェイルセーフとして
@@ -158,6 +176,7 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
             message=message,
             history=session.messages,
             rag_context=rag_context,
+            emergency_phone=tenant.emergency_contact_phone,
         )
 
         cost = compute_cost_usd(model, result.usage, app_config.pricing) if result.usage else 0.0
@@ -165,5 +184,32 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
         await append_exchange(
             db, session=session, user_message=message, reply=result.reply, escalated=result.escalated
         )
+        if result.escalated:
+            await _escalate(db, tenant, session.id, message, result)
+        else:
+            await append_to_open_inquiry(
+                db, tenant_id=tenant.id, channel="web", user_message=message, reply=result.reply,
+                web_chat_session_id=session.id,
+            )
 
         return ChatResponse(session_id=session.id, reply=result.reply, escalated=result.escalated)
+
+
+async def _escalate(db, tenant: Tenant, session_id: uuid.UUID, message: str, result) -> None:
+    """担当者へ回す問い合わせとして記録し、必要ならメールで通知する。通知の失敗で
+    訪問者への応答を止めないよう、例外はログに残して握りつぶす。"""
+    inquiry, is_new, became_urgent = await record_escalation(
+        db,
+        tenant_id=tenant.id,
+        channel="web",
+        user_message=message,
+        reply=result.reply,
+        reason=result.reason,
+        urgency=result.urgency,
+        category=result.category,
+        web_chat_session_id=session_id,
+    )
+    try:
+        await notify_escalation(tenant, inquiry, is_new=is_new, became_urgent=became_urgent)
+    except Exception:  # noqa: BLE001
+        logger.exception("問い合わせ通知に失敗しました: inquiry_id=%s", inquiry.id)

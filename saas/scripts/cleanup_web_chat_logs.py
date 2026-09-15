@@ -15,9 +15,13 @@ from sqlalchemy import delete
 
 from src.channels.web import SESSION_TTL_HOURS
 from src.core.db import async_session_factory
-from src.core.models import WebChatRequestLog, WebChatSession
+from src.core.models import Inquiry, WebChatRequestLog, WebChatSession
 
 REQUEST_LOG_RETENTION_HOURS = 25
+# 2026-09-15: 担当者へ回した問い合わせ(inquiries)の保持期間。個人情報を含みうるため、
+# 対応済みは30日、未対応のまま放置されたものも90日で削除する。
+RESOLVED_INQUIRY_RETENTION_DAYS = 30
+MAX_INQUIRY_RETENTION_DAYS = 90
 
 
 async def cleanup_web_chat_logs() -> dict:
@@ -28,16 +32,29 @@ async def cleanup_web_chat_logs() -> dict:
         log_cutoff = datetime.utcnow() - timedelta(hours=REQUEST_LOG_RETENTION_HOURS)
         logs_result = await db.execute(delete(WebChatRequestLog).where(WebChatRequestLog.created_at < log_cutoff))
 
+        now = datetime.utcnow()
+        inquiries_result = await db.execute(
+            delete(Inquiry).where(
+                ((Inquiry.status == "resolved") & (Inquiry.updated_at < now - timedelta(days=RESOLVED_INQUIRY_RETENTION_DAYS)))
+                | (Inquiry.created_at < now - timedelta(days=MAX_INQUIRY_RETENTION_DAYS))
+            )
+        )
+
         await db.commit()
 
-    return {"deleted_sessions": sessions_result.rowcount, "deleted_request_logs": logs_result.rowcount}
+    return {
+        "deleted_sessions": sessions_result.rowcount,
+        "deleted_request_logs": logs_result.rowcount,
+        "deleted_inquiries": inquiries_result.rowcount,
+    }
 
 
 async def main() -> None:
     result = await cleanup_web_chat_logs()
     print(
         f"削除: web_chat_sessions {result['deleted_sessions']}件, "
-        f"web_chat_request_log {result['deleted_request_logs']}件"
+        f"web_chat_request_log {result['deleted_request_logs']}件, "
+        f"inquiries {result['deleted_inquiries']}件"
     )
 
 

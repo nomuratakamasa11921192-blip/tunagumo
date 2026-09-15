@@ -55,6 +55,10 @@ class Tenant(Base):
     # 両方揃って初めてそのテナントのLINE連携が有効になる(src/channels/line.py参照)。
     line_channel_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     line_channel_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 2026-09-15: 問い合わせ一次受け。担当者へのエスカレーション通知の送り先(未設定ならemailを使う)と、
+    # 緊急時の自動返信に載せる緊急連絡先の電話番号(src/agent/inquiry_triage.py)。
+    inquiry_notify_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    emergency_contact_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     # 2026-09-01: Stripeサブスクの状態と連動してアクセスを止めるための列。
     # stripe_customer_idが未設定(=Stripeと紐付いていない、管理者が手動発行したテナント等)の
     # 場合はsubscription_activeのデフォルトTrueのまま何もチェックしない。Stripe Webhookが
@@ -272,6 +276,35 @@ class WebChatSession(Base):
     escalated: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     last_activity_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    # 2026-09-15: LINEの会話も同じ仕組みで持つ。channel="line"の場合、external_user_idにLINEのuserIdが入る
+    # (webは匿名の訪問者なので常にNULL)。保持期間(24時間)はwebと同じ。
+    channel: Mapped[str] = mapped_column(String(10), default="web", server_default="web")
+    external_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
+
+class Inquiry(Base):
+    """2026-09-15: AIが担当者へ回した問い合わせ(エスカレーション)。担当者が対応を終えるまで
+    会話を残し、状態を管理する。web_chat_sessionsは24時間で消えるため、別テーブルにしている。
+    個人情報を含みうるので、対応済みは30日、未対応でも90日で自動削除する
+    (scripts/cleanup_web_chat_logs.py)。"""
+
+    __tablename__ = "inquiries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
+    channel: Mapped[str] = mapped_column(String(10))  # web / line
+    # LINEのuserId(担当者が画面から返信する時のプッシュ先)。webはNULL
+    external_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    web_chat_session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    urgency: Mapped[str] = mapped_column(String(10), default="normal")  # urgent / normal
+    category: Mapped[str] = mapped_column(String(50), default="その他")
+    status: Mapped[str] = mapped_column(String(20), default="open")  # open / in_progress / resolved
+    reason: Mapped[str] = mapped_column(Text, default="")
+    # [{"role": "user"|"assistant"|"staff", "content": "...", "at": ISO8601}]
+    messages: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    resolved_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class WebChatRequestLog(Base):

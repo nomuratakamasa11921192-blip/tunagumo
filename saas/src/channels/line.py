@@ -88,3 +88,51 @@ async def reply_to_line(*, access_token: str, reply_token: str, text: str) -> bo
     except httpx.HTTPError as e:
         logger.error("LINE返信中に通信エラーが発生しました: %s", e)
         return False
+
+
+async def push_to_line(*, access_token: str, user_id: str, text: str) -> bool:
+    """担当者が画面から返信する時など、replyTokenが無い(期限切れの)場合のプッシュ送信。
+    LINEのプッシュメッセージは月間の無料枠を超えると従量課金になる(仕様書15-5)。送信できたらTrue。"""
+    truncated = text if len(text) <= MAX_REPLY_LENGTH else text[:MAX_REPLY_LENGTH] + "…"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            res = await client.post(
+                LINE_PUSH_URL,
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"},
+                json={"to": user_id, "messages": [{"type": "text", "text": truncated}]},
+            )
+        if res.status_code >= 400:
+            logger.error("LINEプッシュ送信に失敗しました(status=%s)", res.status_code)
+            return False
+        return True
+    except httpx.HTTPError as e:
+        logger.error("LINEプッシュ送信中に通信エラーが発生しました: %s", e)
+        return False
+
+
+async def get_or_create_line_session(db: AsyncSession, *, tenant_id, user_id: str):
+    """LINEユーザーごとの会話(直近24時間分の履歴を応答に使う)。webと同じweb_chat_sessionsに
+    channel="line"で持つので、保持期間の自動削除も同じジョブで行われる。"""
+    from datetime import datetime, timedelta
+
+    from src.channels.web import SESSION_TTL_HOURS
+    from src.core.models import WebChatSession
+
+    result = await db.execute(
+        select(WebChatSession)
+        .where(
+            WebChatSession.tenant_id == tenant_id,
+            WebChatSession.channel == "line",
+            WebChatSession.external_user_id == user_id,
+            WebChatSession.created_at >= datetime.utcnow() - timedelta(hours=SESSION_TTL_HOURS),
+        )
+        .order_by(WebChatSession.created_at.desc())
+        .limit(1)
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        session = WebChatSession(tenant_id=tenant_id, messages=[], channel="line", external_user_id=user_id)
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+    return session

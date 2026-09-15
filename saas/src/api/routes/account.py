@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,6 +94,81 @@ async def update_own_higgsfield_key(
     row.higgsfield_api_key_id = encrypt_secret(req.higgsfield_key_id)
     row.higgsfield_api_key_secret = encrypt_secret(req.higgsfield_key_secret)
     await db.commit()
+
+
+class InquirySettingsResponse(BaseModel):
+    notify_email: str | None
+    emergency_phone: str | None
+    line_configured: bool
+    # LINE Developersコンソールに登録するWebhook URL(SAAS_PUBLIC_URL未設定ならパスのみ)
+    line_webhook_url: str
+
+
+class InquirySettingsRequest(BaseModel):
+    # 空文字は「未設定に戻す」。形式は軽く確認する(送信テストはしない)
+    notify_email: str = Field(default="", max_length=320, pattern=r"^$|^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    emergency_phone: str = Field(default="", max_length=30, pattern=r"^$|^[0-9+\-() ]{6,30}$")
+
+
+class LineChannelRequest(BaseModel):
+    line_channel_secret: str = Field(min_length=10, max_length=200)
+    line_channel_access_token: str = Field(min_length=20, max_length=1000)
+
+
+def _inquiry_settings(tenant: Tenant) -> InquirySettingsResponse:
+    path = f"/webhooks/line/{tenant.id}"
+    return InquirySettingsResponse(
+        notify_email=tenant.inquiry_notify_email,
+        emergency_phone=tenant.emergency_contact_phone,
+        line_configured=bool(tenant.line_channel_secret and tenant.line_channel_access_token),
+        line_webhook_url=f"{settings.saas_public_url.rstrip('/')}{path}" if settings.saas_public_url else path,
+    )
+
+
+@router.get("/inquiry-settings", response_model=InquirySettingsResponse)
+async def get_inquiry_settings(tenant: Tenant = Depends(get_current_tenant)) -> InquirySettingsResponse:
+    """問い合わせ一次受けの設定(通知先・緊急連絡先・LINE連携の状態)。キーの中身は返さない。"""
+    return _inquiry_settings(tenant)
+
+
+@router.put("/inquiry-settings", response_model=InquirySettingsResponse)
+async def update_inquiry_settings(
+    req: InquirySettingsRequest,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_scoped_db),
+) -> InquirySettingsResponse:
+    row = await db.get(Tenant, tenant.id)
+    row.inquiry_notify_email = req.notify_email.strip() or None
+    row.emergency_contact_phone = req.emergency_phone.strip() or None
+    await db.commit()
+    return _inquiry_settings(row)
+
+
+@router.put("/line-channel", response_model=InquirySettingsResponse)
+async def update_line_channel(
+    req: LineChannelRequest,
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_scoped_db),
+) -> InquirySettingsResponse:
+    """顧客自身のLINE公式アカウント(Messaging API)のチャネル情報を登録する(暗号化して保存)。
+    管理画面のPUT /admin/tenants/{id}/line-channelと同じ保存方法のセルフサービス版。"""
+    row = await db.get(Tenant, tenant.id)
+    row.line_channel_secret = encrypt_secret(req.line_channel_secret.strip())
+    row.line_channel_access_token = encrypt_secret(req.line_channel_access_token.strip())
+    await db.commit()
+    return _inquiry_settings(row)
+
+
+@router.delete("/line-channel", response_model=InquirySettingsResponse)
+async def delete_line_channel(
+    tenant: Tenant = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_scoped_db),
+) -> InquirySettingsResponse:
+    row = await db.get(Tenant, tenant.id)
+    row.line_channel_secret = None
+    row.line_channel_access_token = None
+    await db.commit()
+    return _inquiry_settings(row)
 
 
 class UsageResponse(BaseModel):

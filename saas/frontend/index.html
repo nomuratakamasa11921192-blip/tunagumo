@@ -128,6 +128,17 @@
     font-weight: 600;
   }
   .status-QUEUED, .status-RUNNING { background: #eaeaea; color: #555; }
+  .inq-urgent { background: #B8452F; color: #fff; }
+  .inq-normal { background: #eaeaea; color: #555; }
+  .inq-open { background: #fdf1dc; color: #6b5215; }
+  .inq-in_progress { background: #e3eefc; color: #2b5a9e; }
+  .inq-resolved { background: #e6f2e6; color: #3d6b3e; }
+  .inq-row { display: block; width: 100%; text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); padding: 12px 4px; cursor: pointer; color: inherit; }
+  .inq-row:hover { background: #0000000a; }
+  .inq-msg { padding: 8px 12px; border-radius: 8px; margin: 6px 0; white-space: pre-wrap; font-size: 14px; max-width: 90%; }
+  .inq-msg-user { background: #f1e6da; }
+  .inq-msg-assistant { background: #f2f2f0; margin-left: auto; }
+  .inq-msg-staff { background: #e3eefc; margin-left: auto; }
   .spinner-dot {
     display: inline-block;
     width: 8px;
@@ -252,6 +263,7 @@
     <h2>依頼履歴</h2>
     <ul id="session-list"></ul>
     <h2>アカウント</h2>
+    <button id="inquiries-btn" class="secondary" style="width: 100%; margin-bottom: 8px;">問い合わせ</button>
     <button id="guide-btn" class="secondary" style="width: 100%;">使い方ガイド</button>
     <button id="documents-btn" class="secondary" style="width: 100%; margin-top: 8px;">社内資料</button>
     <button id="reel-editor-btn" class="secondary" style="width: 100%; margin-top: 8px;">リール自動編集</button>
@@ -411,6 +423,12 @@
     highlightSelected(null);
   });
 
+  document.getElementById('inquiries-btn').addEventListener('click', function () {
+    currentSessionId = null;
+    renderInquiries('active');
+    highlightSelected(null);
+  });
+
   document.getElementById('schedules-btn').addEventListener('click', function () {
     currentSessionId = null;
     renderSchedules();
@@ -444,6 +462,25 @@
       '<div id="buy-addon-result"></div>' +
       '<button id="billing-portal-btn" class="secondary" style="margin-top:12px;">契約を管理する(お支払い方法の変更・解約はこちら)</button>' +
       '<div id="billing-portal-result"></div>' +
+      '</div>' +
+      '<div class="card"><p class="muted" style="margin-top:0;">問い合わせの一次受け(Webチャット・LINE)</p>' +
+      '<p style="font-size:13px;">AIが回答できないお問い合わせや、緊急の内容(火災・ガス・水漏れ等)が届いた時に、ここで指定したメールアドレスへお知らせします。</p>' +
+      '<label for="inq-notify-email">通知先メールアドレス(未入力の場合は登録済みのメールアドレス)</label>' +
+      '<input id="inq-notify-email" type="text" autocomplete="off" placeholder="例: kanri@example.co.jp">' +
+      '<label for="inq-emergency-phone">緊急連絡先の電話番号(任意)</label>' +
+      '<input id="inq-emergency-phone" type="text" autocomplete="off" placeholder="例: 0120-000-000">' +
+      '<p class="muted" style="font-size:12px;">入力すると、緊急の内容への自動返信に「お急ぎの場合は、緊急連絡先へお電話ください」と載せます。24時間つながる番号を入れてください。</p>' +
+      '<button id="inq-settings-btn" style="margin-top:8px;">保存する</button>' +
+      '<p style="font-size:13px; margin-top:18px;"><strong>LINE公式アカウントとの連携</strong> <span id="line-status" class="muted"></span></p>' +
+      '<p class="muted" style="font-size:12px;">LINE Developersコンソールで、Messaging APIの「チャネルシークレット」と「チャネルアクセストークン(長期)」を発行して登録してください。登録後、同じ画面の「Webhook URL」に下記のURLを設定し、「Webhookの利用」をオンにします。</p>' +
+      '<div class="key-display" id="line-webhook-url" style="font-size:12px;"></div>' +
+      '<label for="line-secret">チャネルシークレット</label>' +
+      '<input id="line-secret" type="password" autocomplete="new-password">' +
+      '<label for="line-token">チャネルアクセストークン(長期)</label>' +
+      '<input id="line-token" type="password" autocomplete="new-password">' +
+      '<button id="line-save-btn" style="margin-top:8px;">LINE連携を登録する</button> ' +
+      '<button id="line-remove-btn" class="secondary" style="margin-top:8px;">連携を解除する</button>' +
+      '<div id="inq-settings-result"></div>' +
       '</div>' +
       '<div class="card"><p class="muted" style="margin-top:0;">動画生成用のHiggsfield APIキー</p>' +
       '<p style="font-size:13px;">「付随動画」(AIで映像を新しく作る機能)をご利用の場合に登録してください。動画の生成費用は、お客様ご自身のHiggsfieldアカウントに課金されます。</p>' +
@@ -486,6 +523,65 @@
       showHiggsfieldKeyStatus(u.higgsfield_key_registered);
     }).catch(function (e) {
       document.getElementById('usage-body').innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+    });
+
+    function showInquirySettings(s) {
+      document.getElementById('inq-notify-email').value = s.notify_email || '';
+      document.getElementById('inq-emergency-phone').value = s.emergency_phone || '';
+      document.getElementById('line-status').textContent = s.line_configured ? '(連携済み)' : '(未連携)';
+      document.getElementById('line-webhook-url').textContent = s.line_webhook_url;
+      document.getElementById('line-remove-btn').style.display = s.line_configured ? '' : 'none';
+    }
+    function inqSettingsError(e) {
+      document.getElementById('inq-settings-result').innerHTML =
+        '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+    }
+    api('/api/account/inquiry-settings').then(showInquirySettings).catch(inqSettingsError);
+
+    document.getElementById('inq-settings-btn').addEventListener('click', function () {
+      var btn = document.getElementById('inq-settings-btn');
+      btn.disabled = true;
+      api('/api/account/inquiry-settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          notify_email: document.getElementById('inq-notify-email').value.trim(),
+          emergency_phone: document.getElementById('inq-emergency-phone').value.trim()
+        })
+      })
+        .then(function (s) { document.getElementById('inq-settings-result').innerHTML = ''; showInquirySettings(s); toast('保存しました'); })
+        .catch(function (e) {
+          inqSettingsError(e.message.indexOf('エラー: 422') === 0
+            ? new Error('メールアドレスまたは電話番号の形式をご確認ください。') : e);
+        })
+        .then(function () { btn.disabled = false; });
+    });
+
+    document.getElementById('line-save-btn').addEventListener('click', function () {
+      var secret = document.getElementById('line-secret').value.trim();
+      var token = document.getElementById('line-token').value.trim();
+      if (!secret || !token) { toast('チャネルシークレットとアクセストークンの両方を入力してください'); return; }
+      var btn = document.getElementById('line-save-btn');
+      btn.disabled = true;
+      api('/api/account/line-channel', {
+        method: 'PUT',
+        body: JSON.stringify({ line_channel_secret: secret, line_channel_access_token: token })
+      })
+        .then(function (s) {
+          document.getElementById('line-secret').value = '';
+          document.getElementById('line-token').value = '';
+          document.getElementById('inq-settings-result').innerHTML = '';
+          showInquirySettings(s);
+          toast('LINE連携を登録しました。LINE Developers側でWebhook URLの設定もお忘れなく');
+        })
+        .catch(inqSettingsError)
+        .then(function () { btn.disabled = false; });
+    });
+
+    document.getElementById('line-remove-btn').addEventListener('click', function () {
+      if (!window.confirm('LINE連携を解除します。LINEからのお問い合わせにAIが応答しなくなります。よろしいですか？')) return;
+      api('/api/account/line-channel', { method: 'DELETE' })
+        .then(function (s) { showInquirySettings(s); toast('LINE連携を解除しました'); })
+        .catch(inqSettingsError);
     });
 
     document.getElementById('higgsfield-key-btn').addEventListener('click', function () {
@@ -1242,6 +1338,12 @@
       '<p class="muted">画像の作成・編集は、月額プランのAI利用予算の範囲でご利用いただけます。動画の生成にはHiggsfield社の利用料が別途かかります(お客様ご自身でHiggsfieldと契約し、「設定・利用状況」からAPIキーを登録していただく形です)。</p>' +
       '</div>' +
       '<div class="card guide-section">' +
+      '<h3>問い合わせの一次受け(Webチャット・LINE、24時間)</h3>' +
+      '<p style="font-size:14px;">ホームページの埋め込みチャットや、貴社のLINE公式アカウントに届いたお問い合わせに、登録した公開用資料の範囲でAIが自動で回答します。金額・契約・クレームなど、AIが確実に答えられない内容は「担当者から折り返しご連絡いたします」とお伝えし、左メニューの「問い合わせ」に届きます(通知メールも送ります)。</p>' +
+      '<p style="font-size:14px;">火災・ガス・水漏れ・漏電などの緊急の内容には、安全のための初期対応の案内を自動で返し、「緊急」として通知します。通知先・緊急連絡先の電話番号・LINE連携は「設定・利用状況」から設定できます。</p>' +
+      '<p class="muted">※自動応答は補助機能です。緊急の案内は一般的な初期対応の範囲に留めているため、実際の対応は貴社でご判断ください。</p>' +
+      '</div>' +
+      '<div class="card guide-section">' +
       '<h3>定期実行(毎週・毎月など、自動で依頼を作る)</h3>' +
       '<p style="font-size:14px;">左メニューの「定期実行」から、「毎週月曜9時にオーナー報告の下書きを作る」のように登録できます。細かく書ききらなくても大丈夫です。実行時に情報が足りなければ社長AIが確認の質問をし、それは通常の依頼と同じく「依頼履歴」に届くので、都度そこから答えてください。生成された内容も、必ず承認待ちを経て人が確認してから完成します。</p>' +
       '</div>';
@@ -1254,6 +1356,138 @@
   ];
 
   var scheduleStatusLabels = { true: '有効', false: '無効(停止中)' };
+
+  var INQ_STATUS_LABELS = { open: '未対応', in_progress: '対応中', resolved: '対応済み' };
+  var INQ_CHANNEL_LABELS = { web: 'Webチャット', line: 'LINE' };
+  var INQ_ROLE_LABELS = { user: 'お客様', assistant: '自動応答', staff: '担当者' };
+
+  function inqBadges(i) {
+    return '<span class="status-badge inq-' + (i.urgency === 'urgent' ? 'urgent' : 'normal') + '">' +
+      (i.urgency === 'urgent' ? '緊急' : '通常') + '</span> ' +
+      '<span class="status-badge inq-' + escapeHtml(i.status) + '">' + escapeHtml(INQ_STATUS_LABELS[i.status] || i.status) + '</span>';
+  }
+
+  function formatDateTime(iso) {
+    var d = new Date(iso.indexOf('Z') === -1 && iso.indexOf('+') === -1 ? iso + 'Z' : iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  // 問い合わせ一覧。AIが回答できずに担当者へ回したものだけが並ぶ(AIが答えられた会話は含まない)。
+  function renderInquiries(filter) {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML =
+      '<div class="card"><p class="muted" style="margin-top:0;">問い合わせ(AIから担当者へ回されたもの)</p>' +
+      '<p style="font-size:13px;">Webチャット・LINEに届いたお問い合わせのうち、AIが回答できなかったものです。お客様には「担当者から折り返しご連絡いたします」と自動でお伝えしています。火災・ガス・水漏れなどの緊急の内容には、安全のための案内を自動で返し、「緊急」として先頭に表示します。</p>' +
+      '<div class="template-chips" style="margin-top:6px;">' +
+      '<button type="button" class="template-chip inq-filter" data-filter="active">未対応・対応中</button>' +
+      '<button type="button" class="template-chip inq-filter" data-filter="resolved">対応済み</button>' +
+      '</div>' +
+      '<div id="inq-list" style="margin-top:10px;">読み込み中…</div></div>';
+
+    Array.prototype.forEach.call(document.querySelectorAll('.inq-filter'), function (btn) {
+      if (btn.dataset.filter === filter) btn.style.fontWeight = '700';
+      btn.addEventListener('click', function () { renderInquiries(btn.dataset.filter); });
+    });
+
+    var query = filter === 'resolved' ? '?status=resolved' : '';
+    api('/api/inquiries' + query).then(function (data) {
+      var items = data.inquiries.filter(function (i) { return filter === 'resolved' || i.status !== 'resolved'; });
+      var listEl = document.getElementById('inq-list');
+      if (!items.length) {
+        listEl.innerHTML = '<p class="muted">' + (filter === 'resolved' ? '対応済みの問い合わせはありません。' : '対応が必要な問い合わせはありません。') + '</p>';
+        return;
+      }
+      listEl.innerHTML = items.map(function (i) {
+        return '<button type="button" class="inq-row" data-id="' + escapeHtml(i.id) + '">' +
+          inqBadges(i) + ' <strong style="margin-left:4px;">' + escapeHtml(i.category) + '</strong>' +
+          '<span class="muted" style="font-size:12px; margin-left:8px;">' + escapeHtml(INQ_CHANNEL_LABELS[i.channel] || i.channel) + ' ・ ' + escapeHtml(formatDateTime(i.updated_at)) + '</span>' +
+          '<div style="font-size:13px; margin-top:4px;">' + escapeHtml(i.last_user_message) + '</div>' +
+          '</button>';
+      }).join('');
+      Array.prototype.forEach.call(listEl.querySelectorAll('.inq-row'), function (row) {
+        row.addEventListener('click', function () { renderInquiryDetail(row.dataset.id); });
+      });
+    }).catch(function (e) {
+      document.getElementById('inq-list').innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+    });
+  }
+
+  function renderInquiryDetail(id) {
+    if (pollTimer) clearTimeout(pollTimer);
+    mainEl.innerHTML = '<div class="card">読み込み中…</div>';
+    api('/api/inquiries/' + encodeURIComponent(id)).then(function (i) {
+      var messagesHtml = (i.messages || []).map(function (m) {
+        return '<div class="inq-msg inq-msg-' + escapeHtml(m.role) + '">' +
+          '<div class="muted" style="font-size:11px;">' + escapeHtml(INQ_ROLE_LABELS[m.role] || m.role) + (m.at ? ' ・ ' + escapeHtml(formatDateTime(m.at)) : '') + '</div>' +
+          escapeHtml(m.content) + '</div>';
+      }).join('');
+      var replyHtml = i.can_reply
+        ? '<label for="inq-reply-text" style="margin-top:14px;">LINEで返信する</label>' +
+          '<textarea id="inq-reply-text" placeholder="お客様への返信を入力してください"></textarea>' +
+          '<button id="inq-draft-btn" class="secondary" style="margin-top:8px;">AIで返信案を作る</button> ' +
+          '<button id="inq-send-btn" style="margin-top:8px;">この内容でLINEに送信</button>' +
+          '<p class="muted" style="font-size:12px;">返信案はAIが作った下書きです。内容を確認・修正してから送信してください(送信ボタンを押すまでお客様には届きません)。</p>'
+        : '<p class="muted" style="font-size:13px; margin-top:14px;">' +
+          (i.channel === 'web'
+            ? 'Webチャットのお客様は匿名のため、この画面から返信できません。お客様からの再度のご連絡をお待ちいただくか、会話の中で連絡先をお伺いしている場合はそちらからご連絡ください。'
+            : 'LINE連携が解除されているため、この画面から返信できません。') + '</p>';
+
+      mainEl.innerHTML =
+        '<div class="card">' +
+        '<button id="inq-back-btn" class="secondary" style="padding:4px 12px; font-size:13px;">← 一覧へ戻る</button>' +
+        '<p style="margin-top:12px;">' + inqBadges(i) + ' <strong style="margin-left:4px;">' + escapeHtml(i.category) + '</strong></p>' +
+        '<p class="muted" style="font-size:12px;">' + escapeHtml(INQ_CHANNEL_LABELS[i.channel] || i.channel) + ' ・ 受付 ' + escapeHtml(formatDateTime(i.created_at)) +
+        ' ・ 担当者へ回した理由: ' + escapeHtml(i.reason) + '</p>' +
+        '<div style="display:flex; flex-direction:column; margin-top:10px;">' + messagesHtml + '</div>' +
+        replyHtml +
+        '<div id="inq-result"></div>' +
+        '<div style="margin-top:14px;">' +
+        (i.status !== 'in_progress' ? '<button class="secondary inq-status-btn" data-status="in_progress">対応中にする</button> ' : '') +
+        (i.status !== 'resolved' ? '<button class="secondary inq-status-btn" data-status="resolved">対応済みにする</button>' : '<button class="secondary inq-status-btn" data-status="open">未対応に戻す</button>') +
+        '</div></div>';
+
+      document.getElementById('inq-back-btn').addEventListener('click', function () { renderInquiries('active'); });
+      Array.prototype.forEach.call(document.querySelectorAll('.inq-status-btn'), function (btn) {
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          api('/api/inquiries/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify({ status: btn.dataset.status }) })
+            .then(function () { toast('状態を更新しました'); renderInquiryDetail(id); })
+            .catch(function (e) { btn.disabled = false; toast(e.message); });
+        });
+      });
+
+      var draftBtn = document.getElementById('inq-draft-btn');
+      if (draftBtn) {
+        draftBtn.addEventListener('click', function () {
+          draftBtn.disabled = true;
+          draftBtn.textContent = '作成中…';
+          api('/api/inquiries/' + encodeURIComponent(id) + '/draft', { method: 'POST' })
+            .then(function (d) { document.getElementById('inq-reply-text').value = d.text; })
+            .catch(function (e) { toast(e.message); })
+            .then(function () { draftBtn.disabled = false; draftBtn.textContent = 'AIで返信案を作る'; });
+        });
+      }
+      var sendBtn = document.getElementById('inq-send-btn');
+      if (sendBtn) {
+        sendBtn.addEventListener('click', function () {
+          var text = document.getElementById('inq-reply-text').value.trim();
+          if (!text) { toast('返信内容を入力してください'); return; }
+          if (!window.confirm('この内容をLINEでお客様に送信します。よろしいですか？')) return;
+          sendBtn.disabled = true;
+          sendBtn.textContent = '送信中…';
+          api('/api/inquiries/' + encodeURIComponent(id) + '/reply', { method: 'POST', body: JSON.stringify({ text: text }) })
+            .then(function () { toast('LINEで送信しました'); renderInquiryDetail(id); })
+            .catch(function (e) {
+              document.getElementById('inq-result').innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+              sendBtn.disabled = false;
+              sendBtn.textContent = 'この内容でLINEに送信';
+            });
+        });
+      }
+    }).catch(function (e) {
+      mainEl.innerHTML = '<div class="card"><p class="error-text">' + escapeHtml(e.message) + '</p></div>';
+    });
+  }
 
   function renderSchedules() {
     if (pollTimer) clearTimeout(pollTimer);
