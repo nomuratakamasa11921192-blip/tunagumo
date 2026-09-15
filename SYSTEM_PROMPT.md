@@ -126,3 +126,24 @@ source of truth)。CLAUDE.md / AGENTS.md にはモデルごとの役割定義だ
 - 本番への反映（新しいコードをデプロイすること）は、人間が明示的に指示した時にのみ、
   既存のデプロイ手順（tar化 → scp → `sudo tar -xzf` → `docker compose up -d --build`）
   で行う。AIが自律的に本番へデプロイすることは、日常運用でも一般公開直前でも禁止する。
+
+### 6.1 Docker Composeのプロジェクト名（2026-09-15追記・事故の再発防止）
+
+Docker Composeは**プロジェクト名を既定でディレクトリ名から決める**。本番は
+`/opt/tsunagumo/saas/docker`、開発用cloneは `~/dev/tunagumo/saas/docker` で、
+**どちらも末尾が `docker` なので既定のプロジェクト名が衝突する**。
+
+その結果、開発用ディレクトリで `docker compose exec api ...` を実行すると、
+**本番のコンテナに接続してしまう**。2026-09-15、`daily_qa.sh` のpytestが実際に
+本番コンテナを参照していたことが判明した（本番イメージのタグを開発用ビルドで
+上書きする事故も発生。稼働中コンテナは旧イメージのままだったため実害は無かった）。
+
+**開発用cloneでdocker composeを使うときは、必ず次を守ること:**
+
+```
+docker compose -p tunagumo-dev --env-file ../.env.test <コマンド>
+```
+
+- `-p tunagumo-dev` を**絶対に省略しない**（省略＝本番に触れる）
+- 環境変数は開発用の `saas/.env.test` を使う（本番の `.env` は参照しない）
+- `docker compose build` / `up` / `down` / `exec` すべてに適用する

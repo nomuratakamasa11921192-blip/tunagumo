@@ -57,9 +57,58 @@ run_codex_with_fallback() {
   return $status
 }
 
+# ---------------------------------------------------------------------------
+# 本番との分離(最重要)
+#
+# 本番は /opt/tsunagumo/saas/docker で docker compose を動かしている。
+# Docker Composeは「プロジェクト名」を既定でディレクトリ名から決めるため、
+# 開発用cloneのディレクトリも "docker" だと本番と同じプロジェクト名になり、
+# `docker compose exec api ...` が本番コンテナに入ってしまう。
+# 実際、2026-09-15にこの状態が発覚した(daily_qa.shのpytestが本番コンテナを
+# 参照していた)。必ず専用のプロジェクト名を明示して本番と分離する。
+# ---------------------------------------------------------------------------
+export COMPOSE_PROJECT_NAME="tunagumo-dev"
+
+# テスト用のcompose実行をまとめる。-p でプロジェクトを明示し、開発用の
+# .env.test を使う(本番の .env は参照しない)。
+dc() { ( cd saas/docker && docker compose -p "$COMPOSE_PROJECT_NAME" --env-file ../.env.test "$@" ); }
+
+echo "=== [0/4] 最新コードの取得とテスト用イメージの再ビルド ==="
+# apiコンテナはソースをイメージに焼き込む構成(ボリュームマウントしていない)ため、
+# 再ビルドしないと git pull した修正がコンテナに反映されず、テストも古いままになる。
+# 2026-09-15、イメージが11日間再ビルドされておらず tests/ がコンテナ内に存在せず、
+# pytestが0件で「成功」扱いになっていたのを発見したため追加。
+git pull --ff-only 2>&1 || echo "[daily_qa] git pullに失敗しました(ローカル変更がある可能性)" >&2
+
+if [ ! -f saas/.env.test ]; then
+  echo "[daily_qa] saas/.env.test がありません。テストを実行できないため中止します。" >&2
+  echo "[daily_qa] saas/.env.example を元に .env.test を作成してください。" >&2
+  exit 1
+fi
+
+dc build api 2>&1 | tail -5
+dc up -d db api 2>&1 | tail -3
+
 echo "=== [1/4] Codexによる日常自動テストとバグ修復 ==="
-run_codex_with_fallback "AGENTS.mdとSYSTEM_PROMPT.mdに従い、saas/docker配下で
-'docker compose exec api pytest -v' を実行して自動テストを走らせよ。
+run_codex_with_fallback "AGENTS.mdとSYSTEM_PROMPT.mdに従い、開発用のテストを実行せよ。
+
+【テストの実行方法】saas/docker に移動し、必ず次の形でプロジェクト名と環境ファイルを
+明示して実行すること:
+  docker compose -p tunagumo-dev --env-file ../.env.test exec -T api pytest -v
+
+【絶対に守ること】プロジェクト名 -p tunagumo-dev を省略してはならない。
+省略すると本番(/opt/tsunagumo/saas/docker)のコンテナに接続してしまう。
+2026-09-15に実際にこの事故が起きている。
+
+【再ビルドが必要】apiコンテナはソースをイメージに焼き込む構成なので、ファイルを修正した
+後は必ず次で再ビルドしてからpytestを実行し直すこと。再ビルドしないと修正が反映されず、
+古いコードをテストし続けることになる:
+  docker compose -p tunagumo-dev --env-file ../.env.test build api
+  docker compose -p tunagumo-dev --env-file ../.env.test up -d api
+
+【0件を成功と見なすな】pytestが『0件で成功』のような結果になった場合、それは成功ではなく
+テストが発見できていないことを意味する。成功と報告せず、原因を調査せよ。
+
 もしエラーを検知した場合、原因を特定し、自律エージェントモードでファイルを
 自動修正してテストが100%通過するまで修復を繰り返せ（最低5回、それでも直ら
 なければ人間への報告に留めて停止せよ）。/opt/tsunagumo 配下は絶対に変更する
