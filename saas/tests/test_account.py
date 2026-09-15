@@ -64,6 +64,11 @@ async def test_customer_can_update_own_higgsfield_key(client, tenant):
         assert decrypt_secret(row.higgsfield_api_key_id) == "hf_key_id_123"
         assert decrypt_secret(row.higgsfield_api_key_secret) == "hf_key_secret_456"
 
+    usage = await client.get("/api/account/usage", headers=headers)
+    assert usage.json()["higgsfield_key_registered"] is True
+    # キーの中身はレスポンスに含めない
+    assert "hf_key" not in usage.text
+
 
 async def test_higgsfield_key_update_rejects_empty_values(client, tenant):
     headers = {"Authorization": f"Bearer {tenant['api_key']}"}
@@ -88,6 +93,7 @@ async def test_usage_returns_zero_for_tenant_with_no_sessions(client, tenant):
     assert body["ai_cost_this_period_usd"] == 0.0
     assert body["monthly_ai_budget_usd"] == 10.0
     assert body["addon_credit_usd"] == 0.0
+    assert body["higgsfield_key_registered"] is False
 
 
 async def test_usage_reflects_completed_sessions(client, tenant):

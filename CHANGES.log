@@ -55,3 +55,8 @@
 2026-09-15 [Claude] Codex上限到達のため引き継ぎ。SaaSの文章生成をAnthropicからOpenAI(Structured Outputs)へ移行し、設定・単価表(gpt-5.6-terra/luna、公式価格ページで確認)・テストを更新。
 [Claude] Docker権限が無いため仮想環境+埋め込みPostgresで全テスト実行。移行前と同じ環境要因の22件(ffmpeg・PGroonga不在)以外は全件成功、新規テスト4件追加。
 [Claude] 実APIでの文章生成確認は開発環境にOpenAIキーが無く未実施。Codex/Claude Codeの承認確認を出さない設定に変更(本番パスは拒否設定)。
+[Claude] Part B(画像をOpenAIへ移行)は作業途中で中断(未コミット)。openai_image_client.py・画像配信ルート・sessions/property_urlの差し替えまで実施済み。
+[Claude] 残り: 画像まわりのテスト修正と追加、フロントの文言更新とHiggsfieldキー入力欄の新設(現状UIに入力欄が無い)、テスト実行、コミット。
+2026-09-15 [Claude] Part B完了。画像の生成・編集をOpenAI(運営負担・実コストを予算から控除)へ移行し、設定画面にHiggsfieldキー(動画専用)の登録欄と登録状態表示を新設、画像・動画の費用説明を更新。
+[Claude] 監査で既存不具合2件を修正: マイソクPDFが任意URL(file://・社内アドレス)を読める穴を安全な取得処理で封鎖、flexレイアウトで画像が一切PDFに載っていなかった問題をgridで解消。画像系の入力に長さ上限を追加。
+[Claude] テスト25件追加、455件成功(失敗22件は移行前と同じffmpeg・PGroonga不在の環境要因のみ)。開発環境にOpenAIキーが無いため実画像での編集品質確認は未実施。

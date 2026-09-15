@@ -14,6 +14,7 @@ from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.core.db import get_db, get_scoped_db_for_tenant
 from src.core.higgsfield_client import HiggsfieldClient
+from src.core.openai_image_client import OpenAIImageClient
 from src.core.models import Tenant, TenantUser, TenantUserToken
 from src.rag.embeddings import EmbeddingProvider, OpenAIEmbeddingProvider
 from src.video.stt import OpenAISTTProvider, STTProvider
@@ -165,8 +166,19 @@ async def get_tts_provider(tenant: Tenant = Depends(get_current_tenant)) -> TTSP
     return OpenAITTSProvider(api_key=settings.openai_api_key)
 
 
+async def get_image_client(tenant: Tenant = Depends(get_current_tenant)) -> OpenAIImageClient | None:
+    """ツナグモ自身のOpenAI APIキーで画像生成・編集クライアントを作る(運営負担、
+    2026-09-15にHiggsfieldから移行)。コストは呼び出し元でrecord_costし、月間AI予算から
+    差し引くこと。運営側キー未設定(設定不備)ならNoneを返す。
+    動画生成は引き続きget_higgsfield_client(顧客自身のキー)を使う。"""
+    if not settings.openai_api_key:
+        return None
+    return OpenAIImageClient(api_key=settings.openai_api_key)
+
+
 async def get_higgsfield_client(tenant: Tenant = Depends(get_current_tenant)) -> HiggsfieldClient | None:
-    """顧客自身のHiggsfield APIキーで画像・動画生成クライアントを作る(顧客負担)。
+    """顧客自身のHiggsfield APIキーで動画生成クライアントを作る(顧客負担)。
+    画像の生成・編集は2026-09-15にOpenAI(get_image_client、運営負担)へ移行した。
 
     文章生成・音声・埋め込みは運営負担(月額に含む)だが、Higgsfieldの動画生成だけは
     1本あたりの単価が高くコストが読みにくいため、顧客自身に契約・負担してもらう方針

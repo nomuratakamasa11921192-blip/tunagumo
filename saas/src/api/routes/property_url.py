@@ -6,11 +6,18 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_current_tenant, get_higgsfield_client
-from src.core.higgsfield_client import HiggsfieldClient, HiggsfieldError
+from src.api.deps import get_current_tenant, get_image_client, get_scoped_db
+from src.core.ai_budget import (
+    ESTIMATED_OPENAI_IMAGE_COST_USD,
+    BudgetExceededError,
+    ensure_budget_available,
+    record_cost,
+)
 from src.core.models import Tenant
+from src.core.openai_image_client import OpenAIImageClient, OpenAIImageError
 from src.core.property_url_import import PropertyImportError, import_property_url
 from src.rag.extraction import MAX_FILE_SIZE_BYTES, ExtractionError, extract_text
 
@@ -76,9 +83,10 @@ async def extract_property_pdf(
 
 
 class StageImageRequest(BaseModel):
-    image_url: str
-    # 例:「ソファとコーヒーテーブルを置いて」「家具を全部消して」など
-    instruction: str
+    image_url: str = Field(max_length=2048)
+    # 例:「ソファとコーヒーテーブルを置いて」「家具を全部消して」など。
+    # 画像は運営負担なので、極端に長い指示で予算を浪費されないよう上限を設ける。
+    instruction: str = Field(min_length=1, max_length=1000)
 
 
 class StageImageResponse(BaseModel):
@@ -89,20 +97,34 @@ class StageImageResponse(BaseModel):
 async def stage_image(
     req: StageImageRequest,
     tenant: Tenant = Depends(get_current_tenant),
-    higgsfield: HiggsfieldClient | None = Depends(get_higgsfield_client),
+    db: AsyncSession = Depends(get_scoped_db),
+    image_client: OpenAIImageClient | None = Depends(get_image_client),
 ) -> StageImageResponse:
-    """バーチャルステージング(物件写真に家具などを追加する画像編集)。
+    """物件写真の編集(曇り空を青空に、空室に家具を置く等のバーチャルステージング)。
 
-    未検証機能(HiggsfieldClient.edit_imageのdocstring参照)。うまくいかない場合は
-    502エラーになるので、フロント側は失敗を前提にエラー表示を用意すること。
+    2026-09-15にHiggsfield(仕様未確認のまま実装されていた)からOpenAIの画像編集APIへ
+    移行した。運営負担なので、実コストを月間AI予算から差し引く。編集は指示ベースで
+    細部が元写真と変わることがあるため、フロント側の「試験提供中」の注記は維持すること。
     """
-    if higgsfield is None:
+    if image_client is None:
         raise HTTPException(
             status_code=402,
-            detail="Higgsfield APIキーが設定されていません。設定画面から登録してください。",
+            detail="写真の編集は現在ご利用いただけません。お手数ですが運営までお問い合わせください。",
         )
+
+    # tenant(get_current_tenant)はdb(get_scoped_db)とは別セッションなので、
+    # コストの記録をcommitできるようdb側で行を取り直す(sessions.pyと同じ理由)。
+    tenant_row = await db.get(Tenant, tenant.id)
     try:
-        image_url = await higgsfield.edit_image(req.image_url, req.instruction)
-    except HiggsfieldError as e:
+        ensure_budget_available(tenant_row)
+    except BudgetExceededError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+
+    try:
+        image_url = await image_client.edit_image(req.image_url, req.instruction)
+    except OpenAIImageError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+    record_cost(tenant_row, image_client.last_cost_usd or ESTIMATED_OPENAI_IMAGE_COST_USD)
+    await db.commit()
     return StageImageResponse(image_url=image_url)

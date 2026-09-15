@@ -84,9 +84,10 @@ async def update_own_higgsfield_key(
     tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_scoped_db),
 ) -> None:
-    """顧客自身がHiggsfield APIキーを登録・更新する(画像生成機能に使う。
-    Anthropic/OpenAIキーと同じ理由で顧客自身の契約・負担とする。
-    画像生成機能を使わない顧客は設定不要)。"""
+    """顧客自身がHiggsfield APIキーを登録・更新する(動画生成に使う。動画は1本あたりの
+    単価が高くコストが読みにくいため、顧客自身の契約・負担とする。2026-09-15決定)。
+    画像の生成・編集は運営のOpenAIキー(運営負担)に移行したため、このキーは使わない。
+    動画生成を使わない顧客は設定不要。"""
     validate_higgsfield_key_format(req.higgsfield_key_id, req.higgsfield_key_secret)
 
     row = await db.get(Tenant, tenant.id)
@@ -104,6 +105,8 @@ class UsageResponse(BaseModel):
     ai_cost_this_period_usd: float
     monthly_ai_budget_usd: float
     addon_credit_usd: float
+    # 動画生成用のHiggsfieldキーが登録済みか(設定画面の表示用。キーの中身は返さない)
+    higgsfield_key_registered: bool
 
 
 @router.get("/usage", response_model=UsageResponse)
@@ -140,6 +143,7 @@ async def get_usage(
         ai_cost_this_period_usd=round(effective_cost_this_period(tenant), 6),
         monthly_ai_budget_usd=PLAN_MONTHLY_BUDGET_USD.get(tenant.plan, PLAN_MONTHLY_BUDGET_USD[DEFAULT_PLAN]),
         addon_credit_usd=round(tenant.addon_credit_usd, 6),
+        higgsfield_key_registered=bool(tenant.higgsfield_api_key_id and tenant.higgsfield_api_key_secret),
     )
 
 

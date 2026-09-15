@@ -444,7 +444,24 @@
       '<div id="buy-addon-result"></div>' +
       '<button id="billing-portal-btn" class="secondary" style="margin-top:12px;">契約を管理する(お支払い方法の変更・解約はこちら)</button>' +
       '<div id="billing-portal-result"></div>' +
+      '</div>' +
+      '<div class="card"><p class="muted" style="margin-top:0;">動画生成用のHiggsfield APIキー</p>' +
+      '<p style="font-size:13px;">動画生成をご利用の場合に登録してください。動画の生成費用は、お客様ご自身のHiggsfieldアカウントに課金されます。</p>' +
+      '<p class="muted" style="font-size:12px;">画像の作成・編集は、月額プランのAI利用予算の範囲でご利用いただけます(登録は不要です)。</p>' +
+      '<p id="higgsfield-key-status" style="font-size:13px;"></p>' +
+      '<label for="higgsfield-key-id">Key ID</label>' +
+      '<input id="higgsfield-key-id" type="text" autocomplete="off" spellcheck="false">' +
+      '<label for="higgsfield-key-secret">Key Secret</label>' +
+      '<input id="higgsfield-key-secret" type="password" autocomplete="new-password">' +
+      '<button id="higgsfield-key-btn" style="margin-top:12px;">キーを登録する</button>' +
+      '<div id="higgsfield-key-result"></div>' +
       '</div>';
+
+    function showHiggsfieldKeyStatus(registered) {
+      document.getElementById('higgsfield-key-status').innerHTML = registered
+        ? '状態: <strong>登録済み</strong>(新しいキーを入力すると上書きされます)'
+        : '状態: 未登録';
+    }
 
     api('/api/account/usage').then(function (u) {
       var planLabel = { light: 'ライト', standard: 'スタンダード', unlimited: '無制限' }[u.plan] || u.plan;
@@ -466,8 +483,39 @@
         '<div style="background:' + barColor + '; width:' + pct + '%; height:100%;"></div>' +
         '</div>' +
         '<p class="muted" style="font-size:12px; margin-top:8px;">※ 実際の原価とは、集計タイミング等により多少ずれる場合があります。目安としてご覧ください。</p>';
+      showHiggsfieldKeyStatus(u.higgsfield_key_registered);
     }).catch(function (e) {
       document.getElementById('usage-body').innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
+    });
+
+    document.getElementById('higgsfield-key-btn').addEventListener('click', function () {
+      var btn = document.getElementById('higgsfield-key-btn');
+      var idInput = document.getElementById('higgsfield-key-id');
+      var secretInput = document.getElementById('higgsfield-key-secret');
+      var resultEl = document.getElementById('higgsfield-key-result');
+      var keyId = idInput.value.trim();
+      var keySecret = secretInput.value.trim();
+      if (!keyId || !keySecret) {
+        resultEl.innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">Key IDとKey Secretの両方を入力してください。</p>';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = '登録中…';
+      api('/api/account/higgsfield-key', {
+        method: 'PATCH',
+        body: JSON.stringify({ higgsfield_key_id: keyId, higgsfield_key_secret: keySecret })
+      })
+        .then(function () {
+          idInput.value = '';
+          secretInput.value = '';
+          resultEl.innerHTML = '';
+          showHiggsfieldKeyStatus(true);
+          toast('Higgsfield APIキーを登録しました');
+        })
+        .catch(function (e) {
+          resultEl.innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = 'キーを登録する'; });
     });
 
     document.getElementById('buy-addon-btn').addEventListener('click', function () {
@@ -1144,7 +1192,7 @@
       '<li>依頼内容を入力欄に書いて送信する(テンプレートを押して書き換えると早いです)</li>' +
       '<li>AIが内容を担当部署に振り分けて下書きを作ります。情報が足りない場合は先に確認の質問が来るので回答してください(「要確認」の状態)</li>' +
       '<li>自動の品質チェックを通過すると「承認待ち」になります。内容を確認し、承認するか、修正してほしい点を伝えて差し戻してください</li>' +
-      '<li>承認すると完成です。必要であれば、完成した文章に合わせた画像・動画も追加で作れます(Higgsfield APIキーの登録が必要です)</li>' +
+      '<li>承認すると完成です。必要であれば、完成した文章に合わせた画像・動画も追加で作れます(動画のみ、Higgsfield APIキーの登録が必要です)</li>' +
       '</ol>' +
       '</div>' +
       '<div class="card guide-section">' +
@@ -1162,7 +1210,7 @@
       '<div class="card guide-section">' +
       '<h3>料金の目安</h3>' +
       '<p style="font-size:14px;">月額のご契約とは別に、AI(Anthropic社)の利用料が実費でかかります。ご依頼1件あたり、システム側で上限$3.0程度を目安に設定していますが、実際にはそれよりずっと少額(多くの場合、数十円〜100円程度)で収まることがほとんどです。正確な金額は、左メニューの「設定・利用状況」から今月の概算コストを確認できます。</p>' +
-      '<p class="muted">画像・動画の追加生成にはHiggsfield社の利用料が別途かかります(お客様ご自身でHiggsfieldと契約し、ご自身のAPIキーを登録していただく形です)。</p>' +
+      '<p class="muted">画像の作成・編集は、月額プランのAI利用予算の範囲でご利用いただけます。動画の生成にはHiggsfield社の利用料が別途かかります(お客様ご自身でHiggsfieldと契約し、「設定・利用状況」からAPIキーを登録していただく形です)。</p>' +
       '</div>' +
       '<div class="card guide-section">' +
       '<h3>定期実行(毎週・毎月など、自動で依頼を作る)</h3>' +
@@ -1374,8 +1422,8 @@
 
     if (['AWAITING_APPROVAL', 'APPROVED', 'COMPLETED'].indexOf(data.status) !== -1) {
       html += '<div class="card">' +
-        '<p class="muted" style="margin-top:0;">付随画像(Higgsfield)</p>' +
-        '<p style="font-size:12px; color:var(--muted);">まず低画質(下書き)で生成します。気に入ったものだけ「高画質で作り直す」を押してください(クレジット節約のため)。</p>' +
+        '<p class="muted" style="margin-top:0;">付随画像</p>' +
+        '<p style="font-size:12px; color:var(--muted);">まず低画質(下書き)で生成します。気に入ったものだけ「高画質で作り直す」を押してください(今月のAI利用予算を節約するため)。</p>' +
         '<div id="generated-images">' +
         (result.generated_images || []).map(function (img, i) {
           return '<div style="margin-bottom:10px;">' +
@@ -1385,7 +1433,7 @@
               : '<button class="upscale-image-btn" data-index="' + i + '" data-hint="' + escapeHtml(img.prompt_hint || '') + '" style="margin-top:6px;">高画質で作り直す</button>') +
             '<div style="margin-top:8px;">' +
             '<button class="stage-image-preset-btn" data-url="' + escapeHtml(img.url) + '" data-instruction="brighten the room, replace overcast or gray sky with clear blue sky, keep all objects and structure unchanged" style="margin-right:6px;">晴天化・明るく補正</button>' +
-            '<span class="muted" style="font-size:12px;">(試験提供中の機能です)</span>' +
+            '<span class="muted" style="font-size:12px;">(試験提供中の機能です。細部が元の写真と変わる場合があるため、ご確認のうえお使いください)</span>' +
             '<div style="margin-top:6px;">' +
             '<input class="stage-instruction" data-url="' + escapeHtml(img.url) + '" type="text" placeholder="例: 生活感のある物を消してソファとテーブルを置く" style="width:70%;">' +
             '<button class="stage-image-btn" data-url="' + escapeHtml(img.url) + '" style="margin-left:6px;">この写真を編集する</button>' +
@@ -1402,7 +1450,7 @@
         '</div>' +
         '<div class="card">' +
         '<p class="muted" style="margin-top:0;">付随動画(Higgsfield)</p>' +
-        '<p style="font-size:12px; color:var(--muted);">生成に数分かかることがあります。まず低画質(下書き)で生成します。気に入ったものだけ「高画質で作り直す」を押してください(クレジット節約のため)。</p>' +
+        '<p style="font-size:12px; color:var(--muted);">動画の生成費用は、お客様ご自身のHiggsfieldアカウントに課金されます(「設定・利用状況」からAPIキーの登録が必要です)。生成に数分かかることがあります。まず低画質(下書き)で生成します。気に入ったものだけ「高画質で作り直す」を押してください(クレジット節約のため)。</p>' +
         '<div id="generated-videos">' +
         (result.generated_videos || []).map(function (vid, i) {
           return '<div style="margin-bottom:10px;">' +

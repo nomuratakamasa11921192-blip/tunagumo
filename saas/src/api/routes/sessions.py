@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,17 +21,20 @@ from src.api.deps import (
     get_current_tenant,
     get_embedding_provider,
     get_higgsfield_client,
+    get_image_client,
     get_llm,
     get_optional_tenant_user,
     get_scoped_db,
 )
 from src.core.ai_budget import (
+    ESTIMATED_OPENAI_IMAGE_COST_USD,
     BudgetExceededError,
     ensure_budget_available,
     record_cost,
 )
 from src.core.flyer_generator import FlyerData, FlyerGenerationError, generate_flyer_pdf
 from src.core.higgsfield_client import HiggsfieldClient, HiggsfieldError
+from src.core.openai_image_client import OpenAIImageClient, OpenAIImageError
 from src.core.models import AuditLog, Session, Tenant, TenantUser
 from src.core.models import Approval as ApprovalModel
 from src.rag.embeddings import EmbeddingProvider
@@ -194,7 +197,8 @@ async def get_session(
 
 class GenerateImageRequest(BaseModel):
     # 例:「縦長のバナーで」「物件の外観イメージで」など、生成内容への追加の指示(任意)。
-    prompt_hint: str | None = None
+    # 画像は運営負担なので、極端に長い指示で予算を浪費されないよう上限を設ける。
+    prompt_hint: str | None = Field(default=None, max_length=500)
     # "draft"(既定)は低品質・低クレジットで生成し、"high"は良ければ作り直す用の高画質版。
     quality: Literal["draft", "high"] = "draft"
 
@@ -271,15 +275,15 @@ async def generate_session_image(
     req: GenerateImageRequest,
     tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_scoped_db),
-    higgsfield: HiggsfieldClient | None = Depends(get_higgsfield_client),
+    image_client: OpenAIImageClient | None = Depends(get_image_client),
 ) -> GenerateImageResponse:
-    """完成した文章に付随する画像を生成する(Higgsfield。運営(ツナグモ)自身のHiggsfield
-    アカウントを使う。コストは月間AI予算から消費する、src/core/ai_budget.py参照)。
+    """完成した文章に付随する画像を生成する(OpenAI。運営(ツナグモ)自身のキーを使い、
+    コストは月間AI予算から消費する、src/core/ai_budget.py参照。2026-09-15にHiggsfieldから移行)。
     """
-    if higgsfield is None:
+    if image_client is None:
         raise HTTPException(
             status_code=402,
-            detail="Higgsfield APIキーが運営側で設定されていません(設定不備)。",
+            detail="画像生成は現在ご利用いただけません。お手数ですが運営までお問い合わせください。",
         )
 
     tenant_row = await db.get(Tenant, tenant.id)
@@ -298,12 +302,13 @@ async def generate_session_image(
     prompt = _build_image_prompt(session, req.prompt_hint)
 
     try:
-        image_url = await higgsfield.generate_image(prompt, quality=req.quality)
-    except HiggsfieldError as e:
+        image_url = await image_client.generate_image(prompt, quality=req.quality)
+    except OpenAIImageError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # Higgsfieldは顧客自身のAPIキーで課金される(顧客負担、2026-09-15決定)ため、
-    # 運営の月間AI予算からは差し引かない。
+    # 画像は運営負担(2026-09-15決定)なので、実コストを月間AI予算から差し引く。
+    # usageが返らなかった場合は、引き漏れを防ぐためフォールバック値を記録する。
+    record_cost(tenant_row, image_client.last_cost_usd or ESTIMATED_OPENAI_IMAGE_COST_USD)
 
     result = dict(session.result or {})
     generated_images = list(result.get("generated_images", []))
@@ -323,9 +328,9 @@ async def generate_session_video(
     db: AsyncSession = Depends(get_scoped_db),
     higgsfield: HiggsfieldClient | None = Depends(get_higgsfield_client),
 ) -> GenerateVideoResponse:
-    """完成した文章に付随する短い動画を生成する(Higgsfield。運営(ツナグモ)自身の
-    Higgsfieldアカウントを使う。コストは月間AI予算から消費する、src/core/ai_budget.py
-    参照)。動画は生成に数分かかることがあるため、呼び出し元(フロント)はタイムアウトを
+    """完成した文章に付随する短い動画を生成する(Higgsfield。顧客自身のHiggsfieldキーを
+    使い、費用は顧客負担。運営の月間AI予算からは差し引かない、2026-09-15決定)。
+    動画は生成に数分かかることがあるため、呼び出し元(フロント)はタイムアウトを
     長めに見ておくこと。
 
     メインのAI生成パイプライン(run_new_session等)と違い、ここはあえて
@@ -335,9 +340,10 @@ async def generate_session_video(
     利用が増えてきたら見直す(バックグラウンドジョブ化する)候補。
     """
     if higgsfield is None:
+        # 動画は顧客自身のHiggsfieldキーで生成する(顧客負担)ため、未登録なら登録を案内する。
         raise HTTPException(
             status_code=402,
-            detail="Higgsfield APIキーが運営側で設定されていません(設定不備)。",
+            detail="動画生成をご利用いただくには、「設定・利用状況」からHiggsfieldのAPIキーを登録してください。",
         )
 
     # tenant(get_current_tenant)はdb(get_scoped_db)とは別のDBセッションに属するため、

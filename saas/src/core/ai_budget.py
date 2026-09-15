@@ -35,6 +35,14 @@ DEFAULT_PLAN = "light"
 # 運営負担に切り替える場合は、実際のクレジット消費を計測して必ず補正すること。
 ESTIMATED_HIGGSFIELD_IMAGE_COST_USD = 0.25
 ESTIMATED_HIGGSFIELD_VIDEO_COST_USD = 2.0
+# OpenAI画像(生成・編集)1枚あたりのコスト($)の【フォールバック値】(2026-09-15追加)。
+#
+# 画像は運営負担なので月間AI予算から差し引く。通常はAPIが返すusage(トークン数)と
+# src/core/openai_image_client.pyの公式単価から実コストを計算して記録するため、この値は
+# 使われない。usageが返らなかった場合だけ、予算の引き漏れを防ぐためにこの値を記録する。
+# 【要確認】OpenAIは1枚あたりの価格を公開していない(トークン課金)ため、この値は
+# 公式価格ではない暫定値(Higgsfield時代の画像見積もりと同額)。実測後に補正すること。
+ESTIMATED_OPENAI_IMAGE_COST_USD = 0.25
 # ルームツアー動画生成1回あたりの概算コスト($)。台本生成(OpenAI、数千トークン程度)+
 # ナレーション音声合成(OpenAI TTS)の見積もり。実測してから補正すること。
 ESTIMATED_ROOM_TOUR_COST_USD = 0.15

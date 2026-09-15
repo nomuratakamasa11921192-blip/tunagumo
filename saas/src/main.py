@@ -13,6 +13,7 @@ from src.api.deps import INDUSTRIES
 from src.api.routes.account import router as account_router
 from src.api.routes.chat import router as chat_router
 from src.api.routes.documents import router as documents_router
+from src.api.routes.generated_images import router as generated_images_router
 from src.api.routes.market_data import router as market_data_router
 from src.api.routes.property_csv import router as property_csv_router
 from src.api.routes.property_url import router as property_url_router
@@ -62,6 +63,7 @@ app = FastAPI(title="tsunagumo", lifespan=lifespan)
 app.include_router(sessions_router)
 app.include_router(account_router)
 app.include_router(documents_router)
+app.include_router(generated_images_router)
 app.include_router(property_url_router)
 app.include_router(property_csv_router)
 app.include_router(market_data_router)
