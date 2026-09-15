@@ -74,6 +74,7 @@ export COMPOSE_PROJECT_NAME="tunagumo-dev"
 # (本番の .env・本番のポート8000・本番のコンテナには一切触れない)。
 dc() {
   ( cd saas/docker && docker compose -p "$COMPOSE_PROJECT_NAME" \
+      --env-file ../.env.test \
       -f docker-compose.yml -f docker-compose.test.yml "$@" )
 }
 
@@ -97,7 +98,7 @@ echo "=== [1/4] Codexによる日常自動テストとバグ修復 ==="
 run_codex_with_fallback "AGENTS.mdとSYSTEM_PROMPT.mdに従い、開発用のテストを実行せよ。
 
 【テストの実行方法】saas/docker に移動し、必ず次の形で実行すること:
-  docker compose -p tunagumo-dev -f docker-compose.yml -f docker-compose.test.yml exec -T api pytest -v
+  docker compose -p tunagumo-dev --env-file ../.env.test -f docker-compose.yml -f docker-compose.test.yml exec -T api pytest -v
 
 【絶対に守ること】-p tunagumo-dev と -f docker-compose.test.yml を省略してはならない。
 省略すると本番(/opt/tsunagumo/saas/docker)のコンテナに接続し、本番の .env を読み、
@@ -107,8 +108,8 @@ run_codex_with_fallback "AGENTS.mdとSYSTEM_PROMPT.mdに従い、開発用のテ
 【再ビルドが必要】apiコンテナはソースをイメージに焼き込む構成なので、ファイルを修正した
 後は必ず次で再ビルドしてからpytestを実行し直すこと。再ビルドしないと修正が反映されず、
 古いコードをテストし続けることになる:
-  docker compose -p tunagumo-dev -f docker-compose.yml -f docker-compose.test.yml build api
-  docker compose -p tunagumo-dev -f docker-compose.yml -f docker-compose.test.yml up -d api
+  docker compose -p tunagumo-dev --env-file ../.env.test -f docker-compose.yml -f docker-compose.test.yml build api
+  docker compose -p tunagumo-dev --env-file ../.env.test -f docker-compose.yml -f docker-compose.test.yml up -d api
 
 【0件を成功と見なすな】pytestが『0件で成功』のような結果になった場合、それは成功ではなく
 テストが発見できていないことを意味する。成功と報告せず、原因を調査せよ。

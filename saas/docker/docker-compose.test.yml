@@ -13,16 +13,26 @@
 
 services:
   api:
-    env_file:
-      - ../.env.test
+    # env_file は既定だと「追加」されてしまい ../.env を探しに行ってしまう。
+    # !reset で基底ファイルの指定を打ち消してから、開発用だけを指定する。
+    env_file: !reset null
+    environment:
+      # env_file を打ち消したので、テストに必要な変数はここで明示的に渡す。
+      # 値は --env-file ../.env.test から展開される。
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-test-dummy-key}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-test-model}"
+      ANTHROPIC_MODEL_LIGHT: "${ANTHROPIC_MODEL_LIGHT:-test-model-light}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-test-dummy-key}"
+      ADMIN_API_KEY: "${ADMIN_API_KEY:-test-admin-key}"
+      TENANT_SECRET_KEY: "${TENANT_SECRET_KEY:?TENANT_SECRET_KEYが未設定です。saas/.env.testを確認してください}"
+      SAAS_PUBLIC_URL: "${SAAS_PUBLIC_URL:-http://localhost:8000}"
     # 本番が8000を使っているため、テスト用は公開しない。
     # pytestはコンテナ内で実行するので外部ポートは不要。
-    ports: !override []
+    ports: !reset null
     restart: "no"
 
   scheduler:
-    env_file:
-      - ../.env.test
+    env_file: !reset null
     # テスト中に定期実行が走る必要は無いので、明示的に指定した時だけ起動する。
     profiles: ["never"]
     restart: "no"
