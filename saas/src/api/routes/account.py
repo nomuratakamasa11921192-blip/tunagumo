@@ -18,7 +18,6 @@ from src.core.models import Session as SessionModel
 from src.core.models import Tenant, TenantMailAccount, TenantUser, TenantUserToken
 from src.core.passwords import hash_password, verify_password
 from src.core.stripe_client import (
-    ADDON_CREDIT_USD,
     ADDON_PRICE_JPY,
     StripeClientError,
     create_addon_checkout_session,
@@ -323,9 +322,12 @@ async def get_usage(
 
 
 class BuyAddonResponse(BaseModel):
+    """顧客に返すのは決済ページのURLと日本円の価格だけ(2026-09-17)。
+    「25,000円で$5分」のようにドル建ての枠を並べて返すと、原価と利益率が推測できてしまう。
+    付与される枠の大きさは、購入後に「設定・利用状況」の残量の割合で確認できる。"""
+
     checkout_url: str
     price_jpy: int
-    credit_usd: float
 
 
 @router.post("/buy-addon", response_model=BuyAddonResponse)
@@ -354,7 +356,7 @@ async def buy_addon(
     except StripeClientError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    return BuyAddonResponse(checkout_url=checkout_url, price_jpy=ADDON_PRICE_JPY, credit_usd=ADDON_CREDIT_USD)
+    return BuyAddonResponse(checkout_url=checkout_url, price_jpy=ADDON_PRICE_JPY)
 
 
 class BillingPortalResponse(BaseModel):

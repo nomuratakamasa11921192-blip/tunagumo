@@ -41,4 +41,6 @@ async def test_buy_addon_returns_checkout_url(client, tenant, monkeypatch):
     body = res.json()
     assert body["checkout_url"] == "https://checkout.stripe.com/session/xyz"
     assert body["price_jpy"] == 25000
-    assert body["credit_usd"] == 5.0
+    # ドル建ての付与枠は顧客に返さない(2026-09-17)。
+    # 「25,000円で$5分」が分かると原価・利益率が推測できてしまうため。
+    assert "credit_usd" not in body
