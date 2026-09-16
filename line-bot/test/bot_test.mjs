@@ -25,6 +25,7 @@ console.assert(r.replyText === "ご相談ありがとうございます。", "�
 console.assert(calls[0].messages[0].role === "system", "systemプロンプトが先頭");
 console.assert(calls[0].messages[1].content === "料金は？", "ユーザー発言が渡る");
 console.assert(calls[0].tools[0].type === "function", "ツール定義の形式");
+console.assert(calls[0].reasoning_effort === "none", "ツール利用時は推論を切る(gpt-5.6系の制約)", calls[0].reasoning_effort);
 console.assert(r.messages.length === 2, "履歴に応答が積まれる", r.messages.length);
 console.log("OK: 通常応答");
 

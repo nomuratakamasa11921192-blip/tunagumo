@@ -490,6 +490,9 @@ async function callAssistant(env, history, reserveUrl) {
       body: JSON.stringify({
         model: env.OPENAI_MODEL,
         max_completion_tokens: 800,
+        // このボットは日程調整のツール(function calling)を使う。gpt-5.6系では推論モードと
+        // ツールを同時に使えないため、推論を切る必要がある(2026-09-16、実機のエラーで判明)
+        reasoning_effort: "none",
         messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools: TOOLS,
       }),
