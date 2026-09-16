@@ -1,4 +1,4 @@
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
@@ -55,12 +55,15 @@ const SYSTEM_PROMPT = `あなたは「ツナグモ」というAI SaaSの相談�
 
 【ツナグモとは】
 不動産会社向けに、物件紹介文・チラシ・オーナー様への報告文などの資料作成を支援するAI SaaSです。資料作成にかかる時間を、月20〜40時間の削減が見込めます。運営は野村隆真(埼玉県春日部市)。
+お問い合わせの一次対応(ホームページのチャット・LINE・メール、24時間)と、ご希望条件に合う物件のご案内メール・追客メールの作成にも対応しています。
 
 【料金】
-・月5万円の一律プラン(作成本数の制限なし)
-・文章生成に使うAI(Anthropic社)の利用料は、月額費用には含まれません。お客様ご自身でAnthropic社と契約し、その利用料をお客様が直接お支払いいただきます(初期設定はこちらで代行するので、お客様ご自身で複雑な設定をする必要はありません)
-・初期費用なし。最低契約期間なし(解約は1ヶ月前にご連絡)
-・初期設定代行(30分)、業界の禁止表現チェック、承認フローと履歴、月2〜3回までの調整依頼が含まれます
+・ライト 月39,800円 / スタンダード 月98,000円 / プレミアム 月198,000円(詳しくは料金ページをご案内する)
+・プランの違いは、物件写真の作成・編集やルームツアー動画の月間のご利用上限
+・文章作成・画像・ルームツアー動画のAI利用料は月額に含まれます。お客様ご自身でAI事業者と契約いただく必要はありません
+・例外として、AIで映像そのものを新しく作る動画生成だけは、お客様ご自身でHiggsfield社とご契約いただき、その費用はお客様のご負担になります(この機能を使わない場合は契約不要)
+・初期費用なし。最低契約期間なし。解約は管理画面からいつでも可能(違約金なし)
+・初期設定代行(30分)、業界の禁止表現チェック、承認フローと履歴が含まれます
 
 【トライアル】
 ・オンライン相談(初期設定)の後から2週間無料。トライアル開始にはクレジットカードのご登録が必要です(トライアル期間中の課金はありません。期間終了後、継続する場合はそのまま自動でお支払いが始まります)
@@ -72,7 +75,7 @@ const SYSTEM_PROMPT = `あなたは「ツナグモ」というAI SaaSの相談�
 ・AIを主語にしない。何ができるようになるか(時間・手間)を主語にする
 ・「誰でも使えます」ではなく「AIの知識は不要です」と言う
 ・法令・禁止表現チェックについて聞かれたら、「検出は補助機能であり、法令適合を保証するものではなく、最終確認は貴社にお願いしている」旨を必ず伝える
-・文章生成にはAnthropic社の海外APIを使っている旨を聞かれたら伝える。個人情報を含む内容の入力は控えてもらうよう伝える
+・文章・画像の生成にはOpenAI社の海外APIを使っている旨を聞かれたら伝える。個人情報を含む内容の入力は控えてもらうよう伝える
 ・断定しすぎず、丁寧で落ち着いた敬語で話す。売り込みすぎない
 
 【オンライン相談の予約対応】
@@ -89,30 +92,37 @@ const SYSTEM_PROMPT = `あなたは「ツナグモ」というAI SaaSの相談�
 ・わからないこと、即答できない込み入った内容は、正直に「その点は野村が直接お答えします」と伝えてください
 ・返信は短く、LINEのチャットらしい自然な長さにしてください(長文は避ける)`;
 
+// OpenAIのfunction calling形式(2026-09-16、Anthropicのtool_useから移行)
 const TOOLS = [
   {
-    name: "get_available_slots",
-    description:
-      "Googleカレンダーの空き時間を確認し、直近の相談可能な候補日時(最大5件)を返す。ユーザーがチャットの中で日時を決めたいと言ったときに呼ぶ。",
-    input_schema: { type: "object", properties: {}, required: [] },
+    type: "function",
+    function: {
+      name: "get_available_slots",
+      description:
+        "Googleカレンダーの空き時間を確認し、直近の相談可能な候補日時(最大5件)を返す。ユーザーがチャットの中で日時を決めたいと言ったときに呼ぶ。",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
   },
   {
-    name: "book_slot",
-    description:
-      "指定した日時でオンライン相談の予定をGoogleカレンダーに作成し、Zoomリンクを確定する。会社名・お名前・メールアドレスを必ず伺った後に呼ぶ。",
-    input_schema: {
-      type: "object",
-      properties: {
-        start_iso: { type: "string", description: "予定開始時刻(ISO8601、get_available_slotsの値をそのまま使う)" },
-        end_iso: { type: "string", description: "予定終了時刻(ISO8601、get_available_slotsの値をそのまま使う)" },
-        label: { type: "string", description: "確認用のラベル。例:「8/14(金) 14:00〜」" },
-        company: { type: "string", description: "会社名" },
-        contact_name: { type: "string", description: "お名前" },
-        email: { type: "string", description: "メールアドレス" },
-        tel: { type: "string", description: "電話番号(任意、無ければ空文字)" },
-        trouble: { type: "string", description: "現在お困りのこと(任意、無ければ空文字)" },
+    type: "function",
+    function: {
+      name: "book_slot",
+      description:
+        "指定した日時でオンライン相談の予定をGoogleカレンダーに作成し、Zoomリンクを確定する。会社名・お名前・メールアドレスを必ず伺った後に呼ぶ。",
+      parameters: {
+        type: "object",
+        properties: {
+          start_iso: { type: "string", description: "予定開始時刻(ISO8601、get_available_slotsの値をそのまま使う)" },
+          end_iso: { type: "string", description: "予定終了時刻(ISO8601、get_available_slotsの値をそのまま使う)" },
+          label: { type: "string", description: "確認用のラベル。例:「8/14(金) 14:00〜」" },
+          company: { type: "string", description: "会社名" },
+          contact_name: { type: "string", description: "お名前" },
+          email: { type: "string", description: "メールアドレス" },
+          tel: { type: "string", description: "電話番号(任意、無ければ空文字)" },
+          trouble: { type: "string", description: "現在お困りのこと(任意、無ければ空文字)" },
+        },
+        required: ["start_iso", "end_iso", "label", "company", "contact_name", "email"],
       },
-      required: ["start_iso", "end_iso", "label", "company", "contact_name", "email"],
     },
   },
 ];
@@ -144,7 +154,11 @@ async function loadHistory(env, userId) {
   const raw = await env.CHAT_HISTORY.get(userId);
   if (!raw) return [];
   try {
-    return JSON.parse(raw);
+    const history = JSON.parse(raw);
+    // 2026-09-16: AnthropicからOpenAIへ移行。旧形式(contentが配列のブロック構造)が残っていると
+    // OpenAI側でエラーになるため、その場合は履歴を捨てて新しく始める
+    if (history.some((m) => Array.isArray(m.content))) return [];
+    return history;
   } catch {
     return [];
   }
@@ -440,30 +454,28 @@ async function runTool(env, name, input) {
   return JSON.stringify({ error: "unknown tool: " + name });
 }
 
-async function callClaude(env, history, reserveUrl) {
+async function callAssistant(env, history, reserveUrl) {
   let messages = history;
   const systemPrompt = SYSTEM_PROMPT.replace("{{RESERVE_URL}}", reserveUrl);
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
-    const res = await fetch(ANTHROPIC_API_URL, {
+    const res = await fetch(OPENAI_API_URL, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
+        authorization: `Bearer ${env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: env.ANTHROPIC_MODEL,
-        max_tokens: 800,
-        system: systemPrompt,
+        model: env.OPENAI_MODEL,
+        max_completion_tokens: 800,
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
         tools: TOOLS,
-        messages,
       }),
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error("Anthropic API error", res.status, errText);
+      console.error("OpenAI API error", res.status, errText);
       return {
         replyText: "申し訳ございません、只今お答えできませんでした。少し時間をおいて、もう一度お送りください。",
         messages,
@@ -471,33 +483,35 @@ async function callClaude(env, history, reserveUrl) {
     }
 
     const data = await res.json();
-    messages = [...messages, { role: "assistant", content: data.content }];
+    const message = data.choices?.[0]?.message;
+    if (!message) {
+      return { replyText: "申し訳ございません、うまくお答えできませんでした。", messages };
+    }
+    messages = [...messages, message];
 
-    if (data.stop_reason !== "tool_use") {
-      const textBlock = (data.content || []).find((b) => b.type === "text");
+    const toolCalls = message.tool_calls || [];
+    if (toolCalls.length === 0) {
       return {
-        replyText: textBlock?.text?.trim() || "申し訳ございません、うまくお答えできませんでした。",
+        replyText: (message.content || "").trim() || "申し訳ございません、うまくお答えできませんでした。",
         messages,
       };
     }
 
-    const toolResults = [];
-    for (const block of data.content) {
-      if (block.type !== "tool_use") continue;
+    for (const call of toolCalls) {
       let content;
       try {
-        content = await runTool(env, block.name, block.input);
+        const args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
+        content = await runTool(env, call.function.name, args);
       } catch (err) {
-        console.error("tool execution failed", block.name, err);
+        console.error("tool execution failed", call.function?.name, err);
         content = JSON.stringify({ error: String(err.message || err) });
       }
-      toolResults.push({ type: "tool_result", tool_use_id: block.id, content });
+      messages = [...messages, { role: "tool", tool_call_id: call.id, content }];
     }
-    messages = [...messages, { role: "user", content: toolResults }];
   }
 
   return {
-    replyText: "申し訳ございません、処理に時間がかかっています。少ししてから、もう一度お試しください。",
+    replyText: "申し訳ございません、うまくお答えできませんでした。お手数ですが、もう一度お送りください。",
     messages,
   };
 }
@@ -536,7 +550,7 @@ async function handleEvent(env, event, reserveUrl) {
   const history = await loadHistory(env, userId);
   history.push({ role: "user", content: userText });
 
-  const { replyText, messages } = await callClaude(env, history, reserveUrl);
+  const { replyText, messages } = await callAssistant(env, history, reserveUrl);
 
   await saveHistory(env, userId, messages);
   await replyToLine(env, replyToken, replyText);
@@ -626,7 +640,7 @@ function reservePageHtml() {
       ※ トライアルは、この相談（初期設定）の後から2週間です。<br>
       ※ トライアル開始にはクレジットカードのご登録が必要です。トライアル期間中の課金はありません。<br>
       ※ 生成された文章は、必ず内容をご確認のうえご利用ください。<br>
-      ※ 文章の生成には海外のAIサービス（Anthropic社）を利用しています。個人情報を含む内容の入力はお控えください。
+      ※ 文章・画像の生成には海外のAIサービス（OpenAI社）を利用しています。個人情報を含む内容の入力はお控えください。
     </p>
   </div>
 
@@ -1311,3 +1325,6 @@ export default {
     return new Response("OK", { status: 200 });
   },
 };
+
+// テスト用にエクスポート(Workers本体の動作には影響しない)
+export { callAssistant, TOOLS };

@@ -8,19 +8,22 @@ binding = "CHAT_HISTORY"
 id = "2dd62f340c054f21a9358985d9e2d503"
 
 [vars]
-ANTHROPIC_MODEL = "claude-sonnet-5"
+# 2026-09-16: AnthropicからOpenAIへ移行(SaaS本体と同じ提供元に揃えた)
+OPENAI_MODEL = "gpt-5.6-terra"
 GOOGLE_CALENDAR_ID = "primary"
 # SaaS本体(saas/)のデプロイ先URL。未デプロイの間は空のままでよい
 # (トライアル開始自体は失敗しない。SaaS側のテナント発行だけスキップされる)。
 SAAS_BASE_URL = "https://app.tunagumo.com"
-# 月5万円プランのStripe price ID(live mode、2026-08-20作成)。秘密情報ではないため
-# ここに直接書いてよい(Stripe側の商品構成が変わるまで固定値)。
+# トライアル終了後に課金するStripeのprice ID(live mode、2026-08-20作成の月5万円プラン)。
+# 【要確認】2026-09-16時点で、公開中の料金ページは3プラン(ライト39,800/スタンダード98,000/
+# プレミアム198,000円)になっており、この価格IDと一致していない。本番運用前に、Stripe側の商品を
+# 作り直して差し替えるか、料金ページ側を合わせること。
 STRIPE_PRICE_TSUNAGUMO = "price_1U6LS6Gj5LbAzw5NDK48bI32"
 
 # 以下はここに書かない。wrangler secret put で個別に設定する:
 #   LINE_CHANNEL_SECRET
 #   LINE_CHANNEL_ACCESS_TOKEN
-#   ANTHROPIC_API_KEY
+#   OPENAI_API_KEY       (2026-09-16にANTHROPIC_API_KEYから変更。wrangler secret put OPENAI_API_KEY)
 #   GOOGLE_OAUTH_CLIENT_ID
 #   GOOGLE_OAUTH_CLIENT_SECRET
 #   GOOGLE_CALENDAR_REFRESH_TOKEN
