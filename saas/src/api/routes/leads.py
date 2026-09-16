@@ -29,6 +29,8 @@ from src.core.proposals import compose_footer, sender_info_missing
 router = APIRouter(tags=["leads"])
 
 DealType = Literal["rent", "sale"]
+# 一覧の取得件数の上限(増えても画面と通信が重くならないようにする)
+MAX_LIST = 500
 
 
 def mail_transport():
@@ -77,7 +79,11 @@ async def _own(db: AsyncSession, model, tenant: Tenant, obj_id: uuid.UUID):
 
 @router.get("/api/properties", response_model=list[PropertyOut])
 async def list_properties(tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)):
-    rows = (await db.execute(select(Property).where(Property.tenant_id == tenant.id).order_by(Property.created_at.desc()))).scalars().all()
+    rows = (
+        await db.execute(
+            select(Property).where(Property.tenant_id == tenant.id).order_by(Property.created_at.desc()).limit(MAX_LIST)
+        )
+    ).scalars().all()
     return [_property_out(p) for p in rows]
 
 
@@ -116,7 +122,7 @@ class LeadIn(BaseModel):
     consent: bool = False
     consent_source: str = Field(default="", max_length=300)
     deal_type: DealType | None = None
-    areas: list[str] = Field(default_factory=list, max_length=20)
+    areas: list[str] = Field(default_factory=list, max_length=20)  # 1件ずつの長さは_apply_leadで制限
     max_price_yen: int | None = Field(default=None, ge=0, le=10_000_000_000)
     layouts: list[str] = Field(default_factory=list, max_length=20)
     max_walk_minutes: int | None = Field(default=None, ge=0, le=180)
@@ -164,9 +170,9 @@ def _apply_lead(lead: Lead, req: LeadIn) -> None:
         lead.consent_at = None
     lead.consent_source = req.consent_source.strip()
     lead.deal_type = req.deal_type
-    lead.areas = [a.strip() for a in req.areas if a.strip()]
+    lead.areas = [a.strip()[:50] for a in req.areas if a.strip()]
     lead.max_price_yen = req.max_price_yen
-    lead.layouts = [x.strip() for x in req.layouts if x.strip()]
+    lead.layouts = [x.strip()[:20] for x in req.layouts if x.strip()]
     lead.max_walk_minutes = req.max_walk_minutes
     lead.min_floor_area_sqm = req.min_floor_area_sqm
     lead.notes = req.notes
@@ -176,7 +182,9 @@ def _apply_lead(lead: Lead, req: LeadIn) -> None:
 
 @router.get("/api/leads", response_model=list[LeadOut])
 async def list_leads(tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)):
-    rows = (await db.execute(select(Lead).where(Lead.tenant_id == tenant.id).order_by(Lead.created_at.desc()))).scalars().all()
+    rows = (
+        await db.execute(select(Lead).where(Lead.tenant_id == tenant.id).order_by(Lead.created_at.desc()).limit(MAX_LIST))
+    ).scalars().all()
     return [_lead_out(lead) for lead in rows]
 
 
@@ -251,7 +259,7 @@ async def list_proposals(
     query = select(Proposal, Lead).join(Lead, Lead.id == Proposal.lead_id).where(Proposal.tenant_id == tenant.id)
     if status is not None:
         query = query.where(Proposal.status == status)
-    rows = (await db.execute(query.order_by(Proposal.created_at.desc()).limit(200))).all()
+    rows = (await db.execute(query.order_by(Proposal.created_at.desc()).limit(MAX_LIST))).all()
     return [_proposal_out(p, lead, tenant) for p, lead in rows]
 
 

@@ -53,6 +53,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks/line", tags=["line-webhook"])
 
 NON_TEXT_REPLY = "恐れ入りますが、お問い合わせ内容は文字でお送りください。"
+# 1回のWebhookで処理するイベント数の上限(LINEは複数まとめて送ってくることがある)
+MAX_EVENTS_PER_REQUEST = 20
 
 
 async def _load_tenant(tenant_id: uuid.UUID) -> Tenant | None:
@@ -77,7 +79,7 @@ async def line_webhook(tenant_id: uuid.UUID, request: Request, background_tasks:
     except ValueError:
         raise HTTPException(status_code=400, detail="本文を読み取れません") from None
 
-    for event in events:
+    for event in events[:MAX_EVENTS_PER_REQUEST]:
         background_tasks.add_task(_handle_event, tenant, event, request.app)
     return {"received": True}
 

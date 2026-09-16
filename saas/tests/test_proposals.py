@@ -390,3 +390,13 @@ async def test_other_tenants_data_is_not_accessible(client, tenant):
         assert prop is not None
     finally:
         await _cleanup(tenant["id"])
+
+
+@_async
+async def test_long_condition_values_are_trimmed(client, tenant):
+    res = await client.post("/api/leads", json={
+        "name": "長い条件さん", "email": "long@example.net", "areas": ["あ" * 100], "layouts": ["1LDK" * 20],
+    }, headers=_h(tenant))
+    assert res.status_code == 201
+    body = res.json()
+    assert len(body["areas"][0]) == 50 and len(body["layouts"][0]) == 20

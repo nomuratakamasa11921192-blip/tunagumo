@@ -74,18 +74,22 @@ OpenAI APIの応答が遅い場合、1回の処理に数十秒〜数分かかる
   グラフを先に進める。1段のテナントでも`X-User-Token`を付ければ、誰が承認したかが
   `approvals.approver_user_id`に記録される
 
-## LINEチャネル連携の土台(Phase 15、2026-08-26時点では未稼働)
+## 問い合わせの24時間一次受け(Webチャット・LINE・メール、2026-09-15〜16)
 
-SaaS本体の顧客対応をLINE公式アカウント経由でも受け付けられるようにする土台
-(`src/channels/line.py`)。**実際の顧客のLINE公式アカウント認証情報が無いと動かない**ため、
-1社目の顧客がLINE公式アカウントを用意するまでは、以下の管理APIで設定してもテナント側の
-Webhookエンドポイント自体はまだ実装していない(署名検証・冪等性チェックの部品のみ実装済み)。
+社外からの問い合わせにAIが一次対応し、答えられないものは担当者へ回す。応答ロジックは全チャネルで
+共通(`src/agent/public_responder.py`)。**設定手順は `docs/setup_line_mail.md`**(顧客への案内にも使える)。
 
-- 設定: `PUT /admin/tenants/{tenant_id}/line-channel`
-  （`{"line_channel_secret": "...", "line_channel_access_token": "..."}`、暗号化保存）
-- 解除: `DELETE /admin/tenants/{tenant_id}/line-channel`
-- 応答ロジック自体はPhase 16のWeb埋め込みチャットと共用(`src/agent/public_responder.py`)。
-  実際のWebhookルート・LINEアカウントでの実機テストは、1社目のLINE連携要望が出てから着手する
+- 緊急判定(`src/agent/inquiry_triage.py`): 火災・ガス・水漏れ・漏電・閉じ込め・防犯等をキーワードで
+  検出し、AIを使わない定型の安全案内を自動返信して【緊急】通知。日次コスト上限やAI不可時でも返す
+- 担当者へ回した問い合わせは`inquiries`テーブルに記録し、通知先(`tenants.inquiry_notify_email`
+  →未設定なら`email`)へメール通知。画面は`/api/inquiries`(一覧・状態変更・AI返信案・返信)
+- LINE: `POST /webhooks/line/{tenant_id}`。署名検証・再送の重複防止・即200+バックグラウンド処理
+  (`src/api/routes/line_webhook.py`)。顧客が自分で登録: `PUT /api/account/line-channel`
+  （管理者版は `PUT /admin/tenants/{tenant_id}/line-channel`、どちらも暗号化保存）
+- メール: 顧客のメールボックスにIMAPで2分ごとに接続し、SMTPで顧客自身のアドレスから返信
+  (`src/channels/mail.py`, `src/agent/mail_scan.py`)。メルマガ・noreply・自動返信には返信せず、
+  同一相手24時間3通/テナント1日100通の上限、既読にしない(readonly+BODY.PEEK)、連携前のメールには返信しない
+- ポータル(SUUMO等)の反響通知は自動返信せず、本文から連絡先を読み取って問い合わせとして記録する
 
 ## 業種別設定・テナント発行
 
@@ -106,16 +110,18 @@ Webhookエンドポイント自体はまだ実装していない(署名検証・
   （`anthropic_api_key`はローカル動作確認用に`.env`のANTHROPIC_API_KEYを流用する）
 - プロンプト一括更新も業種ごと: `GET/PUT /admin/config/{industry}`（旧`/admin/config`から変更）
 
-## 事業モデル: AI利用の実費は顧客が自分のAnthropic APIキーで負担する
+## 事業モデル: AI利用料は運営(ツナグモ)が負担し、月額に含める
 
-`POST /admin/tenants`で発行するテナントは、必ず顧客自身のAnthropic APIキー(`anthropic_api_key`)を
-持つ。顧客の実セッションはこのキーで直接Anthropicに課金される(`src/api/deps.py`の`get_llm`)。
-ツナグモ自身の`.env`のANTHROPIC_API_KEYは、起動時ヘルスチェックと管理画面の回帰テスト
-(`POST /admin/regression-test`)専用(`get_internal_llm`)で、顧客セッションには一切使わない。
+2026-09-01にBYOK(顧客自身のAPIキー)を廃止し、AI利用料は運営が負担する方式に切り替えた。
+2026-09-15には文章・画像の生成をAnthropicからOpenAIへ移行した。顧客のセッションも運営の
+`.env`の`OPENAI_API_KEY`で動く(`src/api/deps.py`の`get_llm`)。テナントの`anthropic_api_key`列は
+過去互換のために残してあるだけで、もう読まない。
 
-- キーのローテーション: `PATCH /admin/tenants/{tenant_id}/anthropic-key`（管理画面①ダッシュボードの
-  「Anthropicキー更新」ボタンからも操作できる）
-- 顧客のAnthropic APIキーはDBに暗号化して保存する(`src/core/crypto.py`、Fernet対称鍵)。
+- 失われた「顧客自身のコンソール上の利用上限」という防御は、月間AI予算(`src/core/ai_budget.py`、
+  プラン別: light $10 / standard $40 / unlimited $120)で代替する。予算超過は429で止まる
+- 例外: 動画生成(Higgsfield)だけは顧客自身のキー・顧客負担(2026-09-15決定)。
+  顧客が自分で登録: `PATCH /api/account/higgsfield-key`
+- 暗号化して保存する値(顧客のHiggsfieldキー、LINEチャネル情報、メールアカウントのパスワード)は(`src/core/crypto.py`、Fernet対称鍵)。
   鍵は`.env`の`TENANT_SECRET_KEY`
   (生成: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`)。
   この鍵自体はKMS等では管理していない(ADMIN_API_KEYと同程度の信頼が必要な運用上の前提)
