@@ -118,3 +118,47 @@ def test_pricing_table_covers_both_providers(config):
         ("claude-haiku-4.5", 6.0), # 1.0 + 5.0
     ):
         assert compute_cost_usd(model, usage, config.pricing) == pytest.approx(expected), model
+
+
+@_async
+async def test_healthcheck_uses_the_right_api_for_each_provider(monkeypatch):
+    """起動時の疎通確認が、提供元ごとに正しいAPIを呼ぶこと(AnthropicのSDKにはmodels.retrieveが無い)。"""
+    from src.core.healthcheck import check_llm
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "llm_model_light", "claude-haiku-4.5")
+    anthropic_client, messages = _anthropic_client([SimpleNamespace(type="text", text="ok")])
+    result = await check_llm(anthropic_client)
+    assert result.ok and result.name == "anthropic"
+    assert messages.calls[0]["model"] == "claude-haiku-4.5"
+    assert messages.calls[0]["max_tokens"] == 1  # 消費を最小にする
+
+    monkeypatch.setattr(settings, "llm_provider", "openai")
+    monkeypatch.setattr(settings, "llm_model_light", "gpt-5.6-luna")
+    retrieved = []
+
+    class FakeOpenAI:
+        class models:
+            @staticmethod
+            async def retrieve(model):
+                retrieved.append(model)
+
+    result = await check_llm(FakeOpenAI())
+    assert result.ok and result.name == "openai"
+    assert retrieved == ["gpt-5.6-luna"]
+
+
+@_async
+async def test_healthcheck_reports_failure_reason(monkeypatch):
+    from src.core.healthcheck import check_llm
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+
+    class Broken:
+        class messages:
+            @staticmethod
+            async def create(**kwargs):
+                raise RuntimeError("Error code: 401 - invalid x-api-key")
+
+    result = await check_llm(Broken())
+    assert result.ok is False and "401" in result.detail

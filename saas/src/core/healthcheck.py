@@ -39,7 +39,17 @@ async def check_llm(client=None) -> HealthCheckResult:
             else AsyncOpenAI(api_key=settings.openai_api_key or None, max_retries=0)
         )
     try:
-        await client.models.retrieve(active_llm_model_light())
+        if provider == "anthropic":
+            # このSDK(0.40.0)にはmodels.retrieveが無いため、最小のメッセージ送信で確認する。
+            # max_tokens=1なので消費はごくわずか。キーの有効性とモデル名の誤りを同時に検出できる。
+            await client.messages.create(
+                model=active_llm_model_light(),
+                max_tokens=1,
+                messages=[{"role": "user", "content": "ping"}],
+            )
+        else:
+            # OpenAIはトークンを消費しないモデル情報取得で確認できる
+            await client.models.retrieve(active_llm_model_light())
         return HealthCheckResult(name=name, ok=True)
     except Exception as e:
         return HealthCheckResult(name=name, ok=False, detail=str(e))

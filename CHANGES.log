@@ -119,3 +119,4 @@
 2026-09-16 [Claude] 文章生成の提供元を設定(LLM_PROVIDER)で切り替えられるようにした(ユーザー判断でClaudeへ戻すため)。StructuredLLMがAnthropic(tool_use)とOpenAI(Structured Outputs)の両方に対応し、呼び出し側・戻り値・usageのキー名は共通。get_llm・社外チャネル3種・スケジューラ・ヘルスチェックも提供元対応に。
 [Claude] config/*.yamlの単価表をモデル名キーに変更し、gpt-5.6-terra/luna・claude-sonnet-5/haiku-4.5の4モデル分を掲載(公式価格で確認)。部署のモデル指定は${LLM_MODEL}/${LLM_MODEL_LIGHT}に変更したため、提供元を変えてもYAMLの編集は不要。
 [Claude] 提供元切り替えのテスト5件追加(Anthropicの構造化出力・本文生成・リトライ・モデル選択・単価表の網羅)。584件成功(失敗22件は既知の環境要因)。画像・音声・埋め込みは引き続きOpenAI。
+2026-09-17 [Claude] Claudeへ切り替えた本番が502になった。原因は起動時ヘルスチェックでAnthropic SDK(0.40.0)に存在しないmodels.retrieveを呼んでいたこと(OpenAIと同じ書き方をしてしまった)。max_tokens=1の最小メッセージ送信で確認する方式に修正し、提供元ごとに正しいAPIを呼ぶことのテストを追加。
