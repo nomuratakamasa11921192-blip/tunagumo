@@ -100,6 +100,8 @@ async def update_own_higgsfield_key(
 
 class InquirySettingsResponse(BaseModel):
     notify_email: str | None
+    # 実際に通知が届くアドレス(未入力ならアカウント登録時のメールアドレス)。どちらも無ければNone
+    effective_notify_email: str | None
     emergency_phone: str | None
     line_configured: bool
     # LINE Developersコンソールに登録するWebhook URL(SAAS_PUBLIC_URL未設定ならパスのみ)
@@ -121,6 +123,7 @@ def _inquiry_settings(tenant: Tenant) -> InquirySettingsResponse:
     path = f"/webhooks/line/{tenant.id}"
     return InquirySettingsResponse(
         notify_email=tenant.inquiry_notify_email,
+        effective_notify_email=tenant.inquiry_notify_email or tenant.email,
         emergency_phone=tenant.emergency_contact_phone,
         line_configured=bool(tenant.line_channel_secret and tenant.line_channel_access_token),
         line_webhook_url=f"{settings.saas_public_url.rstrip('/')}{path}" if settings.saas_public_url else path,

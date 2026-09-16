@@ -512,6 +512,7 @@
       '<p style="font-size:13px;">AIが回答できないお問い合わせや、緊急の内容(火災・ガス・水漏れ等)が届いた時に、ここで指定したメールアドレスへお知らせします。</p>' +
       '<label for="inq-notify-email">通知先メールアドレス(未入力の場合は登録済みのメールアドレス)</label>' +
       '<input id="inq-notify-email" type="text" autocomplete="off" placeholder="例: kanri@example.co.jp">' +
+      '<div id="inq-notify-warning" style="margin-top:6px;"></div>' +
       '<label for="inq-emergency-phone">緊急連絡先の電話番号(任意)</label>' +
       '<input id="inq-emergency-phone" type="text" autocomplete="off" placeholder="例: 0120-000-000">' +
       '<p class="muted" style="font-size:12px;">入力すると、緊急の内容への自動返信に「お急ぎの場合は、緊急連絡先へお電話ください」と載せます。24時間つながる番号を入れてください。</p>' +
@@ -592,6 +593,9 @@
     });
 
     function showInquirySettings(s) {
+      document.getElementById('inq-notify-warning').innerHTML = s.effective_notify_email
+        ? '<span class="muted" style="font-size:12px;">現在の通知先: ' + escapeHtml(s.effective_notify_email) + '</span>'
+        : '<span class="error-text" style="font-size:12.5px;">通知先メールアドレスが未設定です。このままでは、緊急のお問い合わせが届いてもお知らせできません。</span>';
       document.getElementById('inq-notify-email').value = s.notify_email || '';
       document.getElementById('inq-emergency-phone').value = s.emergency_phone || '';
       document.getElementById('line-status').textContent = s.line_configured ? '(連携済み)' : '(未連携)';

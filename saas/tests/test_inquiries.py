@@ -447,3 +447,16 @@ async def test_cleanup_deletes_old_resolved_and_very_old_inquiries(tenant):
         assert drop_resolved not in remaining and drop_very_old not in remaining
     finally:
         await _cleanup_channels(tenant["id"])
+
+
+@_async
+async def test_inquiry_settings_shows_effective_notification_address(client, tenant):
+    # 通知先が未入力なら登録済みメール、どちらも無ければNone(画面で警告を出すため)
+    await _configure(tenant["id"], email=None, inquiry_notify_email=None)
+    assert (await client.get("/api/account/inquiry-settings", headers=_headers(tenant))).json()["effective_notify_email"] is None
+
+    await _configure(tenant["id"], email="owner@example.com")
+    assert (await client.get("/api/account/inquiry-settings", headers=_headers(tenant))).json()["effective_notify_email"] == "owner@example.com"
+
+    await client.put("/api/account/inquiry-settings", json={"notify_email": "staff@example.com"}, headers=_headers(tenant))
+    assert (await client.get("/api/account/inquiry-settings", headers=_headers(tenant))).json()["effective_notify_email"] == "staff@example.com"
