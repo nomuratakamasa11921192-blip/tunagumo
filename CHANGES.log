@@ -114,3 +114,4 @@
 [Claude] ボットが話す内容が古く実態と食い違っていたため修正(「月5万円の一律プラン・AI利用料は顧客負担」→3プラン・AI利用料は月額込み、動画生成のみ顧客契約。事業者名もOpenAIに)。
 [Claude] 【要確認】wrangler.tomlのStripe価格IDが「月5万円プラン」のままで、公開中の料金ページ(3プラン)と一致していない。本番で課金が始まる前に、Stripe商品の作り直しか料金ページの調整が必要。設定ファイルにも注記した。
 2026-09-16 [Claude] 申込みを3プラン対応に。Stripeの価格ID(ライト39,800/スタンダード98,000/プレミアム198,000)をwrangler.tomlに設定し、契約したプランをSaaS側のプラン(light/standard/unlimited)としてテナント発行時に渡すようにした。未指定はライト。
+2026-09-16 [Claude] 本番が502で停止(OpenAIキー差し替え後)。原因はdocker compose restartでは.envが再読込されず、無効化済みの旧キーのまま起動していたこと。up -dで作り直して復旧を確認。再発防止として、docs/setup_line_mail.mdとsaas/README.mdに「.env変更時はrestartではなくup -d」を明記。

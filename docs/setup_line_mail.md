@@ -122,6 +122,22 @@
 
 ---
 
+## 3-2. .env（環境変数）を変更したときの反映方法
+
+**`docker compose restart` では反映されない。** restartはコンテナを作り直さないため、環境変数は
+古いままになる（2026-09-16、OpenAIキーの差し替え時に本番が停止した実例あり）。必ず次を使う。
+
+```
+cd /opt/tsunagumo/saas/docker
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api scheduler
+```
+
+反映されたかは、起動時ヘルスチェックの結果で分かる（失敗するとAPIが起動せず502になる）。
+
+```
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail 200 api | grep ヘルスチェック | tail -3
+```
+
 ## 4. うまくいかないとき
 
 | 症状 | 確認すること |
