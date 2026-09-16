@@ -89,3 +89,12 @@ def test_record_cost_ignores_non_positive_amounts():
     record_cost(tenant, 0.0)
     record_cost(tenant, -1.0)
     assert tenant.ai_cost_this_period_usd == 5.0
+
+
+def test_budget_error_hides_internal_cost_but_keeps_internal_metadata():
+    error = BudgetExceededError("light", 10.0)
+    assert "上限" in str(error)
+    assert "$" not in str(error)
+    assert "10.00" not in str(error)
+    assert error.plan == "light"
+    assert error.budget == 10.0

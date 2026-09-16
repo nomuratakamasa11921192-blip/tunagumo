@@ -327,6 +327,17 @@
   var apiKey = localStorage.getItem(STORAGE_KEY) || '';
   var currentSessionId = null;
   var pollTimer = null;
+  // 画面を切り替えるたびに増える番号。2秒ごとの状態取得など、非同期処理の結果が返ってきた時に
+  // 「まだ同じ画面か」を確認するために使う(古い結果が新しい画面を上書きして、入力中の内容が
+  // 消えたり前の依頼に戻ったりする不具合の対策、2026-09-17)
+  var viewToken = 0;
+
+  function newView() {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = null;
+    viewToken += 1;
+    return viewToken;
+  }
   // 物件URL取込で見つかった画像。次に送信する依頼(1件)にだけ引き継ぎ、
   // そのセッションの動画生成時に「起点画像」として使う(セッションIDをキーに保持)。
   var pendingImportedImageUrls = [];
@@ -411,7 +422,7 @@
   function logout() {
     localStorage.removeItem(STORAGE_KEY);
     apiKey = '';
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     loginEl.style.display = 'flex';
     appEl.classList.remove('active');
   }
@@ -499,11 +510,11 @@
   });
 
   function renderSettings() {
-    if (pollTimer) clearTimeout(pollTimer);
+    var viewId = newView();
     mainEl.innerHTML =
       '<div class="card"><p class="muted" style="margin-top:0;">今月の利用状況</p>' +
       '<div id="usage-body">読み込み中…</div>' +
-      '<button id="buy-addon-btn" class="secondary" style="margin-top:12px;">追加AI予算を購入する(¥25,000で$5分)</button>' +
+      '<button id="buy-addon-btn" class="secondary" style="margin-top:12px;">追加のご利用枠を購入する(¥25,000)</button>' +
       '<div id="buy-addon-result"></div>' +
       '<button id="billing-portal-btn" class="secondary" style="margin-top:12px;">契約を管理する(お支払い方法の変更・解約はこちら)</button>' +
       '<div id="billing-portal-result"></div>' +
@@ -562,37 +573,37 @@
       '</div>';
 
     function showHiggsfieldKeyStatus(registered) {
+      if (viewId !== viewToken) return;
       document.getElementById('higgsfield-key-status').innerHTML = registered
         ? '状態: <strong>登録済み</strong>(新しいキーを入力すると上書きされます)'
         : '状態: 未登録';
     }
 
     api('/api/account/usage').then(function (u) {
+      if (viewId !== viewToken) return;
       var planLabel = { light: 'ライト', standard: 'スタンダード', unlimited: '無制限' }[u.plan] || u.plan;
-      var remaining = Math.max(u.monthly_ai_budget_usd - u.ai_cost_this_period_usd, 0) + u.addon_credit_usd;
-      var addonText = u.addon_credit_usd > 0 ? '(追加購入分 $' + u.addon_credit_usd.toFixed(2) + '含む)' : '';
-      var pct = u.monthly_ai_budget_usd > 0
-        ? Math.min(Math.round((u.ai_cost_this_period_usd / u.monthly_ai_budget_usd) * 100), 100)
-        : 0;
+      // 2026-09-17: AI利用量は割合で表示する(金額を出すと原価・利益率が推測できてしまうため)
+      var pct = u.ai_usage_percent;
       var barColor = pct >= 90 ? '#B8452F' : (pct >= 70 ? '#B8792F' : 'var(--accent, #4d7a4e)');
+      var addonText = u.addon_purchased ? '(追加購入分を含む)' : '';
       document.getElementById('usage-body').innerHTML =
-        '<p style="font-size:14px;">今月: <strong>' + u.this_month_session_count + '件</strong> ／ ' +
-        '概算コスト <strong>$' + u.this_month_cost_usd.toFixed(4) + '</strong></p>' +
-        '<p class="muted" style="font-size:12px;">累計: ' + u.all_time_session_count + '件 ／ $' +
-        u.all_time_cost_usd.toFixed(4) + '</p>' +
+        '<p style="font-size:14px;">今月のご依頼: <strong>' + u.this_month_session_count + '件</strong></p>' +
+        '<p class="muted" style="font-size:12px;">累計: ' + u.all_time_session_count + '件</p>' +
         '<p style="font-size:14px; margin-top:10px;">プラン: <strong>' + escapeHtml(planLabel) + '</strong></p>' +
-        '<p class="muted" style="font-size:12px;">今月のAI利用予算: $' + u.ai_cost_this_period_usd.toFixed(2) +
-        ' / $' + u.monthly_ai_budget_usd.toFixed(2) + '(' + pct + '%使用、残り約$' + remaining.toFixed(2) + ')' + addonText + '</p>' +
+        '<p class="muted" style="font-size:12px;">今月のAI利用量: <strong>' + pct + '%</strong>' +
+        '(残り約' + u.ai_remaining_percent + '%)' + addonText + '</p>' +
         '<div style="background:#0000000f; border-radius:6px; height:8px; margin-top:6px; overflow:hidden;">' +
-        '<div style="background:' + barColor + '; width:' + pct + '%; height:100%;"></div>' +
+        '<div style="background:' + barColor + '; width:' + Math.min(pct, 100) + '%; height:100%;"></div>' +
         '</div>' +
-        '<p class="muted" style="font-size:12px; margin-top:8px;">※ 実際の原価とは、集計タイミング等により多少ずれる場合があります。目安としてご覧ください。</p>';
+        '<p class="muted" style="font-size:12px; margin-top:8px;">※ 文章作成などのAI利用料は月額料金に含まれています。上限に近づいた場合は、追加のご利用枠のご購入、またはプランのご変更をご検討ください。</p>';
       showHiggsfieldKeyStatus(u.higgsfield_key_registered);
     }).catch(function (e) {
+      if (viewId !== viewToken) return;
       document.getElementById('usage-body').innerHTML = '<p class="error-text">' + escapeHtml(e.message) + '</p>';
     });
 
     function showInquirySettings(s) {
+      if (viewId !== viewToken) return;
       document.getElementById('inq-notify-warning').innerHTML = s.effective_notify_email
         ? '<span class="muted" style="font-size:12px;">現在の通知先: ' + escapeHtml(s.effective_notify_email) + '</span>'
         : '<span class="error-text" style="font-size:12.5px;">通知先メールアドレスが未設定です。このままでは、緊急のお問い合わせが届いてもお知らせできません。</span>';
@@ -603,6 +614,7 @@
       document.getElementById('line-remove-btn').style.display = s.line_configured ? '' : 'none';
     }
     function inqSettingsError(e) {
+      if (viewId !== viewToken) return;
       document.getElementById('inq-settings-result').innerHTML =
         '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
     }
@@ -618,12 +630,13 @@
           emergency_phone: document.getElementById('inq-emergency-phone').value.trim()
         })
       })
-        .then(function (s) { document.getElementById('inq-settings-result').innerHTML = ''; showInquirySettings(s); toast('保存しました'); })
+        .then(function (s) { if (viewId !== viewToken) return; document.getElementById('inq-settings-result').innerHTML = ''; showInquirySettings(s); toast('保存しました'); })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           inqSettingsError(e.message.indexOf('エラー: 422') === 0
             ? new Error('メールアドレスまたは電話番号の形式をご確認ください。') : e);
         })
-        .then(function () { btn.disabled = false; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; });
     });
 
     document.getElementById('line-save-btn').addEventListener('click', function () {
@@ -637,6 +650,7 @@
         body: JSON.stringify({ line_channel_secret: secret, line_channel_access_token: token })
       })
         .then(function (s) {
+          if (viewId !== viewToken) return;
           document.getElementById('line-secret').value = '';
           document.getElementById('line-token').value = '';
           document.getElementById('inq-settings-result').innerHTML = '';
@@ -644,17 +658,18 @@
           toast('LINE連携を登録しました。LINE Developers側でWebhook URLの設定もお忘れなく');
         })
         .catch(inqSettingsError)
-        .then(function () { btn.disabled = false; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; });
     });
 
     document.getElementById('line-remove-btn').addEventListener('click', function () {
       if (!window.confirm('LINE連携を解除します。LINEからのお問い合わせにAIが応答しなくなります。よろしいですか？')) return;
       api('/api/account/line-channel', { method: 'DELETE' })
-        .then(function (s) { showInquirySettings(s); toast('LINE連携を解除しました'); })
+        .then(function (s) { if (viewId !== viewToken) return; showInquirySettings(s); toast('LINE連携を解除しました'); })
         .catch(inqSettingsError);
     });
 
     function showMailAccount(m) {
+      if (viewId !== viewToken) return;
       var status = document.getElementById('mail-status');
       if (!m.configured) {
         status.textContent = '(未連携)';
@@ -672,6 +687,7 @@
       document.getElementById('mail-remove-btn').style.display = m.configured ? '' : 'none';
     }
     function mailError(e) {
+      if (viewId !== viewToken) return;
       document.getElementById('mail-result').innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
     }
     api('/api/account/mail-account').then(showMailAccount).catch(mailError);
@@ -694,15 +710,17 @@
         })
       })
         .then(function (m) {
+          if (viewId !== viewToken) return;
           document.getElementById('mail-pass').value = '';
           document.getElementById('mail-result').innerHTML = '';
           showMailAccount(m);
           toast('メールサーバーに接続できました。保存しました');
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           mailError(e.message.indexOf('エラー: 422') === 0 ? new Error('入力内容の形式をご確認ください(メールアドレス・サーバー名)。') : e);
         })
-        .then(function () { btn.disabled = false; btn.textContent = '接続を確認して保存する'; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = '接続を確認して保存する'; });
     });
 
     document.getElementById('mail-remove-btn').addEventListener('click', function () {
@@ -728,6 +746,7 @@
         body: JSON.stringify({ higgsfield_key_id: keyId, higgsfield_key_secret: keySecret })
       })
         .then(function () {
+          if (viewId !== viewToken) return;
           idInput.value = '';
           secretInput.value = '';
           resultEl.innerHTML = '';
@@ -735,9 +754,10 @@
           toast('Higgsfield APIキーを登録しました');
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           resultEl.innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
         })
-        .then(function () { btn.disabled = false; btn.textContent = 'キーを登録する'; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = 'キーを登録する'; });
     });
 
     document.getElementById('buy-addon-btn').addEventListener('click', function () {
@@ -746,13 +766,15 @@
       btn.textContent = '準備中…';
       api('/api/account/buy-addon', { method: 'POST' })
         .then(function (data) {
+          if (viewId !== viewToken) return;
           window.location.href = data.checkout_url;
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           document.getElementById('buy-addon-result').innerHTML =
             '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
           btn.disabled = false;
-          btn.textContent = '追加AI予算を購入する(¥25,000で$5分)';
+          btn.textContent = '追加のご利用枠を購入する(¥25,000)';
         });
     });
 
@@ -762,9 +784,11 @@
       btn.textContent = '準備中…';
       api('/api/account/billing-portal', { method: 'POST' })
         .then(function (data) {
+          if (viewId !== viewToken) return;
           window.location.href = data.portal_url;
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           document.getElementById('billing-portal-result').innerHTML =
             '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
           btn.disabled = false;
@@ -779,7 +803,7 @@
   };
 
   function renderDocuments() {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML =
       '<div class="card">' +
       '<p class="muted" style="margin-top:0;">文書をアップロード</p>' +
@@ -1041,7 +1065,8 @@
   }
 
   function renderNewRequestForm() {
-    if (pollTimer) clearTimeout(pollTimer);
+    var viewId = newView();
+    pendingImportedImageUrls = [];
     var chipsHtml = templateChipsHtml(TEMPLATE_GROUPS, 'req-chip');
     mainEl.innerHTML =
       '<div class="card">' +
@@ -1093,6 +1118,7 @@
       btn.textContent = '読み込み中…';
       api('/api/property-url/extract', { method: 'POST', body: JSON.stringify({ url: url }) })
         .then(function (data) {
+          if (viewId !== viewToken) return;
           document.getElementById('new-text').value = data.text;
           pendingImportedImageUrls = data.image_urls || [];
           var imgNote = data.image_urls.length
@@ -1102,10 +1128,11 @@
             '<p class="muted" style="margin-top:8px; font-size:12.5px;">読み込みました。「ご依頼内容」欄の内容をご確認・編集のうえ送信してください。</p>' + imgNote;
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           document.getElementById('property-url-result').innerHTML =
             '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
         })
-        .then(function () { btn.disabled = false; btn.textContent = 'この内容を読み込む'; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = 'この内容を読み込む'; });
     });
     document.getElementById('property-pdf-import').addEventListener('click', function () {
       var fileInput = document.getElementById('property-pdf');
@@ -1118,15 +1145,17 @@
       formData.append('file', file);
       api('/api/property-url/extract-pdf', { method: 'POST', body: formData })
         .then(function (data) {
+          if (viewId !== viewToken) return;
           document.getElementById('new-text').value = data.text;
           document.getElementById('property-pdf-result').innerHTML =
             '<p class="muted" style="margin-top:8px; font-size:12.5px;">読み込みました。「ご依頼内容」欄の内容をご確認・編集のうえ送信してください。</p>';
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           document.getElementById('property-pdf-result').innerHTML =
             '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
         })
-        .then(function () { btn.disabled = false; btn.textContent = 'このPDFを読み込む'; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = 'このPDFを読み込む'; });
     });
     var marketPrefectureSelect = document.getElementById('market-prefecture');
     var marketCitySelect = document.getElementById('market-city');
@@ -1141,6 +1170,7 @@
       marketCitySelect.innerHTML = '<option value="">読み込み中…</option>';
       api('/api/market-data/municipalities?prefecture_code=' + encodeURIComponent(prefectureCode))
         .then(function (data) {
+          if (viewId !== viewToken) return;
           if (marketPrefectureSelect.value !== prefectureCode) return;  // 途中で都道府県を変えた場合は捨てる
           marketCitySelect.innerHTML = '<option value="">選択してください</option>' +
             data.municipalities.map(function (m) {
@@ -1149,6 +1179,7 @@
           marketCitySelect.disabled = false;
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           marketCitySelect.innerHTML = '<option value="">取得できませんでした</option>';
           document.getElementById('market-data-result').innerHTML =
             '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
@@ -1187,15 +1218,17 @@
         body: JSON.stringify({ prefecture_code: prefectureCode, city_code: cityCode, purpose: purpose })
       })
         .then(function (data) {
+          if (viewId !== viewToken) return;
           document.getElementById('new-text').value = data.text;
           document.getElementById('market-data-result').innerHTML =
             '<p class="muted" style="margin-top:8px; font-size:12.5px;">取得しました。「ご依頼内容」欄の内容をご確認・編集のうえ送信してください。' + escapeHtml(data.notice) + '</p>';
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           document.getElementById('market-data-result').innerHTML =
             '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
         })
-        .then(function () { btn.disabled = false; btn.textContent = '市場データを取得してご依頼内容に反映'; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = '市場データを取得してご依頼内容に反映'; });
     });
     document.getElementById('new-submit').addEventListener('click', function () {
       var text = document.getElementById('new-text').value.trim();
@@ -1203,17 +1236,18 @@
       var btn = document.getElementById('new-submit');
       btn.disabled = true;
       btn.textContent = '送信中…';
+      var submittedImages = pendingImportedImageUrls.slice();
       api('/api/sessions', { method: 'POST', body: JSON.stringify({ text: text }) })
         .then(function (data) {
-          currentSessionId = data.session_id;
-          if (pendingImportedImageUrls.length) {
-            sessionReferenceImages[data.session_id] = pendingImportedImageUrls;
-            pendingImportedImageUrls = [];
-          }
+          if (submittedImages.length) sessionReferenceImages[data.session_id] = submittedImages;
           loadSessionList();
+          if (viewId !== viewToken) return;
+          pendingImportedImageUrls = [];
+          currentSessionId = data.session_id;
           loadSessionDetail(data.session_id);
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           toast(e.message);
           btn.disabled = false;
           btn.textContent = '送信する';
@@ -1222,7 +1256,7 @@
   }
 
   function renderReelEditor() {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML =
       '<div class="card">' +
       '<h3 style="margin-top:0;">リール自動編集</h3>' +
@@ -1290,7 +1324,7 @@
   }
 
   function renderRoomTour() {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML =
       '<div class="card">' +
       '<h3 style="margin-top:0;">ルームツアー動画</h3>' +
@@ -1372,7 +1406,7 @@
   }
 
   function renderPropertyCsv() {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML =
       '<div class="card">' +
       '<h3 style="margin-top:0;">ポータル連携CSV</h3>' +
@@ -1455,7 +1489,7 @@
   }
 
   function renderGuide() {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML =
       '<div class="card guide-section">' +
       '<h3>使い方</h3>' +
@@ -1526,7 +1560,7 @@
 
   // 問い合わせ一覧。AIが回答できずに担当者へ回したものだけが並ぶ(AIが答えられた会話は含まない)。
   function renderInquiries(filter) {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML =
       '<div class="card"><p class="muted" style="margin-top:0;">問い合わせ(AIから担当者へ回されたもの)</p>' +
       '<p style="font-size:13px;">Webチャット・LINE・メールに届いたお問い合わせのうち、AIが回答できなかったものです。お客様には「担当者から折り返しご連絡いたします」と自動でお伝えしています。火災・ガス・水漏れなどの緊急の内容には、安全のための案内を自動で返し、「緊急」として先頭に表示します。メールにAIが自動で返信したものは「対応済み」に記録されます。</p>' +
@@ -1565,7 +1599,7 @@
   }
 
   function renderInquiryDetail(id) {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML = '<div class="card">読み込み中…</div>';
     api('/api/inquiries/' + encodeURIComponent(id)).then(function (i) {
       var messagesHtml = (i.messages || []).map(function (m) {
@@ -1662,7 +1696,7 @@
   }
 
   function renderProposals(tab) {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     tab = tab || 'pending';
     var tabs = [['pending', '承認待ちの提案'], ['leads', '見込み客'], ['properties', '物件'], ['settings', '設定']];
     mainEl.innerHTML =
@@ -1933,7 +1967,7 @@
   }
 
   function renderSchedules() {
-    if (pollTimer) clearTimeout(pollTimer);
+    newView();
     mainEl.innerHTML =
       '<div class="card">' +
       '<p class="muted" style="margin-top:0;">新しい定期実行を登録</p>' +
@@ -2032,13 +2066,19 @@
   }
 
   function loadSessionDetail(id) {
-    if (pollTimer) clearTimeout(pollTimer);
+    var token = newView();
     api('/api/sessions/' + id).then(function (data) {
+      if (token !== viewToken) return;  // 別の画面に移っていたら描画しない
       renderSessionDetail(data);
       if (data.status === 'QUEUED' || data.status === 'RUNNING') {
-        pollTimer = setTimeout(function () { loadSessionDetail(id); }, 2000);
+        pollTimer = setTimeout(function () {
+          if (token !== viewToken) return;
+          loadSessionDetail(id);
+        }, 2000);
       }
-    }).catch(function (e) { toast(e.message); });
+    }).catch(function (e) {
+      if (token === viewToken) toast(e.message);
+    });
   }
 
   // 回答/承認/却下を送信した直後は、裏側の処理がまだ終わっておらず
@@ -2046,24 +2086,31 @@
   // その場合は同じフォームを空欄で出し直すのではなく、「処理中」の表示を続け、
   // statusが変わるまでポーリングする。
   function pollUntilChanged(id, fromStatus) {
-    if (pollTimer) clearTimeout(pollTimer);
+    var token = newView();
     mainEl.innerHTML = '<div class="card muted processing-card"><span class="spinner-ring"></span>送信しました。処理しています…</div>';
     (function check() {
       api('/api/sessions/' + id).then(function (data) {
+        if (token !== viewToken) return;  // 別の画面に移っていたら何もしない(裏の処理は続く)
         if (data.status !== fromStatus) {
           renderSessionDetail(data);
           loadSessionList();
           if (data.status === 'QUEUED' || data.status === 'RUNNING') {
-            pollTimer = setTimeout(function () { loadSessionDetail(id); }, 2000);
+            pollTimer = setTimeout(function () {
+              if (token !== viewToken) return;
+              loadSessionDetail(id);
+            }, 2000);
           }
         } else {
           pollTimer = setTimeout(check, 2000);
         }
-      }).catch(function (e) { toast(e.message); });
+      }).catch(function (e) {
+        if (token === viewToken) toast(e.message);
+      });
     })();
   }
 
   function renderSessionDetail(data) {
+    var viewId = viewToken;
     var badge = '<span class="status-badge status-' + data.status + '">' + statusLabel(data.status) + '</span>';
     var html = '<div class="card">' +
       '<p class="muted">ご依頼内容</p>' +
@@ -2210,8 +2257,8 @@
         clarifyBtn.disabled = true;
         clarifyBtn.textContent = '送信中…';
         api('/api/sessions/' + data.session_id + '/answer', { method: 'POST', body: JSON.stringify({ answer: answer }) })
-          .then(function () { pollUntilChanged(data.session_id, 'CLARIFYING'); loadSessionList(); })
-          .catch(function (e) { toast(e.message); clarifyBtn.disabled = false; clarifyBtn.textContent = '回答を送信'; });
+          .then(function () { if (viewId !== viewToken) return; pollUntilChanged(data.session_id, 'CLARIFYING'); loadSessionList(); })
+          .catch(function (e) { if (viewId !== viewToken) return; toast(e.message); clarifyBtn.disabled = false; clarifyBtn.textContent = '回答を送信'; });
       });
     }
 
@@ -2220,8 +2267,8 @@
       approveBtn.addEventListener('click', function () {
         approveBtn.disabled = true;
         api('/api/sessions/' + data.session_id + '/approve', { method: 'POST', body: JSON.stringify({ decision: 'approve' }) })
-          .then(function () { pollUntilChanged(data.session_id, 'AWAITING_APPROVAL'); loadSessionList(); })
-          .catch(function (e) { toast(e.message); approveBtn.disabled = false; });
+          .then(function () { if (viewId !== viewToken) return; pollUntilChanged(data.session_id, 'AWAITING_APPROVAL'); loadSessionList(); })
+          .catch(function (e) { if (viewId !== viewToken) return; toast(e.message); approveBtn.disabled = false; });
       });
     }
 
@@ -2235,12 +2282,13 @@
           method: 'POST',
           body: JSON.stringify({ prompt_hint: hint || null, quality: 'draft' })
         })
-          .then(function () { loadSessionDetail(data.session_id); })
+          .then(function () { if (viewId !== viewToken) return; loadSessionDetail(data.session_id); })
           .catch(function (e) {
+            if (viewId !== viewToken) return;
             document.getElementById('generate-image-result').innerHTML =
               '<p class="error-text" style="margin-top:10px;">' + escapeHtml(e.message) + '</p>';
           })
-          .then(function () { generateImageBtn.disabled = false; generateImageBtn.textContent = '画像を生成する(低画質)'; });
+          .then(function () { if (viewId !== viewToken) return; generateImageBtn.disabled = false; generateImageBtn.textContent = '画像を生成する(低画質)'; });
       });
     }
 
@@ -2252,8 +2300,9 @@
           method: 'POST',
           body: JSON.stringify({ prompt_hint: btn.dataset.hint || null, quality: 'high' })
         })
-          .then(function () { loadSessionDetail(data.session_id); })
+          .then(function () { if (viewId !== viewToken) return; loadSessionDetail(data.session_id); })
           .catch(function (e) {
+            if (viewId !== viewToken) return;
             btn.disabled = false;
             btn.textContent = '高画質で作り直す';
             toast(e.message);
@@ -2270,6 +2319,7 @@
         body: JSON.stringify({ image_url: imageUrl, instruction: instruction })
       })
         .then(function (res) {
+          if (viewId !== viewToken) return;
           var img = document.createElement('img');
           img.src = res.image_url;
           img.style.cssText = 'max-width:100%; border-radius:8px; margin-top:8px; display:block;';
@@ -2277,9 +2327,10 @@
           resultEl.appendChild(img);
         })
         .catch(function (e) {
+          if (viewId !== viewToken) return;
           resultEl.innerHTML = '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
         })
-        .then(function () { btn.disabled = false; btn.textContent = resetLabel || originalLabel; });
+        .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = resetLabel || originalLabel; });
     }
 
     Array.prototype.forEach.call(document.querySelectorAll('.stage-image-btn'), function (btn) {
@@ -2314,12 +2365,13 @@
             reference_image_url: (refImages && refImages[0]) || null
           })
         })
-          .then(function () { loadSessionDetail(data.session_id); })
+          .then(function () { if (viewId !== viewToken) return; loadSessionDetail(data.session_id); })
           .catch(function (e) {
+            if (viewId !== viewToken) return;
             document.getElementById('generate-video-result').innerHTML =
               '<p class="error-text" style="margin-top:10px;">' + escapeHtml(e.message) + '</p>';
           })
-          .then(function () { generateVideoBtn.disabled = false; generateVideoBtn.textContent = '動画を生成する(低画質)'; });
+          .then(function () { if (viewId !== viewToken) return; generateVideoBtn.disabled = false; generateVideoBtn.textContent = '動画を生成する(低画質)'; });
       });
     }
 
@@ -2335,10 +2387,12 @@
           body: JSON.stringify({ image_urls: imageUrls })
         })
           .then(function (res) {
-            if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+            if (viewId !== viewToken) return;
+            if (!res.ok) return res.json().then(function (d) { if (viewId !== viewToken) return; throw new Error(d.detail || ('エラー: ' + res.status)); });
             return res.blob();
           })
           .then(function (blob) {
+            if (viewId !== viewToken) return;
             var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
@@ -2351,10 +2405,11 @@
               '<p class="muted" style="margin-top:8px; font-size:12.5px;">PDFをダウンロードしました。</p>';
           })
           .catch(function (e) {
+            if (viewId !== viewToken) return;
             document.getElementById('generate-flyer-result').innerHTML =
               '<p class="error-text" style="margin-top:8px; font-size:12.5px;">' + escapeHtml(e.message) + '</p>';
           })
-          .then(function () { generateFlyerBtn.disabled = false; generateFlyerBtn.textContent = 'マイソクPDFを作成'; });
+          .then(function () { if (viewId !== viewToken) return; generateFlyerBtn.disabled = false; generateFlyerBtn.textContent = 'マイソクPDFを作成'; });
       });
     }
 
@@ -2371,8 +2426,9 @@
             reference_image_url: (refImagesUp && refImagesUp[0]) || null
           })
         })
-          .then(function () { loadSessionDetail(data.session_id); })
+          .then(function () { if (viewId !== viewToken) return; loadSessionDetail(data.session_id); })
           .catch(function (e) {
+            if (viewId !== viewToken) return;
             btn.disabled = false;
             btn.textContent = '高画質で作り直す(1080p)';
             toast(e.message);
@@ -2398,8 +2454,8 @@
           method: 'POST',
           body: JSON.stringify({ decision: 'reject', comment: comment })
         })
-          .then(function () { pollUntilChanged(data.session_id, 'AWAITING_APPROVAL'); loadSessionList(); })
-          .catch(function (e) { toast(e.message); rejectSubmit.disabled = false; rejectSubmit.textContent = 'この内容で修正を依頼'; });
+          .then(function () { if (viewId !== viewToken) return; pollUntilChanged(data.session_id, 'AWAITING_APPROVAL'); loadSessionList(); })
+          .catch(function (e) { if (viewId !== viewToken) return; toast(e.message); rejectSubmit.disabled = false; rejectSubmit.textContent = 'この内容で修正を依頼'; });
       });
     }
   }

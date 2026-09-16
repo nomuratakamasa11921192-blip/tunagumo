@@ -85,14 +85,13 @@ async def test_usage_returns_zero_for_tenant_with_no_sessions(client, tenant):
     res = await client.get("/api/account/usage", headers=headers)
     assert res.status_code == 200
     body = res.json()
-    assert body["this_month_cost_usd"] == 0.0
     assert body["this_month_session_count"] == 0
-    assert body["all_time_cost_usd"] == 0.0
     assert body["all_time_session_count"] == 0
     assert body["plan"] == "light"
-    assert body["ai_cost_this_period_usd"] == 0.0
-    assert body["monthly_ai_budget_usd"] == 10.0
-    assert body["addon_credit_usd"] == 0.0
+    assert body["ai_usage_percent"] == 0
+    assert body["ai_remaining_percent"] == 100
+    assert body["addon_purchased"] is False
+    assert not any("usd" in key or "cost" in key or "budget" in key for key in body)
     assert body["higgsfield_key_registered"] is False
 
 
@@ -162,3 +161,50 @@ async def test_login_does_not_block_the_server(client, tenant):
 
     assert res.status_code == 401
     assert ticks >= 10, f"照合中にサーバーが止まっていた(他の処理が{ticks}回しか動けていない)"
+
+
+@pytest.mark.parametrize(
+    "plan,cost,addon,previous_month,usage,remaining",
+    [
+        ("light", 4.0, 0.0, False, 40, 60),
+        ("light", 4.0, 5.0, False, 40, 110),
+        ("light", 10.0, 3.0, False, 100, 30),
+        ("light", 10.0, 0.0, False, 100, 0),
+        ("light", 10.0, 5.0, True, 0, 150),
+        ("unknown", 4.0, 0.0, False, 40, 60),
+        ("standard", 20.0, 0.0, False, 50, 50),
+    ],
+)
+async def test_usage_reports_percentages_without_exposing_or_mutating_costs(
+    client, tenant, plan, cost, addon, previous_month, usage, remaining
+):
+    from datetime import datetime, timedelta
+
+    started = datetime.utcnow() - timedelta(days=45 if previous_month else 0)
+    async with async_session_factory() as db:
+        row = await db.get(Tenant, tenant["id"])
+        row.plan = plan
+        row.ai_cost_this_period_usd = cost
+        row.addon_credit_usd = addon
+        row.ai_cost_period_started_at = started
+        await db.commit()
+
+    res = await client.get("/api/account/usage", headers={"Authorization": f"Bearer {tenant['api_key']}"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ai_usage_percent"] == usage
+    assert body["ai_remaining_percent"] == remaining
+    assert body["addon_purchased"] is (addon > 0)
+    assert set(body) == {
+        "this_month_session_count", "all_time_session_count", "plan",
+        "ai_usage_percent", "ai_remaining_percent", "addon_purchased", "higgsfield_key_registered",
+    }
+    async with async_session_factory() as db:
+        row = await db.get(Tenant, tenant["id"])
+        assert row.ai_cost_this_period_usd == cost
+        assert row.addon_credit_usd == addon
+
+
+async def test_usage_requires_authentication(client):
+    res = await client.get("/api/account/usage")
+    assert res.status_code == 401

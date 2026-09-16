@@ -49,12 +49,15 @@ ESTIMATED_ROOM_TOUR_COST_USD = 0.15
 
 
 class BudgetExceededError(Exception):
+    """顧客に表示する文面には金額を出さない(2026-09-17)。AI利用料は月額に含まれるため、
+    ドル建ての予算額を見せると原価・利益率が推測できてしまう。割合だけを伝える。"""
+
     def __init__(self, plan: str, budget: float):
         self.plan = plan
-        self.budget = budget
+        self.budget = budget  # 内部処理・管理画面用(顧客には表示しない)
         super().__init__(
-            f"今月のAI利用予算(${budget:.2f}、{plan}プラン)の上限に達しました。"
-            "プランのアップグレードまたは追加チケットのご購入をご検討いただくか、運営にお問い合わせください。"
+            "今月のAI利用量が上限に達しました。"
+            "追加のご利用枠のご購入、またはプランのご変更をご検討いただくか、運営にお問い合わせください。"
         )
 
 

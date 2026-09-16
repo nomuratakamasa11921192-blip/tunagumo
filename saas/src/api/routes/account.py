@@ -273,14 +273,19 @@ def mail_transport():
 
 
 class UsageResponse(BaseModel):
-    this_month_cost_usd: float
+    """顧客向けの利用状況。2026-09-17より、AI利用料の金額(ドル)は返さない。
+    月額に含まれる費用なので、金額を出すと原価・利益率が推測できてしまうため、割合で伝える。
+    金額が必要な運営側は、管理画面(GET /admin/dashboard)で確認する。"""
+
     this_month_session_count: int
-    all_time_cost_usd: float
     all_time_session_count: int
     plan: str
-    ai_cost_this_period_usd: float
-    monthly_ai_budget_usd: float
-    addon_credit_usd: float
+    # 今月のAI利用量(月間枠に対する割合、0〜100)。追加購入分は含めずに計算する
+    ai_usage_percent: int
+    # 残りの割合(追加購入分を含む。100を超えることがある)
+    ai_remaining_percent: int
+    # 追加のご利用枠を購入済みか(枚数・金額は出さない)
+    addon_purchased: bool
     # 動画生成用のHiggsfieldキーが登録済みか(設定画面の表示用。キーの中身は返さない)
     higgsfield_key_registered: bool
 
@@ -290,35 +295,29 @@ async def get_usage(
     tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_scoped_db),
 ) -> UsageResponse:
-    """顧客自身のAI利用コストの目安を返す。Anthropicへの実際の請求額とは、丸め方や
-    タイミングのずれにより完全には一致しない可能性がある(あくまで目安)。"""
+    """顧客自身の依頼件数と月間利用枠に対する使用・残量の割合を返す。"""
     month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     all_time = await db.execute(
-        select(
-            func.coalesce(func.sum(SessionModel.cost_usd), 0.0),
-            func.count(SessionModel.id),
-        ).where(SessionModel.tenant_id == tenant.id)
+        select(func.count(SessionModel.id)).where(SessionModel.tenant_id == tenant.id)
     )
-    all_time_cost, all_time_count = all_time.one()
+    all_time_count = all_time.scalar_one()
 
     this_month = await db.execute(
-        select(
-            func.coalesce(func.sum(SessionModel.cost_usd), 0.0),
-            func.count(SessionModel.id),
-        ).where(SessionModel.tenant_id == tenant.id, SessionModel.created_at >= month_start)
+        select(func.count(SessionModel.id)).where(SessionModel.tenant_id == tenant.id, SessionModel.created_at >= month_start)
     )
-    this_month_cost, this_month_count = this_month.one()
+    this_month_count = this_month.scalar_one()
 
+    monthly_budget = PLAN_MONTHLY_BUDGET_USD.get(tenant.plan, PLAN_MONTHLY_BUDGET_USD[DEFAULT_PLAN])
+    used = effective_cost_this_period(tenant)
+    remaining = max(monthly_budget - used, 0.0) + tenant.addon_credit_usd
     return UsageResponse(
-        this_month_cost_usd=round(this_month_cost, 6),
         this_month_session_count=this_month_count,
-        all_time_cost_usd=round(all_time_cost, 6),
         all_time_session_count=all_time_count,
         plan=tenant.plan,
-        ai_cost_this_period_usd=round(effective_cost_this_period(tenant), 6),
-        monthly_ai_budget_usd=PLAN_MONTHLY_BUDGET_USD.get(tenant.plan, PLAN_MONTHLY_BUDGET_USD[DEFAULT_PLAN]),
-        addon_credit_usd=round(tenant.addon_credit_usd, 6),
+        ai_usage_percent=min(round(used / monthly_budget * 100), 100) if monthly_budget > 0 else 0,
+        ai_remaining_percent=round(remaining / monthly_budget * 100) if monthly_budget > 0 else 0,
+        addon_purchased=tenant.addon_credit_usd > 0,
         higgsfield_key_registered=bool(tenant.higgsfield_api_key_id and tenant.higgsfield_api_key_secret),
     )
 
