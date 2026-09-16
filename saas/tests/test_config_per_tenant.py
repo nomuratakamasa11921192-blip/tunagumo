@@ -21,8 +21,8 @@ from src.core.config import settings
 
 @pytest.fixture
 def real_configs(monkeypatch):
-    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
-    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+    monkeypatch.setenv("LLM_MODEL_LIGHT", "test-model-light")
     return {
         "web_agency": load_config("config/web_agency.yaml"),
         "real_estate": load_config("config/real_estate.yaml"),

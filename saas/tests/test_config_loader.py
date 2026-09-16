@@ -8,23 +8,27 @@ CONFIG_PATH = "config/default.yaml"
 
 
 def test_default_config_loads_successfully(monkeypatch):
-    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
-    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+    monkeypatch.setenv("LLM_MODEL_LIGHT", "test-model-light")
     config = load_config(CONFIG_PATH)
     assert config.company.name == "サンプル・クリエイティブ株式会社"
     assert "ceo_office" in config.departments
     assert "qa_auditor" in config.departments
+    assert config.departments["ceo_office"].model == "test-model"
+    assert config.departments["ceo_office"].triage_model == "test-model-light"
 
 
 @pytest.mark.parametrize(
     "industry", ["web_agency", "real_estate", "recruiting", "legal"]
 )
 def test_all_industry_configs_load_successfully(industry, monkeypatch):
-    monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
-    monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+    monkeypatch.setenv("LLM_MODEL_LIGHT", "test-model-light")
     config = load_config(f"config/{industry}.yaml")
     assert "ceo_office" in config.departments
     assert "qa_auditor" in config.departments
+    assert config.departments["ceo_office"].model == "test-model"
+    assert config.departments["ceo_office"].triage_model == "test-model-light"
 
 
 def test_missing_env_var_raises(monkeypatch):
