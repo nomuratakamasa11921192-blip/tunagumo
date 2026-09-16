@@ -488,3 +488,50 @@ def test_smtp_send_sets_threading_and_auto_submitted_headers(real_transport, mon
     assert msg["References"] == "<older@example.net> <orig@example.net>"
     assert msg["Auto-Submitted"] == "auto-replied"
     assert msg["From"] == OWN
+
+
+# ---------- ポータルサイトの反響通知 ----------
+
+PORTAL_BODY = """お問い合わせがありました。
+
+【物件名】サンプルハイツ101
+【お名前】山田 太郎
+【メールアドレス】taro-portal@example.net
+【電話番号】090-1234-5678
+【ご希望】土日に内見を希望します。
+
+このメールは送信専用アドレスから配信されています。
+"""
+
+
+@_async
+async def test_portal_inquiry_is_recorded_without_auto_reply(config, tenant, monkeypatch, sent_notifications):
+    await _setup_account(tenant["id"])
+    await _set_email(tenant["id"])
+    _ai(monkeypatch, escalated=False)
+    transport = FakeTransport([_raw(subject="【SUUMO】お問い合わせがありました", body=PORTAL_BODY, sender="noreply@suumo.example")])
+    try:
+        result = await _scan(config, transport)
+        assert result["escalated"] == 1
+        assert transport.sent == []  # 返信不可アドレスへ自動返信しない
+        rows = await _inquiries(tenant["id"])
+        assert len(rows) == 1
+        assert rows[0].category == "内見・物件(ポータル反響)"
+        assert rows[0].external_user_id == "taro-portal@example.net"  # 担当者が画面から返信できる
+        assert "090-1234-5678" in rows[0].messages[0]["content"]
+        assert len(sent_notifications) == 1
+    finally:
+        await _cleanup(tenant["id"])
+
+
+@_async
+async def test_ordinary_noreply_notification_is_still_ignored(config, tenant, monkeypatch, sent_notifications):
+    await _setup_account(tenant["id"])
+    _ai(monkeypatch, escalated=False)
+    transport = FakeTransport([_raw(subject="サーバー月次メンテナンスのお知らせ", body="定期メンテナンスを実施します。", sender="noreply@infra.example")])
+    try:
+        result = await _scan(config, transport)
+        assert result["skipped"] == 1
+        assert await _inquiries(tenant["id"]) == [] and sent_notifications == []
+    finally:
+        await _cleanup(tenant["id"])

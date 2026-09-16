@@ -1060,6 +1060,7 @@
       '<p class="muted" style="margin-top:0;">市場データを取得(査定・空室対策・エリア分析用、任意)</p>' +
       '<label for="market-prefecture">都道府県</label>' +
       '<select id="market-prefecture">' +
+      '<option value="">選択してください</option>' +
       PREFECTURES.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('') +
       '</select>' +
       '<label for="market-city" style="margin-top:10px;">市区町村</label>' +
@@ -1131,6 +1132,11 @@
     var marketCitySelect = document.getElementById('market-city');
     function loadMunicipalities() {
       var prefectureCode = marketPrefectureSelect.value;
+      if (!prefectureCode) {
+        marketCitySelect.innerHTML = '<option value="">都道府県を選ぶと表示されます</option>';
+        marketCitySelect.disabled = true;
+        return;
+      }
       marketCitySelect.disabled = true;
       marketCitySelect.innerHTML = '<option value="">読み込み中…</option>';
       api('/api/market-data/municipalities?prefecture_code=' + encodeURIComponent(prefectureCode))
@@ -1163,7 +1169,7 @@
       var prefectureCode = marketPrefectureSelect.value;
       var cityCode = marketCitySelect.value;
       var purpose = document.getElementById('market-purpose').value;
-      if (!cityCode) {
+      if (!prefectureCode || !cityCode) {
         document.getElementById('market-data-result').innerHTML =
           '<p class="error-text" style="margin-top:8px; font-size:12.5px;">都道府県と市区町村を選択してください。</p>';
         return;
@@ -1222,7 +1228,7 @@
       '<h3 style="margin-top:0;">リール自動編集</h3>' +
       '<p class="muted">スマホで撮った物件紹介の生動画をアップロードすると、AIが無音区間をカットし、' +
       '字幕を自動生成して焼き込み、BGMを合成した動画を作成します(お手持ちの動画を編集するもので、' +
-      '新しい動画を1から生成するものではありません)。字幕の自動生成にはOpenAI APIキーの登録が必要です' +
+      '新しい動画を1から生成するものではありません)。字幕の自動生成のAI利用料は月額プランに含まれます' +
       '(設定画面から登録できます)。処理に数分かかることがあります。</p>' +
       '<label for="reel-video-file">動画ファイル(mp4/mov)</label>' +
       '<input id="reel-video-file" type="file" accept="video/mp4,video/quicktime">' +
@@ -1291,7 +1297,7 @@
       '<p class="muted">物件の写真、またはお手持ちの生動画をアップロードすると、AIが物件情報から台本を作り、' +
       'ナレーション音声を合成し、下地映像(写真ならスライドショー、動画なら無音カット後の映像)に合成した動画を作成します' +
       '(写真・動画は実際にアップロードされたものだけを使い、AIが部屋の中身を想像することはありません)。' +
-      'ナレーション音声合成にはOpenAI APIキーの登録が必要です。処理に数分かかることがあります。</p>' +
+      'ナレーション音声合成のAI利用料は月額プランに含まれます。処理に数分かかることがあります。</p>' +
       '<label for="room-tour-info">物件情報</label>' +
       '<textarea id="room-tour-info" placeholder="例: 2LDK、駅徒歩5分、リフォーム済みのキッチン、南向きで日当たり良好"></textarea>' +
       '<p class="muted" style="margin-top:10px; font-size:12.5px;">写真・動画のどちらか一方をアップロードしてください(両方選んだ場合は動画を優先します)。</p>' +

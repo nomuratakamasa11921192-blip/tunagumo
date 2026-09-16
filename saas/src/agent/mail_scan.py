@@ -25,6 +25,7 @@ from src.channels.mail import (
     compose_auto_reply,
     count_recent_auto_replies,
     parse_mail,
+    portal_contact,
     reply_subject,
     run_in_thread,
 )
@@ -131,6 +132,12 @@ async def _handle_message(*, tenant, account, uid, raw, uidvalidity, app_config,
             return "skipped"
         await _mark_lead_replied(db, tenant.id, {parsed.reply_address, parsed.from_address})
         if parsed.skip_reason:
+            # ポータルサイトからの反響通知は返信不可アドレスから届くが、取りこぼすと機会損失に
+            # なるため、自動返信はせずに問い合わせとして担当者へ知らせる(2026-09-16)
+            if parsed.skip_reason == "返信不要のアドレス(noreply等)":
+                contact = portal_contact(parsed, own_address=account.from_address)
+                if contact is not None:
+                    return await _record_portal_inquiry(db, tenant, parsed, contact)
             return "skipped"
 
         user_message = f"件名: {parsed.subject}\n{parsed.body}"
@@ -181,6 +188,31 @@ async def _handle_message(*, tenant, account, uid, raw, uidvalidity, app_config,
 
         await record_auto_reply(db, user_message=user_message, reply=result.reply, category=result.category, **record_kwargs)
         return "auto_replied"
+
+
+async def _record_portal_inquiry(db, tenant, parsed, contact: dict) -> str:
+    detail = "\n".join(
+        part for part in (
+            f"件名: {parsed.subject}",
+            parsed.body,
+            f"(本文から読み取った連絡先: メール {contact['email'] or '記載なし'} / 電話 {contact['phone'] or '記載なし'})",
+        ) if part
+    )
+    inquiry, is_new, became_urgent = await record_escalation(
+        db,
+        tenant_id=tenant.id,
+        channel="email",
+        user_message=detail,
+        reply="(ポータルサイトからの反響通知のため、自動返信はしていません)",
+        reason="ポータルサイトからの反響通知",
+        urgency="normal",
+        category="内見・物件(ポータル反響)",
+        external_user_id=contact["email"],
+        email_subject=parsed.subject,
+        email_message_id=parsed.message_id,
+    )
+    await _notify(tenant, inquiry, is_new, became_urgent)
+    return "escalated"
 
 
 async def _mark_lead_replied(db, tenant_id, addresses: set) -> None:

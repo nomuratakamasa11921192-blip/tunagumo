@@ -63,6 +63,31 @@ _QUOTE_START_PATTERNS = (
 )
 
 
+# ポータルサイト(SUUMO・LIFULL HOME'S・アットホーム等)からの反響通知メール。送信元が返信不可の
+# アドレスのため自動返信はしないが、取りこぼさないよう問い合わせとして担当者に知らせる(2026-09-16)。
+_PORTAL_SUBJECT_PATTERN = re.compile(
+    r"(反響|問い?合わせ|お問合せ|見学希望|内見希望|資料請求|SUUMO|スーモ|HOME'?S|ホームズ|アットホーム|at ?home|LIFULL)",
+    re.IGNORECASE,
+)
+_EMAIL_IN_BODY = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+_PHONE_IN_BODY = re.compile(r"0\d{1,4}[-(）\s]?\d{1,4}[-)）\s]?\d{3,4}")
+
+
+def portal_contact(parsed: "ParsedMail", *, own_address: str) -> dict | None:
+    """ポータルの反響通知メールらしければ、本文から拾った連絡先を返す(そうでなければNone)。
+    本文から拾ったアドレスへ自動返信はしない(取り違えると誤送信になるため)。担当者が画面で
+    確認してから返信する。"""
+    if not _PORTAL_SUBJECT_PATTERN.search(parsed.subject) and not _PORTAL_SUBJECT_PATTERN.search(parsed.body):
+        return None
+    own = own_address.lower()
+    emails = [
+        e for e in _EMAIL_IN_BODY.findall(parsed.body)
+        if e.lower() != own and not _NOREPLY_PATTERN.search(e) and e.lower() != parsed.from_address
+    ]
+    phones = _PHONE_IN_BODY.findall(parsed.body)
+    return {"email": emails[0] if emails else None, "phone": phones[0] if phones else None}
+
+
 class MailConfigError(Exception):
     """接続設定の誤り・接続失敗。メッセージは顧客にそのまま表示してよい文面にする。"""
 
