@@ -12,13 +12,12 @@ OpenAIキーは一切ブラウザに渡らない(16-6)。
 import logging
 import uuid
 
-from openai import AsyncOpenAI
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from src.agent.cost import compute_cost_usd
-from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
+from src.agent.llm import build_llm
 from src.agent.public_responder import MAX_INPUT_LENGTH, emergency_result, respond
 from src.api.deps import resolve_app_config
 from src.channels.web import (
@@ -34,7 +33,7 @@ from src.channels.web import (
     log_request,
 )
 from src.channels.inquiries import append_to_open_inquiry, notify_escalation, record_escalation
-from src.core.config import settings
+from src.core.config import active_llm_model_light, settings
 from src.core.db import async_session_factory, tenant_scoped_session_factory
 from src.core.models import Tenant
 from src.core.tenant_context import set_tenant_scope
@@ -147,10 +146,8 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
             return ChatResponse(session_id=session.id, reply=BUSY_MESSAGE, escalated=True)
 
         app_config = resolve_app_config(request, tenant.industry)
-        model = settings.openai_model_light or settings.openai_model
-        llm = StructuredLLM(
-            client=AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0)
-        )
+        model = active_llm_model_light()
+        llm = build_llm()
 
         rag_context = ""
         # 埋め込みも文章生成と同じ運営のOpenAIキーを使う(上で設定済みを確認済み)

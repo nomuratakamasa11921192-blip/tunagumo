@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     # 推論モデルの思考量(none/low/medium/high等)。推論トークンは出力トークンとして課金され、
     # max_completion_tokensの上限も消費するため、既定は控えめにする。空なら送らない。
     openai_reasoning_effort: str = "low"
+    # 2026-09-16: 文章生成の提供元を設定で切り替えられるようにした("anthropic" or "openai")。
+    # 画像生成・音声合成・文字起こし・資料検索(埋め込み)は、Claudeに同等機能が無いため常にOpenAI。
+    llm_provider: str = "openai"
+    # 文章生成に使うモデル。未設定なら提供元ごとの既定(anthropic_model / openai_model)を使う
+    llm_model: str = ""
+    llm_model_light: str = ""
     admin_api_key: str = ""
     # 顧客のAnthropic APIキーなどをDBに保存する際の暗号化鍵(Fernet)。
     # 生成方法: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -53,3 +59,18 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def active_llm_model() -> str:
+    """文章生成に使う本文用モデル名(提供元に応じて切り替わる)。"""
+    if settings.llm_model:
+        return settings.llm_model
+    return settings.anthropic_model if settings.llm_provider == "anthropic" else settings.openai_model
+
+
+def active_llm_model_light() -> str:
+    """振り分け・一次対応など軽い処理に使うモデル名(未設定なら本文用と同じ)。"""
+    light = settings.llm_model_light or (
+        settings.anthropic_model_light if settings.llm_provider == "anthropic" else settings.openai_model_light
+    )
+    return light or active_llm_model()

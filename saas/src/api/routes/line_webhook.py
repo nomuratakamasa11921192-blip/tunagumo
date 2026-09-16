@@ -15,10 +15,9 @@ import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-from openai import AsyncOpenAI
 
 from src.agent.cost import compute_cost_usd
-from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
+from src.agent.llm import build_llm
 from src.agent.inquiry_triage import triage
 from src.agent.public_responder import (
     ESCALATION_MESSAGE,
@@ -39,7 +38,7 @@ from src.channels.web import (
     check_rate_limit,
     log_request,
 )
-from src.core.config import settings
+from src.core.config import active_llm_model_light, settings
 from src.core.crypto import decrypt_secret
 from src.core.db import async_session_factory, tenant_scoped_session_factory
 from src.core.models import Tenant
@@ -170,8 +169,8 @@ async def _process_event(tenant: Tenant, event: dict, app) -> None:
 async def _ai_respond(db, tenant: Tenant, session, message: str, app):
     configs = app.state.app_configs
     app_config = configs.get(tenant.industry, configs[DEFAULT_INDUSTRY])
-    model = settings.openai_model_light or settings.openai_model
-    llm = StructuredLLM(client=AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0))
+    model = active_llm_model_light()
+    llm = build_llm()
 
     rag_context = ""
     try:

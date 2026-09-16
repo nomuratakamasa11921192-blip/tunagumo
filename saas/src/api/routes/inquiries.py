@@ -23,7 +23,7 @@ from src.api.deps import get_app_config, get_current_tenant, get_llm, get_scoped
 from src.channels.line import push_to_line
 from src.channels.mail import MailConfigError, reply_subject
 from src.core.ai_budget import BudgetExceededError, ensure_budget_available, record_cost
-from src.core.config import settings
+from src.core.config import active_llm_model, settings
 from src.core.crypto import decrypt_secret
 from src.core.models import Inquiry, Tenant, TenantMailAccount
 
@@ -226,7 +226,7 @@ async def draft_reply(
     history = "\n".join(
         f"{ROLE_LABELS.get(m.get('role'), m.get('role'))}: {m.get('content', '')}" for m in (inquiry.messages or [])[-20:]
     )
-    model = settings.openai_model
+    model = active_llm_model()
     try:
         text, usage = await llm.generate_text(
             model=model,

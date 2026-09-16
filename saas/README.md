@@ -110,6 +110,24 @@ OpenAI APIの応答が遅い場合、1回の処理に数十秒〜数分かかる
   （`anthropic_api_key`はローカル動作確認用に`.env`のANTHROPIC_API_KEYを流用する）
 - プロンプト一括更新も業種ごと: `GET/PUT /admin/config/{industry}`（旧`/admin/config`から変更）
 
+## 文章生成の提供元は設定で切り替えられる(2026-09-16)
+
+`.env`の`LLM_PROVIDER`で、文章生成にAnthropic(Claude)とOpenAIのどちらを使うか選べる。
+コードもYAMLも編集せずに行き来できる(単価表はモデル名で引くため、両方の価格を載せてある)。
+
+```
+LLM_PROVIDER=anthropic          # or openai
+LLM_MODEL=claude-sonnet-5       # 本文用。OpenAIなら gpt-5.6-terra
+LLM_MODEL_LIGHT=claude-haiku-4.5  # 振り分け等の軽い処理。OpenAIなら gpt-5.6-luna
+```
+
+- 切り替えたら `docker compose ... up -d`(restartでは反映されない)。起動時ヘルスチェックが
+  提供元のAPIとモデル名の疎通を確認するので、設定ミスがあればAPIが起動せず気づける
+- **画像生成・音声合成・文字起こし・資料検索(埋め込み)は常にOpenAI**(Claudeに同等機能が無い)。
+  そのため`OPENAI_API_KEY`はどちらの設定でも必要
+- 実装は`src/agent/llm.py`の`StructuredLLM`。Anthropicはtool_use、OpenAIはStructured Outputsで
+  構造化出力を得るが、呼び出し側から見た戻り値(とusageのキー名)は同じ
+
 ## 事業モデル: AI利用料は運営(ツナグモ)が負担し、月額に含める
 
 2026-09-01にBYOK(顧客自身のAPIキー)を廃止し、AI利用料は運営が負担する方式に切り替えた。

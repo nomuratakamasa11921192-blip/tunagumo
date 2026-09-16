@@ -14,12 +14,11 @@ import asyncio
 import logging
 from datetime import datetime
 
-from openai import AsyncOpenAI
 
 from src.agent.checkpointer import CheckpointerLifecycle
 from src.agent.config_loader import load_config
 from src.agent.deadline_scan import scan_approval_deadlines
-from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
+from src.agent.llm import StructuredLLM, build_llm
 from src.agent.mail_scan import scan_mailboxes
 from src.agent.proposal_scan import scan_proposals
 from src.agent.schedule_tick import tick as schedule_tick
@@ -42,9 +41,8 @@ MAIL_SCAN_INTERVAL_SECONDS = 2 * 60  # 2026-09-16: メール即レス(新着の�
 
 
 def _llm_factory() -> StructuredLLM:
-    # 運営(ツナグモ)自身のOpenAI APIキーでクライアントを作る(2026-09-01 BYOK廃止、2026-09-15 OpenAIへ移行)。
-    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0)
-    return StructuredLLM(client=client)
+    # 提供元(Anthropic / OpenAI)は設定で切り替わる(src/agent/llm.py)
+    return build_llm()
 
 
 async def _approval_scan_loop(app_configs: dict, checkpointer) -> None:

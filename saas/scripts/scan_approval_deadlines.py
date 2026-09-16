@@ -6,20 +6,18 @@ Phase 8でworker/schedulerサービスを組むまでは、手動または一時
 
 import asyncio
 
-from openai import AsyncOpenAI
 
 from src.agent.checkpointer import CheckpointerLifecycle
 from src.agent.config_loader import load_config
 from src.agent.deadline_scan import scan_approval_deadlines
-from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
+from src.agent.llm import StructuredLLM, build_llm
 from src.api.deps import DEFAULT_INDUSTRY, INDUSTRIES
 from src.core.config import settings
 
 
 def _llm_factory() -> StructuredLLM:
-    # 運営(ツナグモ)自身のOpenAI APIキーでクライアントを作る(2026-09-01 BYOK廃止、2026-09-15 OpenAIへ移行)。
-    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0)
-    return StructuredLLM(client=client)
+    # 提供元(Anthropic / OpenAI)は設定で切り替わる(src/agent/llm.py)
+    return build_llm()
 
 
 async def main() -> None:

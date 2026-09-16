@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 
+from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 from sqlalchemy import text
 
-from src.core.config import settings
+from src.core.config import active_llm_model_light, settings
 from src.core.db import async_session_factory
 
 
@@ -23,24 +24,35 @@ async def check_db() -> HealthCheckResult:
         return HealthCheckResult(name="db", ok=False, detail=str(e))
 
 
-async def check_openai(client: AsyncOpenAI | None = None) -> HealthCheckResult:
-    """文章生成に使うOpenAIの疎通確認(4-4)。2026-09-15にAnthropicから移行。
+async def check_llm(client=None) -> HealthCheckResult:
+    """文章生成に使うAPIの疎通確認(4-4)。提供元(LLM_PROVIDER)に応じてAnthropic/OpenAIを見る。
 
-    トークンを消費しないモデル情報取得(models.retrieve)で、APIキーの有効性と
-    OPENAI_MODEL_LIGHT(未設定ならOPENAI_MODEL)の指定ミスを同時に検出する。
-    呼び出し元でクライアントを注入できるようにし、テストでは実際のAPIを叩かない。"""
-    client = client or AsyncOpenAI(api_key=settings.openai_api_key or None, max_retries=0)
+    トークンをほぼ消費しないモデル情報取得(models.retrieve)で、APIキーの有効性と
+    モデル名の指定ミスを同時に検出する。呼び出し元でクライアントを注入できるようにし、
+    テストでは実際のAPIを叩かない。"""
+    provider = settings.llm_provider
+    name = "anthropic" if provider == "anthropic" else "openai"
+    if client is None:
+        client = (
+            AsyncAnthropic(api_key=settings.anthropic_api_key or None, max_retries=0)
+            if provider == "anthropic"
+            else AsyncOpenAI(api_key=settings.openai_api_key or None, max_retries=0)
+        )
     try:
-        await client.models.retrieve(settings.openai_model_light or settings.openai_model)
-        return HealthCheckResult(name="openai", ok=True)
+        await client.models.retrieve(active_llm_model_light())
+        return HealthCheckResult(name=name, ok=True)
     except Exception as e:
-        return HealthCheckResult(name="openai", ok=False, detail=str(e))
+        return HealthCheckResult(name=name, ok=False, detail=str(e))
 
 
-async def run_startup_checks(openai_client: AsyncOpenAI | None = None) -> list[HealthCheckResult]:
-    """DB接続とOpenAI API疎通を確認する。失敗した項目があれば呼び出し元で
+# 旧名(テスト・既存コードからの参照用)
+check_openai = check_llm
+
+
+async def run_startup_checks(openai_client=None) -> list[HealthCheckResult]:
+    """DB接続と、文章生成に使うAPIの疎通を確認する。失敗した項目があれば呼び出し元で
     プロセスを止めるかどうかを判断する(このモジュール自体はプロセスを落とさない)。"""
     return [
         await check_db(),
-        await check_openai(openai_client),
+        await check_llm(openai_client),
     ]

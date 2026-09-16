@@ -22,7 +22,7 @@ from src.core.ai_budget import (
     ensure_budget_available,
     record_cost,
 )
-from src.core.config import settings
+from src.core.config import active_llm_model_light, settings
 from src.core.models import Tenant
 from src.video.paths import WORKSPACE_ROOT
 from src.video.room_tour import RoomTourError, generate_room_tour, new_job_dir
@@ -119,7 +119,7 @@ async def generate_room_tour_endpoint(
                 raise HTTPException(status_code=400, detail="写真1枚のサイズが大きすぎます(上限20MB)。")
             image_paths.append(dest_rel)
 
-    model = settings.openai_model_light or settings.openai_model
+    model = active_llm_model_light()
 
     try:
         result_path = await generate_room_tour(

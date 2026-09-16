@@ -21,7 +21,7 @@ from src.agent.proposal_scan import ProposalBlockedError, generate_for_tenant, s
 from src.api.deps import get_app_config, get_current_tenant, get_llm, get_scoped_db
 from src.channels.mail import MailConfigError
 from src.core.ai_budget import BudgetExceededError, ensure_budget_available, record_cost
-from src.core.config import settings
+from src.core.config import active_llm_model, settings
 from src.core.db import async_session_factory
 from src.core.models import Lead, Property, Proposal, Tenant
 from src.core.proposals import compose_footer, sender_info_missing
@@ -328,7 +328,7 @@ async def polish_proposal(
         ensure_budget_available(tenant_row)
     except BudgetExceededError as e:
         raise HTTPException(status_code=429, detail=str(e))
-    model = settings.openai_model
+    model = active_llm_model()
     try:
         text, usage = await llm.generate_text(
             model=model,

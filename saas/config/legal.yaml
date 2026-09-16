@@ -27,24 +27,33 @@ limits:
   max_parallel_depts: 2
 
 pricing:
-  # 単価は百万トークンあたりのUSD。OpenAIの価格改定に追従して更新すること。
-  # 2026-09-15、https://developers.openai.com/api/docs/pricing (Standard、short context)で照合済み。
-  # OPENAI_MODEL=gpt-5.6-terra / OPENAI_MODEL_LIGHT=gpt-5.6-luna を設定する前提の単価。
-  # 別のモデルを設定する場合は、この単価も必ず合わせて書き換えること。
-  # 入力27.2万トークン超(long context)は入力2倍・出力1.5倍になるが、このSaaSの用途では
-  # 到達しない想定のためshort contextの単価のみ入れている。
-  updated_at: "2026-09-15"
+  # 単価は百万トークンあたりのUSD。提供元の価格改定に追従して更新すること。
+  # モデル名をキーにしているので、LLM_PROVIDER/LLM_MODELを切り替えてもここは編集不要。
+  # OpenAI: 2026-09-15、https://developers.openai.com/api/docs/pricing (Standard、short context)
+  # Anthropic: 2026-09-16、https://claude.com/pricing (プロンプトキャッシュは5分TTLの値)
+  # 入力が極端に長い場合の割増(OpenAIのlong context等)は、このSaaSの用途では到達しない想定。
+  updated_at: "2026-09-16"
   models:
-    "${OPENAI_MODEL}":
+    "gpt-5.6-terra":
       input_per_mtok: 2.0
       output_per_mtok: 12.0
       cache_write_per_mtok: 2.5
       cache_read_per_mtok: 0.2
-    "${OPENAI_MODEL_LIGHT}":
+    "gpt-5.6-luna":
       input_per_mtok: 0.2
       output_per_mtok: 1.2
       cache_write_per_mtok: 0.25
       cache_read_per_mtok: 0.02
+    "claude-sonnet-5":
+      input_per_mtok: 2.0
+      output_per_mtok: 10.0
+      cache_write_per_mtok: 2.5
+      cache_read_per_mtok: 0.2
+    "claude-haiku-4.5":
+      input_per_mtok: 1.0
+      output_per_mtok: 5.0
+      cache_write_per_mtok: 1.25
+      cache_read_per_mtok: 0.1
 
 compliance:
   forbidden_words:
@@ -59,8 +68,8 @@ departments:
 
   ceo_office:
     role: "統括"
-    model: "${OPENAI_MODEL}"
-    triage_model: "${OPENAI_MODEL_LIGHT}"
+    model: "${LLM_MODEL}"
+    triage_model: "${LLM_MODEL_LIGHT}"
     depends_on: []
 
     triage_prompt: |
@@ -109,7 +118,7 @@ departments:
 
   client_notice_dept:
     role: "顧客案内・問い合わせ対応"
-    model: "${OPENAI_MODEL}"
+    model: "${LLM_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは事務所の顧客対応担当です。制度変更の案内文と、問い合わせへの
@@ -139,7 +148,7 @@ departments:
 
   internal_summary_dept:
     role: "社内資料まとめ"
-    model: "${OPENAI_MODEL}"
+    model: "${LLM_MODEL}"
     depends_on: []
     system_prompt: |
       あなたは事務所の業務担当者です。社内向けの資料・調査結果の整理を行います。
@@ -163,7 +172,7 @@ departments:
 
   qa_auditor:
     role: "品質保証"
-    model: "${OPENAI_MODEL}"
+    model: "${LLM_MODEL}"
     depends_on: [client_notice_dept, internal_summary_dept]
     quality_fail_threshold: 1
     system_prompt: |

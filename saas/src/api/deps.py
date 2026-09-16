@@ -6,10 +6,9 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from openai import AsyncOpenAI
 
 from src.agent.config_models import AppConfig
-from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM
+from src.agent.llm import DEFAULT_TIMEOUT_SECONDS, StructuredLLM, build_llm
 from src.core.config import settings
 from src.core.crypto import decrypt_secret
 from src.core.db import get_db, get_scoped_db_for_tenant
@@ -123,21 +122,22 @@ async def get_app_config(
 
 
 async def get_llm(tenant: Tenant = Depends(get_current_tenant)) -> StructuredLLM:
-    """ツナグモ自身のOpenAI APIキーでLLMクライアントを作る(2026-09-15、Anthropicから移行)。
+    """運営(ツナグモ)自身のキーで文章生成用のLLMを作る。
 
-    2026-09-01: 「顧客自身のAPIキーを使う(BYOK)」方式から「運営がAI利用料を負担し、
-    月額料金に含める」方式へ全面移行した(旧docs/ai_org_spec_master.md付録Dの前提を
-    上書き)。テナントの`anthropic_api_key`列はもう読まない(過去の名残として残して
-    あるだけ)。この切り替えにより失われた「顧客自身のAnthropic Console上の利用上限」
-    という防御層は、src/core/ai_budget.py の月間予算上限で代替する。
+    2026-09-01: 「顧客自身のAPIキーを使う(BYOK)」方式から「運営がAI利用料を負担し、月額料金に
+    含める」方式へ全面移行した。失われた「顧客自身のコンソール上の利用上限」という防御層は、
+    src/core/ai_budget.py の月間予算上限で代替する。
+    2026-09-16: 提供元を設定(LLM_PROVIDER)で切り替えられるようにした。文章生成はAnthropic(Claude)
+    かOpenAIを選べ、画像生成・音声・埋め込みは常にOpenAI(Claudeに同等機能が無いため)。
     """
-    if not settings.openai_api_key:
+    provider = settings.llm_provider
+    key = settings.anthropic_api_key if provider == "anthropic" else settings.openai_api_key
+    if not key:
         raise HTTPException(
             status_code=503,
-            detail="OpenAI APIキーが運営側で設定されていません(設定不備)。",
+            detail=f"{'Anthropic' if provider == 'anthropic' else 'OpenAI'} APIキーが運営側で設定されていません(設定不備)。",
         )
-    client = AsyncOpenAI(api_key=settings.openai_api_key, timeout=DEFAULT_TIMEOUT_SECONDS, max_retries=0)
-    return StructuredLLM(client=client)
+    return build_llm()
 
 
 async def get_embedding_provider(tenant: Tenant = Depends(get_current_tenant)) -> EmbeddingProvider | None:

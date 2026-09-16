@@ -21,6 +21,10 @@ from tests.fakes import FakeLLM
 def config(monkeypatch):
     monkeypatch.setenv("OPENAI_MODEL", "gpt-5.6-terra")
     monkeypatch.setenv("OPENAI_MODEL_LIGHT", "gpt-5.6-luna")
+    # 2026-09-16: 文章生成の提供元を設定で切り替えられるようにしたため、config/*.yamlは
+    # LLM_MODEL/LLM_MODEL_LIGHTを参照する(提供元を変えてもYAMLは編集不要)
+    monkeypatch.setenv("LLM_MODEL", "gpt-5.6-terra")
+    monkeypatch.setenv("LLM_MODEL_LIGHT", "gpt-5.6-luna")
     return load_config("config/default.yaml")
 
 

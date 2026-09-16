@@ -28,8 +28,9 @@ def test_all_industry_configs_load_successfully(industry, monkeypatch):
 
 
 def test_missing_env_var_raises(monkeypatch):
-    monkeypatch.delenv("OPENAI_MODEL", raising=False)
-    monkeypatch.delenv("OPENAI_MODEL_LIGHT", raising=False)
+    # config/*.yamlはLLM_MODEL/LLM_MODEL_LIGHTを参照する(2026-09-16、提供元の切り替え対応)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.delenv("LLM_MODEL_LIGHT", raising=False)
     with pytest.raises(ConfigError):
         load_config(CONFIG_PATH)
 

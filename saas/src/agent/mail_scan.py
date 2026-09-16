@@ -30,7 +30,7 @@ from src.channels.mail import (
     run_in_thread,
 )
 from src.core.ai_budget import BudgetExceededError, ensure_budget_available, record_cost
-from src.core.config import settings
+from src.core.config import active_llm_model_light, settings
 from src.core.crypto import decrypt_secret
 from src.core.db import async_session_factory, tenant_scoped_session_factory
 from src.core.models import Lead, Tenant, TenantMailAccount
@@ -252,7 +252,7 @@ async def _ai_or_escalation(db, tenant, parsed, user_message, app_config, llm_fa
     except EmbeddingError:
         rag_context = ""
 
-    model = settings.openai_model_light or settings.openai_model
+    model = active_llm_model_light()
     result = await respond(
         llm=llm_factory(), model=model, company_name=app_config.company.name, message=user_message,
         rag_context=rag_context, emergency_phone=tenant.emergency_contact_phone,
