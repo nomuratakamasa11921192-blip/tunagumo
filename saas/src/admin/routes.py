@@ -179,7 +179,7 @@ class RegressionTestResponse(BaseModel):
 async def regression_test(
     request: Request, industry: str = DEFAULT_INDUSTRY, llm: StructuredLLM = Depends(get_internal_llm)
 ) -> RegressionTestResponse:
-    """⑥ 回帰テストの一括実行(8-7)。実際のClaude APIを呼ぶため課金・数分かかる。
+    """⑥ 回帰テストの一括実行(8-7)。実際のOpenAI APIを呼ぶため費用がかかり、数分かかる。
     モデル更新後の動作確認に使う。デフォルトはreal_estate(現在の唯一の対応業種)。"""
     app_config = resolve_app_config(request, industry)
     results = await run_regression_tests(app_config=app_config, llm=llm)

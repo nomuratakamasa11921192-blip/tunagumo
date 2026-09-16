@@ -512,7 +512,9 @@ async def accept_invite(req: AcceptInviteRequest, db: AsyncSession = Depends(get
     if len(req.password) < 8:
         raise HTTPException(status_code=400, detail="パスワードは8文字以上にしてください")
 
-    user.password_hash = hash_password(req.password)
+    # パスワードのハッシュ化は1回あたり0.5秒ほどかかる(pbkdf2 60万回)。そのまま実行すると
+    # その間サーバー全体が止まるため、別スレッドで動かす(2026-09-16)
+    user.password_hash = await asyncio.to_thread(hash_password, req.password)
     user.is_active = True
     user.invite_token_hash = None
     user.invite_expires_at = None
@@ -545,7 +547,13 @@ async def login(
     )
     user = result.scalar_one_or_none()
 
-    if user is None or not user.is_active or not user.password_hash or not verify_password(req.password, user.password_hash):
+    password_ok = (
+        user is not None
+        and user.is_active
+        and bool(user.password_hash)
+        and await asyncio.to_thread(verify_password, req.password, user.password_hash)
+    )
+    if not password_ok:
         raise HTTPException(status_code=401, detail="メールアドレスまたはパスワードが違います")
 
     raw_token = secrets.token_urlsafe(32)

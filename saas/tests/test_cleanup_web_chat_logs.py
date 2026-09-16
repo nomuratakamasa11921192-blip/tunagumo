@@ -94,3 +94,24 @@ async def test_does_not_delete_escalated_sessions_early(tenant):
             assert await db.get(WebChatSession, old_escalated.id) is None
     finally:
         await _cleanup(tenant["id"])
+
+
+def test_cleanup_generated_images_deletes_only_old_files(tmp_path, monkeypatch):
+    import os
+    import time
+
+    from scripts import cleanup_web_chat_logs as module
+
+    monkeypatch.setattr(module, "GENERATED_IMAGES_DIR", tmp_path)
+    old = tmp_path / ("a" * 32 + ".jpg")
+    recent = tmp_path / ("b" * 32 + ".jpg")
+    other = tmp_path / "keep.txt"
+    for f in (old, recent, other):
+        f.write_bytes(b"x")
+    long_ago = time.time() - 200 * 24 * 60 * 60
+    os.utime(old, (long_ago, long_ago))
+    os.utime(other, (long_ago, long_ago))
+
+    assert module.cleanup_generated_images() == 1
+    assert not old.exists()
+    assert recent.exists() and other.exists()  # 新しい画像と画像以外は消さない

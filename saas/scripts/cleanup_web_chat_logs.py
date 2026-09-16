@@ -9,11 +9,13 @@ cron例: 0 * * * * cd /opt/tsunagumo/saas/docker && docker compose exec -T api p
 """
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import delete
 
 from src.channels.web import SESSION_TTL_HOURS
+from src.core.openai_image_client import GENERATED_IMAGES_DIR
 from src.core.db import async_session_factory
 from src.core.models import Inquiry, MailProcessedMessage, WebChatRequestLog, WebChatSession
 
@@ -25,6 +27,27 @@ MAX_INQUIRY_RETENTION_DAYS = 90
 # メール即レスの処理済み記録(二重返信防止・ループ防止の判定用)。判定に必要なのは直近24時間だが、
 # 遅れて再配信されたメールにも二重返信しないよう30日残す
 MAIL_PROCESSED_RETENTION_DAYS = 30
+# 生成した画像(workspace/generated_images)の保持期間。依頼に紐づいて表示され続けるものなので
+# 長めに取るが、放置するとディスクを埋めるため上限を設ける(2026-09-16)。
+GENERATED_IMAGE_RETENTION_DAYS = 180
+
+logger = logging.getLogger(__name__)
+
+
+def cleanup_generated_images(*, retention_days: int = GENERATED_IMAGE_RETENTION_DAYS) -> int:
+    """保持期間を過ぎた生成画像を削除し、削除した件数を返す。"""
+    if not GENERATED_IMAGES_DIR.exists():
+        return 0
+    cutoff = (datetime.utcnow() - timedelta(days=retention_days)).timestamp()
+    deleted = 0
+    for path in GENERATED_IMAGES_DIR.glob("*.jpg"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                deleted += 1
+        except OSError:
+            logger.warning("生成画像を削除できませんでした: %s", path.name)
+    return deleted
 
 
 async def cleanup_web_chat_logs() -> dict:
@@ -52,6 +75,7 @@ async def cleanup_web_chat_logs() -> dict:
         await db.commit()
 
     return {
+        "deleted_images": cleanup_generated_images(),
         "deleted_sessions": sessions_result.rowcount,
         "deleted_request_logs": logs_result.rowcount,
         "deleted_inquiries": inquiries_result.rowcount,
@@ -63,7 +87,8 @@ async def main() -> None:
     print(
         f"削除: web_chat_sessions {result['deleted_sessions']}件, "
         f"web_chat_request_log {result['deleted_request_logs']}件, "
-        f"inquiries {result['deleted_inquiries']}件"
+        f"inquiries {result['deleted_inquiries']}件, "
+        f"生成画像 {result['deleted_images']}件"
     )
 
 

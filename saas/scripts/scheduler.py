@@ -104,11 +104,13 @@ async def _web_chat_cleanup_loop() -> None:
     while True:
         try:
             result = await cleanup_web_chat_logs()
-            if result["deleted_sessions"] or result["deleted_request_logs"]:
+            if result["deleted_sessions"] or result["deleted_request_logs"] or result["deleted_images"]:
                 logger.info(
-                    "Web埋め込みチャットの保持期間クリーンアップ完了: 会話%d件, ログ%d件削除",
+                    "保持期間クリーンアップ完了: 会話%d件, ログ%d件, 問い合わせ%d件, 生成画像%d件を削除",
                     result["deleted_sessions"],
                     result["deleted_request_logs"],
+                    result["deleted_inquiries"],
+                    result["deleted_images"],
                 )
         except Exception:
             logger.exception("Web埋め込みチャットのクリーンアップに失敗しました")

@@ -122,3 +122,43 @@ async def test_usage_reflects_completed_sessions(client, tenant):
     body = usage.json()
     assert body["all_time_session_count"] >= 1
     assert body["this_month_session_count"] >= 1
+
+
+async def test_login_does_not_block_the_server(client, tenant):
+    """パスワード照合(0.5秒ほどかかる)の間もサーバーが他の処理を続けられること。
+    照合を別スレッドで動かしていないと、その間サーバー全体が止まる(全顧客の操作が待たされる)。"""
+    import asyncio
+
+    from src.core.models import TenantUser
+    from src.core.passwords import hash_password
+
+    headers = {"Authorization": f"Bearer {tenant['api_key']}"}
+    async with async_session_factory() as db:
+        db.add(
+            TenantUser(
+                tenant_id=tenant["id"], email="login-test@example.com", role="member",
+                is_active=True, password_hash=await asyncio.to_thread(hash_password, "correct-password"),
+            )
+        )
+        await db.commit()
+
+    ticks = 0
+
+    async def heartbeat():
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    beat = asyncio.create_task(heartbeat())
+    try:
+        res = await client.post(
+            "/api/account/login",
+            json={"email": "login-test@example.com", "password": "wrong-password"},
+            headers=headers,
+        )
+    finally:
+        beat.cancel()
+
+    assert res.status_code == 401
+    assert ticks >= 10, f"照合中にサーバーが止まっていた(他の処理が{ticks}回しか動けていない)"
