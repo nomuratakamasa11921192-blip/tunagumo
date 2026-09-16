@@ -384,15 +384,34 @@ async function listPendingBookings(env) {
   return bookings;
 }
 
+// 申込み時のプラン。料金ページ(website/pricing.html)とStripeの商品、SaaS側のプラン名を対応させる。
+// 未指定ならライト(いちばん小さいプラン)で始め、必要なら後から管理画面で変更する。
+const PLANS = {
+  light: { priceVar: "STRIPE_PRICE_LIGHT", saasPlan: "light", label: "ライト" },
+  standard: { priceVar: "STRIPE_PRICE_STANDARD", saasPlan: "standard", label: "スタンダード" },
+  premium: { priceVar: "STRIPE_PRICE_PREMIUM", saasPlan: "unlimited", label: "プレミアム" },
+};
+
+function planFor(record) {
+  const key = (record && record.plan) || "light";
+  return PLANS[key] || PLANS.light;
+}
+
 async function activateTrial(env, customerId) {
   const pms = await stripeRequest(env, "GET", "payment_methods", { customer: customerId, type: "card" });
   const pm = pms.data && pms.data[0];
   if (!pm) {
     throw new Error("この顧客にはまだカードが登録されていません");
   }
+  const bookingRaw = await env.CHAT_HISTORY.get(`booking:${customerId}`);
+  const plan = planFor(bookingRaw ? JSON.parse(bookingRaw) : null);
+  const priceId = env[plan.priceVar];
+  if (!priceId) {
+    throw new Error(`Stripeの価格IDが未設定です(${plan.priceVar})`);
+  }
   const subscription = await stripeRequest(env, "POST", "subscriptions", {
     customer: customerId,
-    "items[0][price]": env.STRIPE_PRICE_TSUNAGUMO,
+    "items[0][price]": priceId,
     trial_period_days: String(TRIAL_DAYS),
     default_payment_method: pm.id,
   });
@@ -401,6 +420,7 @@ async function activateTrial(env, customerId) {
   if (raw) {
     const record = JSON.parse(raw);
     record.status = "trial_active";
+    record.plan = record.plan || "light";
     record.subscription_id = subscription.id;
     record.trial_started_at = new Date().toISOString();
     await saveBooking(env, customerId, record);
@@ -411,7 +431,7 @@ async function activateTrial(env, customerId) {
 // トライアル開始後、SaaS本体(saas/)側にテナントを発行する。SaaSは別サービスとして
 // デプロイされる想定(env.SAAS_BASE_URL未設定の間は呼び出せない。その場合は例外を投げ、
 // 呼び出し元でStripeトライアル自体は開始済みのまま、SaaS発行だけ失敗として扱う)。
-async function createSaasTenant(env, { name, industry, anthropicApiKey, email, stripeCustomerId }) {
+async function createSaasTenant(env, { name, industry, anthropicApiKey, email, stripeCustomerId, plan }) {
   if (!env.SAAS_BASE_URL) {
     throw new Error("SAAS_BASE_URLが未設定です(SaaS本体がまだデプロイされていない可能性があります)");
   }
@@ -431,6 +451,8 @@ async function createSaasTenant(env, { name, industry, anthropicApiKey, email, s
       anthropic_api_key: anthropicApiKey,
       email: email || null,
       stripe_customer_id: stripeCustomerId || null,
+      // Stripeで契約したプランと、SaaS側の月間AI予算・動画枠を一致させる
+      plan: plan || "light",
     }),
   });
   const json = await res.json();
@@ -1228,6 +1250,7 @@ async function handleAdminApi(request, env, pathname, url) {
         anthropicApiKey,
         email: bookingRecord && bookingRecord.email,
         stripeCustomerId: customerId,
+        plan: planFor(bookingRecord).saasPlan,
       });
       saasTenant = { ...result, saasUrl: env.SAAS_BASE_URL || "" };
 

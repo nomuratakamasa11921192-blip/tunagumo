@@ -14,11 +14,12 @@ GOOGLE_CALENDAR_ID = "primary"
 # SaaS本体(saas/)のデプロイ先URL。未デプロイの間は空のままでよい
 # (トライアル開始自体は失敗しない。SaaS側のテナント発行だけスキップされる)。
 SAAS_BASE_URL = "https://app.tunagumo.com"
-# トライアル終了後に課金するStripeのprice ID(live mode、2026-08-20作成の月5万円プラン)。
-# 【要確認】2026-09-16時点で、公開中の料金ページは3プラン(ライト39,800/スタンダード98,000/
-# プレミアム198,000円)になっており、この価格IDと一致していない。本番運用前に、Stripe側の商品を
-# 作り直して差し替えるか、料金ページ側を合わせること。
-STRIPE_PRICE_TSUNAGUMO = "price_1U6LS6Gj5LbAzw5NDK48bI32"
+# トライアル終了後に課金するStripeのprice ID(live mode、2026-09-16に料金ページの3プランへ
+# 合わせて作成)。秘密情報ではないためここに直接書いてよい。
+# SaaS側のプラン名(src/core/ai_budget.py)との対応: light / standard / unlimited(=プレミアム)
+STRIPE_PRICE_LIGHT = "price_1UGHevGj5LbAzw5NEfkaCyXF"      # ライト 39,800円/月
+STRIPE_PRICE_STANDARD = "price_1UGHgqGj5LbAzw5NHgFjODed"   # スタンダード 98,000円/月
+STRIPE_PRICE_PREMIUM = "price_1UGHgBGj5LbAzw5NM3fIrpUc"    # プレミアム 198,000円/月
 
 # 以下はここに書かない。wrangler secret put で個別に設定する:
 #   LINE_CHANNEL_SECRET
