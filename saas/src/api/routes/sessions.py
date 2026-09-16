@@ -509,6 +509,23 @@ async def approve_session(
     if actor is not None and actor.role not in ("approver", "owner"):
         raise HTTPException(status_code=403, detail="このユーザーには承認権限がありません")
 
+    # 多段階承認は「別々の人が確認する」ことに意味があるので、同じ人が2段目以降も承認するのは拒否する
+    # (2026-09-16追加。それまでは1人で全段を承認でき、二重チェックにならなかった)
+    if actor is not None and tenant.approval_stages > 1:
+        already = await db.execute(
+            select(ApprovalModel).where(
+                ApprovalModel.session_id == session_id,
+                ApprovalModel.tenant_id == tenant.id,
+                ApprovalModel.status == "APPROVED",
+                ApprovalModel.approver_user_id == actor.id,
+            )
+        )
+        if already.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=403,
+                detail="この依頼はすでにご自身が承認済みです。別の承認者の方に承認を依頼してください",
+            )
+
     # 二度押し・古いボタンの再押下を弾く: pending状態の承認要求を先に確定させる
     pending = await db.execute(
         select(ApprovalModel).where(

@@ -49,8 +49,12 @@ def _mock_respond(monkeypatch):
     monkeypatch.setattr(chat_module, "respond", fake_respond)
 
 
+search_calls = []
+
+
 @pytest.fixture(autouse=True)
 def _operator_openai_key(monkeypatch):
+    search_calls.clear()
     """2026-09-15: 文章生成もOpenAIへ移行したため、運営側キーの有無はopenai_api_keyで判定する。
     テスト用envではOPENAI_API_KEYを意図的に空にしている(402テストのため)ので、ここで
     ダミー値を入れる。実APIを叩かないよう、埋め込みと検索もフェイクに差し替える。"""
@@ -60,6 +64,7 @@ def _operator_openai_key(monkeypatch):
     monkeypatch.setattr(chat_module, "OpenAIEmbeddingProvider", lambda api_key: FakeEmbeddingProvider())
 
     async def fake_hybrid_search(*args, **kwargs):
+        search_calls.append(kwargs)
         return []
 
     monkeypatch.setattr(chat_module, "hybrid_search", fake_hybrid_search)
@@ -214,5 +219,25 @@ async def test_preflight_omits_cors_headers_for_disallowed_origin(client, tenant
         res = await client.options(f"/api/chat/{public_key}", headers={"Origin": "https://evil.example"})
         assert res.status_code == 204
         assert "access-control-allow-origin" not in res.headers
+    finally:
+        await _cleanup(tenant["id"])
+
+
+async def test_public_chat_searches_only_public_documents(client, tenant, monkeypatch):
+    """社外向けチャットは、公開してよい資料(index_scope="public")しか検索しないこと(仕様書15-3)。"""
+    from src.agent.public_responder import PublicResponderResult
+
+    async def real_respond(**kwargs):
+        return PublicResponderResult(reply="ご案内します。", escalated=False, reason="test", usage={})
+
+    monkeypatch.setattr(chat_module, "respond", real_respond)
+    public_key = await _configure_widget(tenant["id"])
+    try:
+        res = await client.post(
+            f"/api/chat/{public_key}", json={"message": "営業時間を教えてください"}, headers={"Origin": ALLOWED_ORIGIN}
+        )
+        assert res.status_code == 200
+        assert search_calls, "RAG検索が呼ばれていない"
+        assert all(c.get("index_scope") == "public" for c in search_calls)
     finally:
         await _cleanup(tenant["id"])

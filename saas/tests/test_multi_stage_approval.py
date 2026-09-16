@@ -243,3 +243,30 @@ async def test_reject_at_first_stage_does_not_wait_for_second(client, tenant, mo
         await asyncio.sleep(0.02)
     else:
         raise TimeoutError("却下後の再承認待ちまで進みませんでした")
+
+
+async def test_same_person_cannot_approve_both_stages(client, tenant, monkeypatch):
+    """多段階承認は別々の人が確認することに意味があるので、同じ人の2回目の承認は拒否する。"""
+    await _set_approval_stages(tenant["id"], 2)
+    headers = {"Authorization": f"Bearer {tenant['api_key']}"}
+    owner_token = await _create_login_user(client, tenant, "solo-owner@example.com", "owner", monkeypatch)
+    session_id = await _create_session_awaiting_approval(client, headers)
+
+    first = await client.post(
+        f"/api/sessions/{session_id}/approve",
+        json={"decision": "approve"},
+        headers={**headers, "X-User-Token": owner_token},
+    )
+    assert first.status_code == 202 and first.json()["next_stage"] == 2
+
+    second = await client.post(
+        f"/api/sessions/{session_id}/approve",
+        json={"decision": "approve"},
+        headers={**headers, "X-User-Token": owner_token},
+    )
+    assert second.status_code == 403
+    assert "別の承認者" in second.json()["detail"]
+
+    # 2段目は承認待ちのまま残る(承認者ゼロで詰まらないよう、別の承認者が承認できる)
+    still = await client.get(f"/api/sessions/{session_id}", headers=headers)
+    assert still.json()["status"] == "AWAITING_APPROVAL"
