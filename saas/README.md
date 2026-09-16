@@ -118,13 +118,14 @@ OpenAI APIの応答が遅い場合、1回の処理に数十秒〜数分かかる
 ```
 LLM_PROVIDER=anthropic          # or openai
 LLM_MODEL=claude-sonnet-5       # 本文用。OpenAIなら gpt-5.6-terra
-LLM_MODEL_LIGHT=claude-haiku-4.5  # 振り分け等の軽い処理。OpenAIなら gpt-5.6-luna
+LLM_MODEL_LIGHT=claude-haiku-4-5-20251001  # 振り分け等の軽い処理。OpenAIなら gpt-5.6-luna
 ```
 
 - 切り替えたら `docker compose ... up -d`(restartでは反映されない)。起動時ヘルスチェックが
   提供元のAPIとモデル名の疎通を確認するので、設定ミスがあればAPIが起動せず気づける
 - **画像生成・音声合成・文字起こし・資料検索(埋め込み)は常にOpenAI**(Claudeに同等機能が無い)。
   そのため`OPENAI_API_KEY`はどちらの設定でも必要
+- **モデル名はAPIのID表記で書く**(通称の`claude-haiku-4.5`はAPIでは404になる。正: `claude-haiku-4-5-20251001`)。config/*.yamlの単価表のキーも同じ表記に揃えること
 - 実装は`src/agent/llm.py`の`StructuredLLM`。Anthropicはtool_use、OpenAIはStructured Outputsで
   構造化出力を得るが、呼び出し側から見た戻り値(とusageのキー名)は同じ
 

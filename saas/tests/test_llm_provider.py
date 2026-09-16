@@ -92,10 +92,10 @@ def test_provider_is_inferred_from_settings_and_models_switch(monkeypatch):
     monkeypatch.setattr(settings, "llm_model", "")
     monkeypatch.setattr(settings, "llm_model_light", "")
     monkeypatch.setattr(settings, "anthropic_model", "claude-sonnet-5")
-    monkeypatch.setattr(settings, "anthropic_model_light", "claude-haiku-4.5")
+    monkeypatch.setattr(settings, "anthropic_model_light", "claude-haiku-4-5-20251001")
     assert build_llm().provider == "anthropic"
     assert active_llm_model() == "claude-sonnet-5"
-    assert active_llm_model_light() == "claude-haiku-4.5"
+    assert active_llm_model_light() == "claude-haiku-4-5-20251001"
 
     monkeypatch.setattr(settings, "llm_provider", "openai")
     monkeypatch.setattr(settings, "openai_model", "gpt-5.6-terra")
@@ -115,7 +115,7 @@ def test_pricing_table_covers_both_providers(config):
         ("gpt-5.6-terra", 14.0),   # 2.0 + 12.0
         ("gpt-5.6-luna", 1.4),     # 0.2 + 1.2
         ("claude-sonnet-5", 12.0), # 2.0 + 10.0
-        ("claude-haiku-4.5", 6.0), # 1.0 + 5.0
+        ("claude-haiku-4-5-20251001", 6.0), # 1.0 + 5.0
     ):
         assert compute_cost_usd(model, usage, config.pricing) == pytest.approx(expected), model
 
@@ -126,11 +126,11 @@ async def test_healthcheck_uses_the_right_api_for_each_provider(monkeypatch):
     from src.core.healthcheck import check_llm
 
     monkeypatch.setattr(settings, "llm_provider", "anthropic")
-    monkeypatch.setattr(settings, "llm_model_light", "claude-haiku-4.5")
+    monkeypatch.setattr(settings, "llm_model_light", "claude-haiku-4-5-20251001")
     anthropic_client, messages = _anthropic_client([SimpleNamespace(type="text", text="ok")])
     result = await check_llm(anthropic_client)
     assert result.ok and result.name == "anthropic"
-    assert messages.calls[0]["model"] == "claude-haiku-4.5"
+    assert messages.calls[0]["model"] == "claude-haiku-4-5-20251001"
     assert messages.calls[0]["max_tokens"] == 1  # 消費を最小にする
 
     monkeypatch.setattr(settings, "llm_provider", "openai")
