@@ -14,6 +14,22 @@ set -euo pipefail
 trap 'qa_exit_status=$?; if (( qa_exit_status != 0 )); then printf "[daily_qa] 処理に失敗したため中断しました（終了コード %s）。正常終了として扱いません。\n" "$qa_exit_status" >&2; fi' EXIT
 cd "$(dirname "$0")"
 
+# ローカル/VPS併用時、手動作業のブランチ・未保存変更を自動QAへ混ぜない。
+# .envの読み込みや外部アクセスより前に確認し、stash・ブランチ変更はしない。
+if ! qa_start_branch=$(git symbolic-ref --quiet --short HEAD); then
+  echo "[daily_qa] ブランチを確認できないため中止します。mainの開発用cloneで実行してください。" >&2
+  exit 1
+fi
+if [ "$qa_start_branch" != "main" ]; then
+  echo "[daily_qa] main以外のブランチでは自動QAを実行しません。手動作業を保持して終了します。" >&2
+  exit 1
+fi
+qa_start_status=$(git status --porcelain)
+if [ -n "$qa_start_status" ]; then
+  echo "[daily_qa] 未保存の変更があるため中止します。手動作業を保持して終了します。" >&2
+  exit 1
+fi
+
 # .env にSLACK_WEBHOOK_URL等の秘密情報を置く場合はここで読み込む(.envはgit管理外)
 if [ -f .env ]; then
   set -a

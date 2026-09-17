@@ -1,5 +1,7 @@
 # タスク: SaaSのAI基盤をOpenAIに一本化する
 
+> **2026-09-18 引き継ぎ注記**：以下は当初の移行計画。Part A/Bの実装後、文章生成はAnthropic/OpenAIを選べる構成に更新済み。画像はOpenAI、動画はHiggsfieldのまま。実APIによる文章・画像の品質/コスト確認が残る。完了済み実装のやり直しやAnthropic対応の削除は行わず、`docs/handoff_2026-09-17.md` と `docs/local_start.md` の最新状況から再開する。テストには本資料の旧Compose例ではなく、引き継ぎ資料の開発用Compose手順を使う。
+
 ## 背景・目的
 
 現在このSaaSは、文章生成にAnthropic Claude、画像生成・編集にHiggsfield、

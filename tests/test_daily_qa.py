@@ -45,8 +45,11 @@ if fail in (event, event + str(count)):
     print('simulated failure: ' + event)
     sys.exit(int(os.environ.get('QA_TEST_EXIT', '1')))
 if event == 'git:status':
-    if os.environ.get('QA_TEST_DIRTY'):
+    if os.environ.get('QA_TEST_START_DIRTY') or (count > 1 and os.environ.get('QA_TEST_DIRTY')):
         print(' M saas/src/example.py')
+    sys.exit(0)
+if event == 'git:symbolic-ref':
+    print(os.environ.get('QA_TEST_BRANCH', 'main'))
     sys.exit(0)
 if event == 'git:rev-parse':
     print('a' * 40)
@@ -62,7 +65,7 @@ else:
 
 
 class DailyQATests(unittest.TestCase):
-    def run_script(self, fail='', code=1, quota_text=False, dirty=False, unpushed=False):
+    def run_script(self, fail='', code=1, quota_text=False, dirty=False, unpushed=False, branch='main', start_dirty=False):
         with tempfile.TemporaryDirectory(prefix='tunagumo-qa-test-') as tmp:
             root = Path(tmp)
             shutil.copy2(ROOT / 'daily_qa.sh', root / 'daily_qa.sh')
@@ -79,6 +82,7 @@ class DailyQATests(unittest.TestCase):
             env = {**os.environ, 'PATH': str(fake_bin) + os.pathsep + os.environ['PATH'],
                    'QA_TEST_LOG': str(log), 'QA_TEST_FAIL': fail, 'QA_TEST_EXIT': str(code),
                    'QA_TEST_QUOTA_TEXT': '1' if quota_text else '',
+                   'QA_TEST_BRANCH': branch, 'QA_TEST_START_DIRTY': '1' if start_dirty else '',
                    'QA_TEST_DIRTY': '1' if dirty else '', 'QA_TEST_UNPUSHED': '1' if unpushed else ''}
             result = subprocess.run(['bash', str(root / 'daily_qa.sh')], env=env,
                                     capture_output=True, text=True, timeout=15)
@@ -97,7 +101,7 @@ class DailyQATests(unittest.TestCase):
         result, calls = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([call['event'] for call in calls], [
-            'git:pull', 'build', 'up', 'migrate', 'repair', 'audit',
+            'git:symbolic-ref', 'git:status', 'git:pull', 'build', 'up', 'migrate', 'repair', 'audit',
             'build', 'migrate', 'pytest', 'script-tests', 'save',
             'git:status', 'git:rev-parse', 'git:ls-remote', 'curl',
         ])
@@ -107,6 +111,25 @@ class DailyQATests(unittest.TestCase):
                     'compose', '-p', 'tunagumo-dev', '--env-file', '../.env.test',
                     '-f', 'docker-compose.yml', '-f', 'docker-compose.test.yml',
                 ])
+
+    def test_manual_branches_stop_before_pull_or_agent(self):
+        for branch in ('local/image-check', 'vps/manual-fix'):
+            with self.subTest(branch=branch):
+                result, calls = self.run_script(branch=branch)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual([c['event'] for c in calls], ['git:symbolic-ref'])
+
+    def test_detached_head_or_branch_lookup_failure_stops(self):
+        self.assert_stopped('git:symbolic-ref', ['git:pull', 'build', 'repair', 'save', 'curl'])
+
+    def test_existing_changes_stop_before_pull_or_agent(self):
+        result, calls = self.run_script(start_dirty=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual([c['event'] for c in calls], ['git:symbolic-ref', 'git:status'])
+        self.assertIn('手動作業を保持', result.stderr)
+
+    def test_initial_status_failure_stops_before_pull(self):
+        self.assert_stopped('git:status1', ['git:pull', 'build', 'repair', 'save', 'curl'])
 
     def test_pull_failure_stops_before_build(self):
         self.assert_stopped('git:pull', ['build', 'repair', 'save', 'curl'])
@@ -152,7 +175,7 @@ class DailyQATests(unittest.TestCase):
         self.assertNotIn('curl', [c['event'] for c in calls])
 
     def test_worktree_lookup_failure_does_not_notify_success(self):
-        self.assert_stopped('git:status', ['curl'])
+        self.assert_stopped('git:status2', ['curl'])
 
     def test_remote_lookup_failure_does_not_notify_success(self):
         self.assert_stopped('git:ls-remote', ['curl'])
