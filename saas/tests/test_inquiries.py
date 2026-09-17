@@ -33,6 +33,9 @@ LINE_SECRET = "line-channel-secret-for-tests"
     "message,label",
     [
         ("部屋でガスの臭いがします", "ガス"),
+        ("外がガスくさいです", "ガス"),
+        ("ガスが臭いです", "ガス"),
+        ("ガスがくさいです", "ガス"),
         ("天井から水漏れしています！", "水漏れ"),
         ("隣の部屋から煙が出ています", "火災・煙"),
         ("鍵をなくして部屋に入れない", "鍵の紛失・閉め出し"),
@@ -61,15 +64,20 @@ def test_triage_categories_without_false_emergency(message, category):
     assert t.category == category
 
 
+@pytest.mark.parametrize("message", ["ガス漏れしてるかも", "屋外がガスくさい", "ガスが臭いし火花も出ています"])
 @_async
-async def test_emergency_reply_is_fixed_template_without_calling_ai():
+async def test_emergency_reply_is_fixed_template_without_calling_ai(message):
     llm = FakeLLM()  # 何もキューしない: AIが呼ばれたら失敗する
     result = await respond(
-        llm=llm, model="m", company_name="テスト不動産", message="ガス漏れしてるかも", emergency_phone="0120-000-000"
+        llm=llm, model="m", company_name="テスト不動産", message=message, emergency_phone="0120-000-000"
     )
     assert result.escalated is True
     assert result.urgency == URGENT
     assert "火を使わず" in result.reply
+    assert "室内で臭う場合は、窓や戸を手で開け" in result.reply
+    assert "屋外で臭う場合は、窓や戸を閉め" in result.reply
+    assert "電気のスイッチや換気扇に触れない" in result.reply
+    assert "ブレーカーを落とし" not in result.reply
     assert "0120-000-000" in result.reply
     assert "担当者から折り返し" in result.reply
     assert llm.structured_calls == []
