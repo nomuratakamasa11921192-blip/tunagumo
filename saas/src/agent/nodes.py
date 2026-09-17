@@ -85,20 +85,30 @@ def _dept_candidates(app_config: AppConfig, board: dict) -> list[str]:
     return candidates
 
 
+def _request_context(state: OrgState, *, goal: str | None = None) -> list[str]:
+    """分類時の要約で落ちた数値・条件も、生成と検査へ原文のまま渡す。"""
+    parts = [
+        f"【依頼原文】\n{state.get('raw_message', '')}",
+        f"【依頼内容の要約】\n{goal if goal is not None else state.get('goal', '')}",
+    ]
+    if state.get("clarifications"):
+        clar = "\n".join(f"- {k}: {v}" for k, v in state["clarifications"].items())
+        parts.append(f"【確認済みの追加情報】\n{clar}")
+    return parts
+
+
 def _build_routing_prompt(state: OrgState, *, app_config: AppConfig, goal: str) -> str:
     board = state.get("board", {}) or {}
     candidates = _dept_candidates(app_config, board)
     lines = [
         f"【会社情報】\n{app_config.company.context}",
-        f"【依頼内容】\n{goal}",
+        *_request_context(state, goal=goal),
     ]
-    if state.get("clarifications"):
-        clar = "\n".join(f"- {k}: {v}" for k, v in state["clarifications"].items())
-        lines.append(f"【確認済みの追加情報】\n{clar}")
     done = {d: t for d, t in board.items() if t}
     if done:
         text = "\n\n".join(f"### {d}\n{t}" for d, t in done.items())
         lines.append(f"【これまでの成果物】\n{text}")
+    lines.append(f"【QA判定】{state.get('qa_verdict', 'PENDING')}")
     if state.get("qa_findings"):
         lines.append(f"【QAの指摘】\n{state['qa_findings']}")
     if state.get("rejection_comment"):
@@ -117,7 +127,7 @@ async def _build_approval_summary(
     board = state.get("board", {}) or {}
     deliverables_text = "\n\n".join(f"### {d}\n{t}" for d, t in board.items() if t)
     qa_report = "合格" if state.get("qa_verdict") == "PASS" else "警告付きで進行(差し戻し上限到達)"
-    user_message = (
+    user_message = "\n\n".join(_request_context(state)) + "\n\n" + (
         f"【成果物】\n{deliverables_text}\n\n"
         f"【QA結果】{qa_report}\n"
         f"【QAの警告】{state.get('qa_warnings', [])}"
@@ -397,13 +407,10 @@ def make_dept_node(
         company = app_config.company
         parts = [
             f"【会社情報】\n{company.context}",
-            f"【依頼内容】\n{state.get('goal', '')}",
+            *_request_context(state),
         ]
         if state.get("instruction"):
             parts.append(f"【統括AIからの指示】\n{state['instruction']}")
-        if state.get("clarifications"):
-            clar = "\n".join(f"- {k}: {v}" for k, v in state["clarifications"].items())
-            parts.append(f"【確認済みの追加情報】\n{clar}")
         if state.get("rejection_comment"):
             parts.append(f"【差し戻し・却下理由】\n{state['rejection_comment']}")
 
@@ -464,7 +471,10 @@ async def qa_auditor_node(state: OrgState, *, app_config: AppConfig, llm: Struct
         qa_result, usage = await llm.call_structured(
             model=dept.model,
             system_prompt=dept.system_prompt,
-            user_message=f"【検査対象の成果物】\n{deliverables_text}",
+            user_message="\n\n".join([
+                *_request_context(state),
+                f"【検査対象の成果物】\n{deliverables_text}",
+            ]),
             output_model=QaResult,
         )
     except _LLM_ERRORS as e:

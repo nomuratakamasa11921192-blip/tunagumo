@@ -4,6 +4,7 @@ Requires Playwright and Chromium. All requests are intercepted locally;
 no server, credentials, paid API calls or customer data are used.
 """
 import json
+import os
 from pathlib import Path
 import unittest
 from urllib.parse import urlparse
@@ -17,7 +18,15 @@ class NavigationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.playwright = sync_playwright().start()
-        cls.browser = cls.playwright.chromium.launch()
+        # A preinstalled Chromium can be selected for offline/slow-network setup.
+        # When unset, use the browser installed by Playwright as before.
+        try:
+            cls.browser = cls.playwright.chromium.launch(
+                executable_path=os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE') or None
+            )
+        except Exception:
+            cls.playwright.stop()
+            raise
 
     @classmethod
     def tearDownClass(cls):
@@ -47,7 +56,7 @@ class NavigationTests(unittest.TestCase):
             self.held.append(route)
             return
         if path == '/':
-            route.fulfill(content_type='text/html', body=HTML.read_text())
+            route.fulfill(content_type='text/html', body=HTML.read_text(encoding='utf-8'))
             return
         data = {}
         if path == '/api/sessions':

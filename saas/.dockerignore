@@ -1,0 +1,19 @@
+# Keep credentials and local data out of the build context and image.
+.env
+.env.*
+**/.env
+**/.env.*
+workspace/
+docker/backups/
+*.db
+**/*.db
+*.log
+**/*.log
+private/
+.git/
+.venv/
+venv/
+node_modules/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/

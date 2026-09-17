@@ -107,6 +107,42 @@ VPSでの直近結果は646件成功。PCで未実行のまま同じ結果とし
 ブラウザからSaaSを使う準備は別途、PCの開発用ENVを確認後に行う。
 APIを公開する場合はローカルホストに限定し、実API用設定・ダミーテスト設定・開発DBの接続を混同しない。
 
+### Windows PowerShellでの補足
+
+このPCの実際のフォルダ名は `C:\Users\user\事業①\tsunagumo`。上記のComposeコマンドは
+`Set-Location saas/docker` の後に実行する。`--env-file ../.env.test` はその場所からの相対パス。
+PowerShellでは外部コマンドの失敗で自動停止しないため、各工程の `$LASTEXITCODE` が0であることを確認して次へ進む。
+
+`saas/.dockerignore` でENV・ワークスペース・バックアップをDockerのビルド対象から除外する。
+`.gitignore` だけではDockerfileの `COPY . .` による秘密情報の混入を防げない。
+シェルスクリプトは `.gitattributes` によりLFでチェックアウトする（CRLFだとBashが起動時に失敗する）。
+
+画面テストの依存はプロジェクト専用の仮想環境に入れる。リポジトリルートから実行する。
+
+```powershell
+python -m venv .venv
+.venv/Scripts/python -m pip install -r saas/frontend/tests/requirements.txt
+.venv/Scripts/python -m playwright install chromium
+.venv/Scripts/python -m unittest discover -s saas/frontend/tests -v
+node line-bot/test/bot_test.mjs
+```
+
+このPCでは既存のChromium 149.0.7827.55でも11件成功を確認した。
+同じ既存ブラウザを使う場合は、テスト実行前に次を設定すれば新規ダウンロードは不要。
+ファイルが存在しないPCでは上記の `playwright install chromium` を使う。
+
+```powershell
+$env:PLAYWRIGHT_CHROMIUM_EXECUTABLE = "$env:LOCALAPPDATA/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-win64/chrome-headless-shell.exe"
+```
+
+日次QAの回帰テストはLinux/Bashを前提とするため、Windowsでは次の使い捨てコンテナで実行できる。
+テスト2ファイルだけを読み取り専用で渡し、ネットワークを無効にする。実ジョブ・Codex・通知は起動しない。
+イメージが未取得なら、先に `docker pull python:3.12-slim` で取得する。
+
+```powershell
+docker run --rm --network none --mount "type=bind,source=$($PWD.Path)/tests,target=/qa/tests,readonly" --mount "type=bind,source=$($PWD.Path)/daily_qa.sh,target=/qa/daily_qa.sh,readonly" -w /qa python:3.12-slim python -m unittest discover -s tests -v
+```
+
 ## 準備後の残件
 
 1. 文章生成の日本語品質とコスト記録を実APIで確認する。提供元を選べる既存構成を維持する。
