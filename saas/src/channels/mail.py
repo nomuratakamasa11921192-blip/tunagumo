@@ -25,6 +25,7 @@ import logging
 import re
 import smtplib
 import ssl
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -45,6 +46,8 @@ ALLOWED_SMTP_PORTS = {465, 587}
 CONNECT_TIMEOUT_SECONDS = 20
 MAX_MESSAGES_PER_RUN = 20
 MAX_BODY_CHARS = 2000
+# 長い物件説明の後にある連絡先も読む。AIへ渡す本文の上限は増やさない。
+MAX_PORTAL_BODY_CHARS = 20000
 MAX_AUTO_REPLIES_PER_SENDER_PER_DAY = 3
 MAX_AUTO_REPLIES_PER_TENANT_PER_DAY = 100
 
@@ -70,22 +73,61 @@ _PORTAL_SUBJECT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _EMAIL_IN_BODY = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
-_PHONE_IN_BODY = re.compile(r"0\d{1,4}[-(）\s]?\d{1,4}[-)）\s]?\d{3,4}")
+_PHONE_IN_BODY = re.compile(r"(?<!\d)0\d{1,4}[-() ]?\d{1,4}[-() ]?\d{3,4}(?!\d)")
+_EMAIL_LABEL = re.compile(
+    r"^\s*[【\[]?\s*(?:お客様(?:の)?|ご連絡先(?:の)?)?\s*"
+    r"(?:メール(?:アドレス)?|E-?mail)\s*[】\]]?\s*:?\s*(.*)$", re.IGNORECASE,
+)
+_PHONE_LABEL = re.compile(
+    r"^\s*[【\[]?\s*(?:お客様(?:の)?|ご連絡先(?:の)?)?\s*"
+    r"(?:電話(?:番号)?|TEL)\s*[】\]]?\s*:?\s*(.*)$", re.IGNORECASE,
+)
+
+
+def _contact_values(body: str, label: re.Pattern, value_pattern: re.Pattern) -> list[str]:
+    """ラベルがある場合はその値だけを使い、未記入を署名欄の値で補わない。"""
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    values = []
+    for index, line in enumerate(lines):
+        match = label.match(line)
+        if match:
+            value = match.group(1)
+            # HTMLの表ではラベルと値が別行になる。
+            if not value and index + 1 < len(lines):
+                following = lines[index + 1].strip("<> ")
+                # 未記入欄の次にある「運営窓口: ...」等の別項目を連絡先と誤認しない。
+                if value_pattern.fullmatch(following):
+                    value = following
+            values.append(value)
+    return values if values else lines
+
+
+def _unique_contact(values: set[str]) -> str | None:
+    # 候補が複数なら、先頭を勝手に返信先として採用しない。
+    return next(iter(values)) if len(values) == 1 else None
 
 
 def portal_contact(parsed: "ParsedMail", *, own_address: str) -> dict | None:
     """ポータルの反響通知メールらしければ、本文から拾った連絡先を返す(そうでなければNone)。
     本文から拾ったアドレスへ自動返信はしない(取り違えると誤送信になるため)。担当者が画面で
     確認してから返信する。"""
-    if not _PORTAL_SUBJECT_PATTERN.search(parsed.subject) and not _PORTAL_SUBJECT_PATTERN.search(parsed.body):
+    body = unicodedata.normalize("NFKC", parsed.body if parsed.contact_body is None else parsed.contact_body)
+    if not _PORTAL_SUBJECT_PATTERN.search(parsed.subject) and not _PORTAL_SUBJECT_PATTERN.search(body):
         return None
-    own = own_address.lower()
-    emails = [
-        e for e in _EMAIL_IN_BODY.findall(parsed.body)
-        if e.lower() != own and not _NOREPLY_PATTERN.search(e) and e.lower() != parsed.from_address
-    ]
-    phones = _PHONE_IN_BODY.findall(parsed.body)
-    return {"email": emails[0] if emails else None, "phone": phones[0] if phones else None}
+    excluded = {own_address.lower(), parsed.from_address.lower()}
+    emails = {
+        address.lower()
+        for value in _contact_values(body, _EMAIL_LABEL, _EMAIL_IN_BODY)
+        for address in _EMAIL_IN_BODY.findall(value)
+        if address.lower() not in excluded and not _NOREPLY_PATTERN.search(address)
+    }
+    phones = set()
+    phone_body = re.sub(r"[‐‑‒–—−]", "-", body)
+    for value in _contact_values(phone_body, _PHONE_LABEL, _PHONE_IN_BODY):
+        for phone in _PHONE_IN_BODY.findall(value):
+            if len(re.sub(r"\D", "", phone)) in (10, 11):
+                phones.add(phone)
+    return {"email": _unique_contact(emails), "phone": _unique_contact(phones)}
 
 
 class MailConfigError(Exception):
@@ -101,6 +143,8 @@ class ParsedMail:
     body: str
     references: str
     skip_reason: str | None = None
+    # 連絡先抽出専用。AI入力や問い合わせ本文にはbody(2000文字まで)を使う。
+    contact_body: str | None = None
 
 
 @dataclass
@@ -126,7 +170,7 @@ def _header(msg, name: str) -> str:
     return str(value).strip() if value is not None else ""
 
 
-def _extract_body(msg) -> str:
+def _extract_body(msg, *, max_chars: int = MAX_BODY_CHARS) -> str:
     part = msg.get_body(preferencelist=("plain", "html"))
     if part is None:
         return ""
@@ -148,7 +192,7 @@ def _extract_body(msg) -> str:
         lines.append(line.rstrip())
     text = "\n".join(lines).strip()
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return text[:MAX_BODY_CHARS]
+    return text[:max_chars]
 
 
 def parse_mail(raw: bytes, *, own_address: str, fallback_id: str) -> ParsedMail:
@@ -158,12 +202,18 @@ def parse_mail(raw: bytes, *, own_address: str, fallback_id: str) -> ParsedMail:
     reply_to = parseaddr(_header(msg, "Reply-To"))[1].lower()
     reply_address = reply_to or from_address
     subject = _header(msg, "Subject")[:300]
+    body = _extract_body(msg, max_chars=MAX_PORTAL_BODY_CHARS)
+    contact_body = body
+    if len(contact_body) == MAX_PORTAL_BODY_CHARS:
+        # 上限位置で切れたアドレスの一部を、有効な返信先と誤認しない。
+        contact_body = contact_body.rsplit("\n", 1)[0] if "\n" in contact_body else ""
     parsed = ParsedMail(
         message_id=(_header(msg, "Message-ID") or fallback_id)[:300],
         subject=subject,
         from_address=from_address,
         reply_address=reply_address,
-        body=_extract_body(msg),
+        body=body[:MAX_BODY_CHARS],
+        contact_body=contact_body if _PORTAL_SUBJECT_PATTERN.search(subject) or _PORTAL_SUBJECT_PATTERN.search(body) else "",
         references=_header(msg, "References"),
     )
 

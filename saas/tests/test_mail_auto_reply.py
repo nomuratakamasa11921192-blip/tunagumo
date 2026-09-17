@@ -504,12 +504,18 @@ PORTAL_BODY = """お問い合わせがありました。
 """
 
 
+@pytest.mark.parametrize("portal_body,expected_email", [
+    (PORTAL_BODY, "taro-portal@example.net"),
+    ("窓口: support@portal.example\n" + PORTAL_BODY, "taro-portal@example.net"),
+    ("物件の詳細説明です。" * 300 + "\n" + PORTAL_BODY, "taro-portal@example.net"),
+    (PORTAL_BODY + "\nメールアドレス: another@example.net", None),
+])
 @_async
-async def test_portal_inquiry_is_recorded_without_auto_reply(config, tenant, monkeypatch, sent_notifications):
+async def test_portal_inquiry_is_recorded_without_auto_reply(config, tenant, monkeypatch, sent_notifications, portal_body, expected_email):
     await _setup_account(tenant["id"])
     await _set_email(tenant["id"])
     _ai(monkeypatch, escalated=False)
-    transport = FakeTransport([_raw(subject="【SUUMO】お問い合わせがありました", body=PORTAL_BODY, sender="noreply@suumo.example")])
+    transport = FakeTransport([_raw(subject="【SUUMO】お問い合わせがありました", body=portal_body, sender="noreply@suumo.example")])
     try:
         result = await _scan(config, transport)
         assert result["escalated"] == 1
@@ -517,7 +523,7 @@ async def test_portal_inquiry_is_recorded_without_auto_reply(config, tenant, mon
         rows = await _inquiries(tenant["id"])
         assert len(rows) == 1
         assert rows[0].category == "内見・物件(ポータル反響)"
-        assert rows[0].external_user_id == "taro-portal@example.net"  # 担当者が画面から返信できる
+        assert rows[0].external_user_id == expected_email  # 曖昧な候補は返信先にしない
         assert "090-1234-5678" in rows[0].messages[0]["content"]
         assert len(sent_notifications) == 1
     finally:
