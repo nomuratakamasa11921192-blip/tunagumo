@@ -10,7 +10,8 @@
 # ここでは、メインモデルの呼び出しが失敗した場合、gpt-5.6-sol で同じ指示を
 # 再実行するラッパー関数を用意する。
 # ===========================================================================
-set -uo pipefail
+set -euo pipefail
+trap 'qa_exit_status=$?; if (( qa_exit_status != 0 )); then printf "[daily_qa] 処理に失敗したため中断しました（終了コード %s）。正常終了として扱いません。\n" "$qa_exit_status" >&2; fi' EXIT
 cd "$(dirname "$0")"
 
 # .env にSLACK_WEBHOOK_URL等の秘密情報を置く場合はここで読み込む(.envはgit管理外)
@@ -45,14 +46,23 @@ run_codex_with_fallback() {
   # `-a`/`--ask-for-approval` は exec には存在しない(codexコマンド本体のみの
   # オプションだった)。exec では `-s/--sandbox danger-full-access` を使う
   # (2026-09-10、`codex exec --help`で確認)。
-  out=$(codex exec -s danger-full-access "$prompt" 2>&1)
-  local status=$?
+  local status=0
+  if out=$(codex exec -s danger-full-access "$prompt" 2>&1); then
+    status=0
+  else
+    status=$?
+  fi
 
-  if [ $status -ne 0 ] || echo "$out" | grep -qiE "rate.?limit|usage.?cap|429|quota"; then
+  # 正常なテスト名(test_video_quota_route等)やAPIエラー処理の説明を制限と誤認しない。
+  # テストの成否は、保存前にスクリプト自身がpytestを実行して別途確認する。
+  if [ "$status" -ne 0 ]; then
     echo "[daily_qa] メインモデルで失敗/制限を検知。${FALLBACK_MODEL} で再実行します。" >&2
     echo "$out"
-    out=$(codex exec -s danger-full-access --model "$FALLBACK_MODEL" "$prompt" 2>&1)
-    status=$?
+    if out=$(codex exec -s danger-full-access --model "$FALLBACK_MODEL" "$prompt" 2>&1); then
+      status=0
+    else
+      status=$?
+    fi
   fi
 
   echo "$out"
@@ -85,11 +95,11 @@ echo "=== [0/4] 最新コードの取得とテスト用イメージの再ビル�
 # 再ビルドしないと git pull した修正がコンテナに反映されず、テストも古いままになる。
 # 2026-09-15、イメージが11日間再ビルドされておらず tests/ がコンテナ内に存在せず、
 # pytestが0件で「成功」扱いになっていたのを発見したため追加。
-git pull --ff-only 2>&1 || echo "[daily_qa] git pullに失敗しました(ローカル変更がある可能性)" >&2
+git pull --ff-only
 
 if [ ! -f saas/.env.test ]; then
   echo "[daily_qa] saas/.env.test がありません。テストを実行できないため中止します。" >&2
-  echo "[daily_qa] saas/.env.example を元に .env.test を作成してください。" >&2
+  echo "[daily_qa] saas/.env.test.example を元に .env.test を作成してください。" >&2
   exit 1
 fi
 
@@ -100,12 +110,15 @@ dc build api 2>&1 | tail -5
 # コマンドを pytest に差し替えた使い捨てコンテナで実行すればよく、
 # APIサーバーを立ち上げる必要は無い。
 dc up -d db 2>&1 | tail -3
+# 開発用DBに新しい列・テーブルを反映してからテストする。
+dc run --rm -T api alembic upgrade head
 
 echo "=== [1/4] Codexによる日常自動テストとバグ修復 ==="
-run_codex_with_fallback "AGENTS.mdとSYSTEM_PROMPT.mdに従い、開発用のテストを実行せよ。
+run_codex_with_fallback "$(cat <<'QA_PROMPT'
+AGENTS.mdとSYSTEM_PROMPT.mdに従い、開発用のテストを実行せよ。
 
 【テストの実行方法】saas/docker に移動し、必ず次の形で実行すること:
-  docker compose -p tunagumo-dev --env-file ../.env.test -f docker-compose.yml -f docker-compose.test.yml run --rm api pytest -v
+  docker compose -p tunagumo-dev --env-file ../.env.test -f docker-compose.yml -f docker-compose.test.yml run --rm -T api pytest -v
 
 `run --rm` を使うのは、APIサーバーを常駐させる必要が無いため。
 src/main.py の起動時ヘルスチェックが実APIへ疎通確認するので、テスト用のダミーキーでは
@@ -127,19 +140,51 @@ src/main.py の起動時ヘルスチェックが実APIへ疎通確認するの�
 もしエラーを検知した場合、原因を特定し、自律エージェントモードでファイルを
 自動修正してテストが100%通過するまで修復を繰り返せ（最低5回、それでも直ら
 なければ人間への報告に留めて停止せよ）。/opt/tsunagumo 配下は絶対に変更する
-な。修正内容は CHANGES.log に記録せよ。"
+な。修正内容は CHANGES.log に記録せよ。
+ここではコミット・pushを行わない。監査と保存前の再検証が終わってから保存工程で行う。
+QA_PROMPT
+)"
 
 echo "=== [2/4] Codexによる開発途中コードの誤爆チェック ==="
-run_codex_with_fallback "本日の自動修正が、TODOコメントや未実装のダミー関数など、人間が意図的に
+run_codex_with_fallback "$(cat <<'AUDIT_PROMPT'
+本日の自動修正が、TODOコメントや未実装のダミー関数など、人間が意図的に
 未完成のまま残している開発途中の機能を誤って削除・書き換えしていないか、
-git diff で確認せよ。もし該当する変更があれば、その部分だけ元に戻せ。"
+git diff で確認せよ。もし該当する変更があれば、その部分だけ元に戻せ。
+ここではコミット・pushを行わない。修正後のテストは次の工程で実行する。
+AUDIT_PROMPT
+)"
+
+# Codexの終了コードや「成功」という文章だけではテストの成功を証明できない。
+# 監査による変更も含めた最新のコードを再ビルドし、実際のpytest終了コードで保存可否を決める。
+echo "=== [保存前検証] 再ビルド・DB更新・全テスト ==="
+dc build api 2>&1 | tail -5
+dc run --rm -T api alembic upgrade head
+dc run --rm -T api pytest -v
+python3 -m unittest discover -s tests -v
 
 echo "=== [3/4] CodexによるGitコミット＆GitHub保存 ==="
-run_codex_with_fallback "本日の日常QAが正常終了した。変更があれば
+run_codex_with_fallback "$(cat <<'SAVE_PROMPT'
+本日の日常QAが正常終了した。変更があれば
 '[Codex] 定期バグチェックと修復完了' のメッセージでコミットし、
 origin/main へpushせよ（これは本番VPSへの反映ではなく、GitHubリポジトリの
 更新のみであることを理解した上で実行せよ）。変更が無ければ何もしなくてよい。
-完了したら、その旨を qa_execution.log に日本語1行で追記せよ。"
+検証済みのコード・テストにはこの工程で追加の変更を加えない。
+完了したら、その旨を qa_execution.log に日本語1行で追記せよ。
+SAVE_PROMPT
+)"
+
+# エージェントがpush失敗を文章で報告して終了コード0にする場合も、成功通知は送らない。
+qa_worktree_status=$(git status --porcelain --untracked-files=normal)
+if [ -n "$qa_worktree_status" ]; then
+  echo "[daily_qa] 未保存の変更が残っています。正常終了として扱いません。" >&2
+  exit 1
+fi
+qa_local_head=$(git rev-parse HEAD)
+qa_remote_head=$(git ls-remote --exit-code origin refs/heads/main | awk '{print $1}')
+if [ "$qa_local_head" != "$qa_remote_head" ]; then
+  echo "[daily_qa] origin/mainへの保存を確認できません。正常終了として扱いません。" >&2
+  exit 1
+fi
 
 echo "=== [4/4] Slackへの完了通知 ==="
 notify_slack "【定期QA】ツナグモ 本日の自動バグチェック完了。詳細は qa_execution.log / GitHub を確認してください。"
