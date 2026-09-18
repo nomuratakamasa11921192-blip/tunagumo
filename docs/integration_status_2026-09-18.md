@@ -1,5 +1,7 @@
 # 既存連携の確認（2026-09-18、Codex）
 
+翌日のStripeログイン成功・Webhook修正・残件は [integration_status_2026-09-19.md](integration_status_2026-09-19.md) を参照。
+
 VPSのPC移行と並行して、既存のアカウント・商品設定を再確認した。
 本番反映済みの内容は `release_2026-09-18.md`、データ移行は `vps_import_2026-09-18.md` を参照する。
 
