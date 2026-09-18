@@ -156,7 +156,7 @@ class OpenAIImageClient:
             model=IMAGE_EDIT_MODEL,
             image=(filename, content, content_type),
             prompt=instruction,
-            input_fidelity="high",
+            # sunburstはinput_fidelityの指定を400で拒否するため送信しない。
             quality="high",
             size="auto",
             output_format="jpeg",

@@ -117,6 +117,29 @@ async def test_edit_image_reads_own_generated_image_from_disk(images_dir):
 
 
 @_async
+async def test_edit_image_omits_unsupported_input_fidelity(images_dir):
+    # 本番APIはsunburstへのinput_fidelity指定を400で拒否する。
+    class StrictImages(_FakeImages):
+        async def edit(self, **kwargs):
+            if "input_fidelity" in kwargs:
+                raise openai.BadRequestError(
+                    "Unsupported input_fidelity for this model",
+                    response=httpx.Response(
+                        400, request=httpx.Request("POST", "https://api.openai.com/v1/images/edits")
+                    ),
+                    body={"code": "invalid_input_fidelity_model"},
+                )
+            return await super().edit(**kwargs)
+
+    name = "f" * 32 + ".jpg"
+    (images_dir / name).write_bytes(_JPEG)
+    client = _client(StrictImages())
+    url = await client.edit_image(f"/api/generated-images/{name}", "家具を置く")
+    assert (images_dir / url.rsplit("/", 1)[1]).read_bytes() == _JPEG
+    assert client.last_cost_usd == pytest.approx(compute_image_cost_usd(_response().usage))
+
+
+@_async
 @pytest.mark.parametrize(
     "url",
     [
