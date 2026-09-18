@@ -32,6 +32,10 @@ class HiggsfieldError(Exception):
     pass
 
 
+class _ParameterRejected(HiggsfieldError):
+    """生成受付時の入力拒否だけ、任意パラメータを外した再送を許可する。"""
+
+
 class HiggsfieldClient:
     def __init__(
         self, key_id: str, key_secret: str, *, transport: httpx.AsyncBaseTransport | None = None
@@ -59,7 +63,10 @@ class HiggsfieldClient:
             if submit_res.status_code == 401:
                 raise HiggsfieldError("Higgsfield APIキーが無効です。設定を確認してください。")
             if submit_res.status_code >= 400:
-                raise HiggsfieldError(f"Higgsfieldへのリクエストに失敗しました: {submit_res.text}")
+                error_type = (
+                    _ParameterRejected if submit_res.status_code in (400, 422) else HiggsfieldError
+                )
+                raise error_type(f"Higgsfieldへのリクエストに失敗しました: {submit_res.text}")
 
             submit_data = submit_res.json()
             status_url = submit_data.get("status_url") or (
@@ -79,11 +86,15 @@ class HiggsfieldClient:
                 status = status_data.get("status")
 
                 if status == "completed":
-                    # 公開ドキュメントにcompleted時の正確なフィールド名の記載がなかったため、
-                    # ありそうな候補を順に試している。初回の実利用時に実際のレスポンスを
-                    # ログで確認し、正しいフィールド名に絞り込むこと。
+                    # 公式の生成結果はvideo.urlまたはimages[].url。
+                    # 従来のレスポンス形式にも引き続き対応する。
+                    # https://docs.higgsfield.ai/docs/api-reference/requests/get-request-status
+                    video = status_data.get("video") or {}
+                    images = status_data.get("images") or []
                     media_url = (
-                        status_data.get("result", {}).get("url")
+                        video.get("url")
+                        or next((item.get("url") for item in images if item.get("url")), None)
+                        or (status_data.get("result") or {}).get("url")
                         or status_data.get("video_url")
                         or status_data.get("image_url")
                         or status_data.get("url")
@@ -92,7 +103,7 @@ class HiggsfieldClient:
                         raise HiggsfieldError(f"生成は完了しましたが、{failure_label}のURLが取得できませんでした。")
                     return media_url
 
-                if status in ("failed", "error", "cancelled"):
+                if status in ("failed", "error", "nsfw", "canceled", "cancelled"):
                     raise HiggsfieldError(f"{failure_label}の生成に失敗しました(status={status})。")
 
             raise HiggsfieldError(f"{failure_label}の生成がタイムアウトしました。しばらくしてからもう一度お試しください。")
@@ -112,7 +123,7 @@ class HiggsfieldClient:
             return await self._submit_and_wait(
                 IMAGE_GENERATE_PATH, body, poll_timeout=POLL_TIMEOUT_SECONDS, failure_label="画像"
             )
-        except HiggsfieldError:
+        except _ParameterRejected:
             return await self._submit_and_wait(
                 IMAGE_GENERATE_PATH,
                 {"prompt": prompt},
@@ -162,7 +173,7 @@ class HiggsfieldClient:
                     poll_timeout=VIDEO_POLL_TIMEOUT_SECONDS,
                     failure_label="動画",
                 )
-            except HiggsfieldError as e:
+            except _ParameterRejected as e:
                 last_error = e
         assert last_error is not None
         raise last_error
@@ -188,7 +199,7 @@ class HiggsfieldClient:
                     poll_timeout=IMAGE_EDIT_POLL_TIMEOUT_SECONDS,
                     failure_label="画像編集",
                 )
-            except HiggsfieldError as e:
+            except _ParameterRejected as e:
                 last_error = e
         assert last_error is not None
         raise last_error

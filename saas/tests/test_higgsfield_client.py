@@ -168,3 +168,65 @@ async def test_edit_image_raises_when_both_attempts_fail():
     client = _client(handler)
     with pytest.raises(HiggsfieldError):
         await client.edit_image("https://example.com/room.jpg", "add a sofa")
+
+
+@pytest.mark.parametrize("kind", ["image", "video"])
+async def test_completed_response_uses_documented_media_fields(kind):
+    def handler(request):
+        if request.method == "POST":
+            return httpx.Response(200, json={"request_id": "r1"})
+        output = {"url": f"https://cdn.example.com/{kind}"}
+        return httpx.Response(200, json={
+            "status": "completed",
+            **({"images": [output]} if kind == "image" else {"video": output}),
+        })
+
+    client = _client(handler)
+    generate = client.generate_image if kind == "image" else client.generate_video
+    assert await generate("a bright living room") == f"https://cdn.example.com/{kind}"
+
+
+@pytest.mark.parametrize("status", ["failed", "nsfw", "canceled"])
+async def test_terminal_failure_does_not_submit_another_generation(status, monkeypatch):
+    monkeypatch.setattr(higgsfield_client, "VIDEO_POLL_TIMEOUT_SECONDS", 0.02)
+    submitted = []
+    polls = []
+
+    def handler(request):
+        if request.method == "POST":
+            submitted.append(request)
+            return httpx.Response(200, json={"request_id": "r1"})
+        polls.append(request)
+        return httpx.Response(200, json={"status": status})
+
+    with pytest.raises(HiggsfieldError):
+        await _client(handler).generate_video("room", quality="high")
+    assert len(submitted) == 1
+    assert len(polls) == 1
+
+
+@pytest.mark.parametrize("status_code", [401, 403, 404, 500])
+async def test_non_parameter_error_is_not_retried(status_code):
+    submitted = []
+
+    def handler(request):
+        submitted.append(request)
+        return httpx.Response(status_code, text="request failed")
+
+    with pytest.raises(HiggsfieldError):
+        await _client(handler).generate_image("room")
+    assert len(submitted) == 1
+
+
+async def test_poll_failure_does_not_repeat_an_accepted_request():
+    submitted = []
+
+    def handler(request):
+        if request.method == "POST":
+            submitted.append(request)
+            return httpx.Response(200, json={"request_id": "r1"})
+        return httpx.Response(503, text="temporarily unavailable")
+
+    with pytest.raises(HiggsfieldError):
+        await _client(handler).generate_image("room")
+    assert len(submitted) == 1
