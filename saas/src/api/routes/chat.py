@@ -63,6 +63,23 @@ async def _find_tenant_by_public_key(public_key: str) -> Tenant | None:
         return result.scalar_one_or_none()
 
 
+def _client_ip(request: Request) -> str:
+    """レート制限の単位に使う訪問者のIPアドレスを求める。
+
+    X-Forwarded-Forは訪問者自身がブラウザから付けて送れるヘッダで、目の前のCaddyは
+    それを消さずに接続元IPを**末尾に足す**。そのため先頭を読むと好きな値に偽装でき、
+    1分5件の制限をいくらでもすり抜けられてしまう(2026-09-20修正)。末尾を読めば、
+    ヘッダを足す構成でも上書きする構成でも、必ず目の前のCaddyが入れた実際の接続元になる。
+
+    前提: APIのポートは127.0.0.1だけに公開し、Caddyを迂回させないこと
+    (docker/docker-compose.yml参照)。迂回できると、この値ごと偽装される。
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded.strip():
+        return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @router.options("/{public_key}")
 async def chat_preflight(public_key: str, request: Request) -> Response:
     origin = request.headers.get("origin")
@@ -82,13 +99,7 @@ async def chat_preflight(public_key: str, request: Request) -> Response:
 @router.post("/{public_key}", response_model=ChatResponse)
 async def chat(public_key: str, req: ChatRequest, request: Request, response: Response) -> ChatResponse:
     origin = request.headers.get("origin")
-    # Caddy等のリバースプロキシ経由では、実際のクライアントIPはX-Forwarded-Forに入る。
-    # Caddyは信頼していない接続元から来たX-Forwarded-Forを上書きするため、Caddy経由なら
-    # 偽装できない。APIのポートは127.0.0.1だけに公開し、Caddyを迂回させないこと
-    # (docker/docker-compose.yml参照。迂回できるとこのヘッダを偽装してレート制限を回避される)。
-    ip_address = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
-        request.client.host if request.client else "unknown"
-    )
+    ip_address = _client_ip(request)
 
     tenant = await _find_tenant_by_public_key(public_key)
     if tenant is None or not tenant.web_widget_allowed_origin:

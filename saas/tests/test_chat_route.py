@@ -241,3 +241,35 @@ async def test_public_chat_searches_only_public_documents(client, tenant, monkey
         assert all(c.get("index_scope") == "public" for c in search_calls)
     finally:
         await _cleanup(tenant["id"])
+
+
+async def test_rate_limit_cannot_be_bypassed_by_spoofed_forwarded_for(client, tenant, monkeypatch):
+    """訪問者が自分でX-Forwarded-Forを付けても、レート制限をすり抜けられないこと。
+
+    Caddyは受け取った値を消さず接続元IPを末尾に足すため、先頭を読む実装では
+    好きなIPを名乗って1分5件の制限を無限に回避できてしまう(2026-09-20修正)。
+    """
+    public_key = await _configure_widget(tenant["id"])
+
+    async def fail_if_called(**kwargs):
+        raise AssertionError("レート制限中はrespond()を呼ぶべきではない")
+
+    monkeypatch.setattr(chat_module, "respond", fail_if_called)
+
+    real_ip = "203.0.113.9"  # Caddyが末尾に足す、実際の接続元
+    try:
+        async with async_session_factory() as db:
+            for _ in range(5):
+                db.add(WebChatRequestLog(tenant_id=tenant["id"], ip_address=real_ip, cost_usd=0.0))
+            await db.commit()
+
+        res = await client.post(
+            f"/api/chat/{public_key}",
+            json={"message": "こんにちは"},
+            # 訪問者が偽の先頭IPを名乗り、Caddyが実際の接続元を末尾に足した形
+            headers={"Origin": ALLOWED_ORIGIN, "X-Forwarded-For": f"9.9.9.9, {real_ip}"},
+        )
+        assert res.status_code == 200
+        assert "混み合って" in res.json()["reply"]
+    finally:
+        await _cleanup(tenant["id"])

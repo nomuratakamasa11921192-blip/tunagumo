@@ -38,18 +38,39 @@ ACTIVE_STATUSES = {"active", "trialing"}
 
 
 def _verify_signature(payload: bytes, signature_header: str, secret: str) -> None:
-    parts = dict(p.split("=", 1) for p in signature_header.split(",") if "=" in p)
-    timestamp = parts.get("t")
-    signature = parts.get("v1")
-    if not timestamp or not signature:
+    """Stripe-Signatureヘッダ(`t=...,v1=...`)を検証する。
+
+    署名キーのローテーション中はStripeが1つのヘッダに複数の`v1`を並べて送るため、
+    dictにせず全てを集め、どれか1つが一致すれば認める(最後の1つだけ見ると、
+    新旧どちらかの鍵で署名された正当な配信を取りこぼす)。
+    """
+    timestamp: str | None = None
+    signatures: list[str] = []
+    for part in signature_header.split(","):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key, value = key.strip(), value.strip()
+        if key == "t" and timestamp is None:
+            timestamp = value
+        elif key == "v1":
+            signatures.append(value)
+
+    if not timestamp or not signatures:
         raise HTTPException(status_code=400, detail="Stripe-Signatureヘッダの形式が不正です")
 
-    if abs(time.time() - int(timestamp)) > SIGNATURE_TOLERANCE_SECONDS:
+    # タイムスタンプが数値でない場合はValueErrorで500にならず「形式が不正」として400で返す
+    try:
+        issued_at = int(timestamp)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Stripe-Signatureヘッダの形式が不正です") from None
+
+    if abs(time.time() - issued_at) > SIGNATURE_TOLERANCE_SECONDS:
         raise HTTPException(status_code=400, detail="署名のタイムスタンプが古すぎます")
 
     signed_payload = f"{timestamp}.".encode() + payload
     expected = hmac.new(secret.encode(), signed_payload, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, signature):
+    if not any(hmac.compare_digest(expected, s) for s in signatures):
         raise HTTPException(status_code=400, detail="署名が一致しません")
 
 
