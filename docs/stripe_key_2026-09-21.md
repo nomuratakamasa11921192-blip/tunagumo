@@ -37,13 +37,12 @@ Codexが中断した「制限付きAPIキーの発行と本番反映」を完了
 3. **コンテナに渡るENVは `/opt/tsunagumo/saas/.env`。** Composeの `env_file: ../.env` を
    見ること。`saas/docker/.env` はCompose内の変数展開用の別ファイルで、
    ここに書いてもコンテナには渡らない。最初これを取り違えて反映が空振りした。
-4. 本番に入っていた旧 `STRIPE_SECRET_KEY` は348文字・末尾 `axY=` で、Stripeキーの
-   形式ですらなかった。Codexが観測していた401の原因はこれ。
+4. 反映前に入っていた旧 `STRIPE_SECRET_KEY` は、そもそもStripeキーの形式ではない値だった。
+   Codexが観測していた401の原因はこれ。
 
 ## 残っているもの
 
-- 失効待ちの制限付きキーが2本（`...vnEj` `...F5m4`）。いずれも値は不明で未使用、
-  7日で自動失効するため対応不要。現行は `...xCnJ`。
+- 失効待ちの制限付きキーが2本。いずれも値は不明で未使用、7日で自動失効するため対応不要。
 - 現行キーの値は、Git対象外の `saas/workspace/vps-import-20260918/private/stripe-production.env`
   にある（本番VPSの `.env` にも反映済み）。VPS上の一時ファイルは削除済み。
 - 切り戻し用に `/opt/tsunagumo/saas/.env.bak-<日時>` を作成済み。
