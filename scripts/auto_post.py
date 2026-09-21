@@ -70,6 +70,15 @@ def approval_of(raw):
     return None
 
 
+def notion_page_of(raw):
+    """`notion: <ページID>` があれば返す。Notion由来の投稿かどうかの判別に使う。"""
+    for line in raw.splitlines()[:10]:
+        stripped = line.strip()
+        if stripped.lower().startswith("notion:"):
+            return stripped.split(":", 1)[1].strip() or None
+    return None
+
+
 def parse_item(raw):
     """`media:` ヘッダと本文に分ける。ヘッダが無ければ全体が本文。"""
     lines = raw.splitlines()
@@ -78,6 +87,8 @@ def parse_item(raw):
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.lower().startswith(APPROVAL_MARK):
+            body_start = i + 1
+        elif stripped.lower().startswith("notion:"):
             body_start = i + 1
         elif stripped.lower().startswith("media:"):
             media.append(stripped.split(":", 1)[1].strip())
@@ -253,6 +264,21 @@ def main():
         return 0
 
     print(f"{tag} {os.path.basename(path)} (承認 {approved}) -> {result}")
+    page_id = notion_page_of(raw)
+    if page_id:
+        # Notionの見た目と実態がずれないよう、投稿できたことを書き戻す。
+        # ここで失敗しても投稿自体は済んでいるので、警告に留めて続ける。
+        try:
+            import notion_sync
+            env = load_env()
+            token = env.get("NOTION_TOKEN") or os.environ.get("NOTION_TOKEN")
+            if token:
+                notion_sync.set_state(token, page_id, notion_sync.STATE_POSTED, "select")
+                print(f"{tag} Notionを投稿済へ更新しました。")
+        except Exception as e:  # noqa: BLE001
+            print(f"{tag} Notionの更新に失敗しました（投稿は完了しています）: {e}",
+                  file=sys.stderr)
+
     if not args.file:
         mark_posted(args.channel, path)
         print(f"{tag} 投稿済みへ移動しました。")

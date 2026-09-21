@@ -25,3 +25,4 @@ qa_execution.log
 sales/posted/
 sales/post_*.log
 sales/rejected/
+sales/notion_sync.log
