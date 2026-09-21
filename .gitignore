@@ -27,3 +27,4 @@ sales/*.log
 sales/post_*.log
 sales/rejected/
 sales/notion_sync.log
+ops_check.log
