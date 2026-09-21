@@ -23,6 +23,7 @@ qa_execution.log
 # Claude Codeの環境ごとの個人設定(許可ルール等)。共有しない
 .claude/settings.local.json
 sales/posted/
+sales/*.log
 sales/post_*.log
 sales/rejected/
 sales/notion_sync.log
