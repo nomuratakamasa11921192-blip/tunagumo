@@ -201,3 +201,6 @@
 [Claude] 外部からの実レスポンスでCSPヘッダとHSTSの付与、Stripe Webhookの非数値タイムスタンプが400(修正前は500)になることを検証しました。
 [Claude] dbは再作成せず稼働を維持し、既存テナントと暗号鍵を保持しました。切り戻し手順はdocs/security_review_2026-09-20.mdに記録しています。
 2026-09-21 [Claude] ClaudeはCodexの入口AGENTS.mdが古い引き継ぎメモだけを指していたため、本日の監査記録とStripeキー反映記録への誘導を追加しました。
+2026-09-21 [Claude] ClaudeはVPSでCodexを使わない方針に合わせ、日次QAとInstagram承認チェックをVPSのcronからPCのタスクスケジューラへ移しました。
+[Claude] daily_qa.shがmain専用のため日次QA用クローンをPCに作成し、Git管理外の設定とBUFFER_API_KEYを移送しました。VPSにはDBバックアップとディスク監視のみ残しています。
+[Claude] cmd経由では日本語パスが壊れログも残らないためGit Bashを直接呼ぶ形にし、実行テストで失敗が正しく失敗として記録されることを確認しました。
