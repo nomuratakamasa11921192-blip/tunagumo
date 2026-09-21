@@ -92,6 +92,33 @@ def get_authenticated_service(client_secret_path, token_path):
     return build("youtube", "v3", credentials=creds)
 
 
+def upload_video(client_secret_path, token_path, video_path, title,
+                 description="", tags=None, privacy="private", on_progress=None):
+    """YouTubeへ動画を1本アップロードし、動画IDを返す。
+
+    2026-09-21: main()に埋まっていた処理を関数化した(scripts/auto_post.pyからも
+    使うため)。振る舞いは変えていない。既定の公開設定はprivateにしてあり、
+    自動投稿で意図せず公開しないようにしている。
+    """
+    from googleapiclient.http import MediaFileUpload
+
+    service = get_authenticated_service(client_secret_path, token_path)
+    body = {
+        "snippet": {"title": title, "description": description, "tags": tags or []},
+        "status": {"privacyStatus": privacy},
+    }
+    media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+    request = service.videos().insert(part="snippet,status", body=body, media_body=media)
+
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status and on_progress:
+            on_progress(int(status.progress() * 100))
+    return response["id"]
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="ツナグモ YouTube Shorts投稿(要確認)")
     parser.add_argument("--video", required=True, help="アップロードする動画ファイルのパス")
@@ -144,30 +171,12 @@ def main():
             print("キャンセルしました。何もアップロードしていません。")
             sys.exit(0)
 
-    youtube = get_authenticated_service(client_secret_path, token_path)
-
-    from googleapiclient.http import MediaFileUpload
-
-    body = {
-        "snippet": {
-            "title": args.title,
-            "description": description,
-            "tags": tags,
-        },
-        "status": {
-            "privacyStatus": args.privacy,
-        },
-    }
-    media = MediaFileUpload(args.video, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
-
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"アップロード中... {int(status.progress() * 100)}%")
-
-    print(f"アップロード完了: https://youtube.com/watch?v={response['id']}")
+    video_id = upload_video(
+        client_secret_path, token_path, args.video, args.title,
+        description=description, tags=tags, privacy=args.privacy,
+        on_progress=lambda pct: print(f"アップロード中... {pct}%"),
+    )
+    print(f"アップロード完了: https://youtube.com/watch?v={video_id}")
 
 
 if __name__ == "__main__":

@@ -206,14 +206,58 @@ def send_instagram(env, media, body, dry_run):
 
 
 def send_youtube(env, media, body, dry_run):
+    """動画をアップロードする。
+
+    本文の1行目をタイトル、残りを概要欄として扱う。公開設定は既定でunlisted
+    (リンクを知っている人のみ)。自動で全世界に公開されると取り返しがつかないため、
+    公開したい場合は本文の先頭に `privacy: public` を書いて明示する。
+    """
     if not media:
         raise RuntimeError("YouTubeは動画ファイルのパスが必要です。先頭に media: を書いてください。")
+
+    privacy = "unlisted"
+    lines = body.splitlines()
+    if lines and lines[0].strip().lower().startswith("privacy:"):
+        privacy = lines[0].split(":", 1)[1].strip().lower()
+        lines = lines[1:]
+        if privacy not in ("public", "unlisted", "private"):
+            raise RuntimeError(f"公開設定が不正です: {privacy}（public/unlisted/private）")
+    if not lines:
+        raise RuntimeError("本文が空です。1行目をタイトルにします。")
+
+    title, description = lines[0].strip(), chr(10).join(lines[1:]).strip()
+    video = media[0]
+    if not os.path.isabs(video):
+        video = os.path.join(REPO_ROOT, video)
+
     if dry_run:
-        return f"アップロード予定({media[0]})"
-    raise RuntimeError(
-        "YouTubeのトークンがアップロード権限を持っていません(403)。"
-        "scripts/publish_youtube_short.py で再認証してください。"
-    )
+        exists = "あり" if os.path.isfile(video) else "★ファイルが見つかりません"
+        return f"アップロード予定(title={title!r}, 公開={privacy}, 動画={exists})"
+
+    if not os.path.isfile(video):
+        raise RuntimeError(f"動画ファイルが見つかりません: {video}")
+
+    import publish_youtube_short as Y
+    secret = env.get("YOUTUBE_CLIENT_SECRET_PATH") or os.environ.get("YOUTUBE_CLIENT_SECRET_PATH")
+    token = env.get("YOUTUBE_TOKEN_PATH") or os.environ.get("YOUTUBE_TOKEN_PATH")
+    if not secret or not token:
+        raise RuntimeError(".env に YOUTUBE_CLIENT_SECRET_PATH と YOUTUBE_TOKEN_PATH が必要です")
+
+    try:
+        video_id = Y.upload_video(
+            os.path.join(REPO_ROOT, secret) if not os.path.isabs(secret) else secret,
+            os.path.join(REPO_ROOT, token) if not os.path.isabs(token) else token,
+            video, title, description=description, privacy=privacy,
+        )
+    except Exception as e:  # noqa: BLE001
+        message = str(e)
+        if "insufficient" in message or "403" in message:
+            raise RuntimeError(
+                "アップロード権限がありません。python scripts/publish_youtube_short.py で"
+                "再認証してください（保存済みトークンのスコープ不足）。"
+            )
+        raise RuntimeError(f"アップロードに失敗しました: {message[:200]}")
+    return f"https://youtube.com/watch?v={video_id}"
 
 
 SENDERS = {

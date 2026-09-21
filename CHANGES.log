@@ -218,3 +218,5 @@
 [Claude] ヘッダ(approved/notion/media)が本文へ混ざらないこと、トークン未設定時の停止、承認済0件を失敗扱いにしないことを検証しました。NOTION_TOKENの登録待ちです。
 2026-09-21 [Claude] Claudeはローカルの下書きをNotionへ送る方向(--push)を追加し、承認する場所をNotionへ一本化できるようにしました。送った下書きは_sentへ移し二重作成を防ぎます。
 [Claude] Notionの列構成はDBから読み取り、存在する列にだけ書き込むため、列名を変えても落ちません。現在4件(X3・LINE1)が送信対象です。
+2026-09-21 [Claude] ClaudeはYouTube投稿が未実装(常に失敗を返すだけ)だった箇所を実装し、publish_youtube_short.pyのアップロード処理をupload_video()として切り出して共用にしました。
+[Claude] 自動投稿で意図せず全世界公開しないよう既定をunlistedとし、privacy: publicと明示した場合のみ公開します。既定値・明示指定・動画不在の3通りを検証しました。
