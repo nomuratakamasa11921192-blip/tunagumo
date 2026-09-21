@@ -20,3 +20,5 @@ instagram_check.log
 qa_execution.log
 # Claude Codeのセッションロック(実行時に生成される一時ファイル。Gitで管理しない)
 .claude/scheduled_tasks.lock
+# Claude Codeの環境ごとの個人設定(許可ルール等)。共有しない
+.claude/settings.local.json
