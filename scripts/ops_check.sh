@@ -25,6 +25,29 @@ status=$?
   echo "$result"
 } >> "$LOG"
 
+# --- バックアップをVPSの外へ逃がす(2026-09-22) -----------------------------
+# バックアップがVPSの中にしか無いと、VPSが壊れた/消えたときに一緒に失われる。
+# 暗号化済みのファイルなので、OneDrive(クラウド同期)へそのまま置いてよい。
+# 復元には暗号化パスフレーズが別途必要(本番の saas/.env にある)。
+OFFSITE_DIR="${OFFSITE_BACKUP_DIR:-$HOME/OneDrive/ツナグモ_DBバックアップ}"
+KEEP=30
+mkdir -p "$OFFSITE_DIR"
+latest=$(ssh -o BatchMode=yes -o ConnectTimeout=20 tsunagumo-vps   'ls -t /opt/tsunagumo/saas/docker/backups/tsunagumo_*.sql.gz.enc 2>/dev/null | head -1')
+if [ -n "$latest" ] && [ ! -f "$OFFSITE_DIR/$(basename "$latest")" ]; then
+  if scp -q -o BatchMode=yes "tsunagumo-vps:$latest" "$OFFSITE_DIR/" 2>>"$LOG"; then
+    echo "[OK] バックアップをVPS外へ保管: $OFFSITE_DIR/$(basename "$latest")" >> "$LOG"
+  else
+    echo "[NG] バックアップのVPS外への保管に失敗しました" >> "$LOG"
+    status=1
+    result="$result
+[NG] バックアップのVPS外への保管に失敗しました"
+  fi
+fi
+# 古いものから消して、直近 KEEP 件だけ残す
+ls -1t "$OFFSITE_DIR"/tsunagumo_*.sql.gz.enc 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+  rm -f "$old"
+done
+
 if [ $status -eq 0 ]; then
   exit 0
 fi
