@@ -24,3 +24,4 @@ qa_execution.log
 .claude/settings.local.json
 sales/posted/
 sales/post_*.log
+sales/rejected/

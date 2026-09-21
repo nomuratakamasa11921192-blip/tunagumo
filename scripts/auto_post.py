@@ -52,6 +52,24 @@ def load_env():
     return publish_x.load_env(os.path.join(REPO_ROOT, ".env"))
 
 
+APPROVAL_MARK = "approved:"
+
+
+def approval_of(raw):
+    """先頭付近の `approved: <日時>` を返す。無ければ None。
+
+    承認済みの印が無いものは投稿しない(2026-09-21)。キューへ誤って置いた下書きや、
+    書きかけのファイルが、確認されないまま世に出るのを防ぐための最後の砦。
+    印は scripts/review_posts.py が付ける。手で書いてもよい。
+    """
+    for line in raw.splitlines()[:10]:
+        stripped = line.strip()
+        if stripped.lower().startswith(APPROVAL_MARK):
+            value = stripped.split(":", 1)[1].strip()
+            return value or None
+    return None
+
+
 def parse_item(raw):
     """`media:` ヘッダと本文に分ける。ヘッダが無ければ全体が本文。"""
     lines = raw.splitlines()
@@ -59,7 +77,9 @@ def parse_item(raw):
     body_start = 0
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if stripped.lower().startswith("media:"):
+        if stripped.lower().startswith(APPROVAL_MARK):
+            body_start = i + 1
+        elif stripped.lower().startswith("media:"):
             media.append(stripped.split(":", 1)[1].strip())
             body_start = i + 1
         elif stripped == "---" and media:
@@ -208,7 +228,14 @@ def main():
         return 0
 
     with open(path, "r", encoding="utf-8") as f:
-        media, body = parse_item(f.read())
+        raw = f.read()
+    approved = approval_of(raw)
+    if not approved and not args.dry_run:
+        print(f"{tag} 承認されていないため投稿しません: {os.path.basename(path)}", file=sys.stderr)
+        print(f"{tag} python scripts/review_posts.py で内容を確認して承認してください。",
+              file=sys.stderr)
+        return 1
+    media, body = parse_item(raw)
     if not body and not media:
         print(f"{tag} 中身が空です: {path}", file=sys.stderr)
         return 1
@@ -225,7 +252,7 @@ def main():
         print(body)
         return 0
 
-    print(f"{tag} {os.path.basename(path)} -> {result}")
+    print(f"{tag} {os.path.basename(path)} (承認 {approved}) -> {result}")
     if not args.file:
         mark_posted(args.channel, path)
         print(f"{tag} 投稿済みへ移動しました。")
