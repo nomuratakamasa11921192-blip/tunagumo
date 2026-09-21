@@ -18,3 +18,5 @@ saas/docker/backups/
 # VPS上の自動実行ログ(cronが追記し続けるのでGitでは管理しない)
 instagram_check.log
 qa_execution.log
+# Claude Codeのセッションロック(実行時に生成される一時ファイル。Gitで管理しない)
+.claude/scheduled_tasks.lock

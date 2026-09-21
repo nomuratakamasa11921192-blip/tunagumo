@@ -74,18 +74,43 @@ def docs_urls(env: str) -> dict:
 app = FastAPI(title="tsunagumo", lifespan=lifespan, **docs_urls(settings.env))
 
 
+# 画面(frontend/)で読み込んでよい配信元を限定する指示。顧客のAPIキーをlocalStorageに
+# 置いているため、万一どこかに文字列の混入(XSS)があっても、外部へ送り出す経路と
+# 外部スクリプトの読み込みを塞いでおく(多層防御、2026-09-20)。
+# - connect-src 'self': fetch等での外部送信を禁止(キーの持ち出し経路を塞ぐ最重要項目)
+# - script-src 'self' 'unsafe-inline': 外部スクリプトを禁止。画面は1ファイルに
+#   インラインで書かれているため、'unsafe-inline'は現状維持で必要
+# - img-src: 生成画像は同一オリジン(/api/generated-images/)、ダウンロード用のblob:のみ
+# - media-src に https: を含める: 動画はHiggsfieldのCDNから直接再生するため
+# - base-uri 'none' / form-action 'self': 相対URLの行き先や送信先のすり替えを防ぐ
+CONTENT_SECURITY_POLICY = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "media-src 'self' https: blob:",
+        "connect-src 'self'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ]
+)
+
+
 @app.middleware("http")
 async def security_headers(request, call_next):
     """全レスポンスに基本的なセキュリティヘッダーを付ける(2026-09-15)。
     - X-Frame-Options / frame-ancestors: 他サイトのiframeに埋め込み、「承認する」等の
       ボタンを気付かれずに押させる手口(クリックジャッキング)を防ぐ。埋め込みチャットは
       iframeではなくShadow DOM方式(frontend/widget.js)なので影響しない。
+    - Content-Security-Policy: 上記CONTENT_SECURITY_POLICYのとおり。
     - X-Content-Type-Options: 画像等を別の形式として解釈させる手口を防ぐ。
     - Referrer-Policy: 他サイトへのリンクを開いた時にURLの詳細を渡さない。
     """
     response = await call_next(request)
     response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     if settings.env == "production":

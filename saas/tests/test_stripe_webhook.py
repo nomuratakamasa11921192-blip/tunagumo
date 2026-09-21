@@ -247,3 +247,38 @@ async def test_webhook_rejects_event_without_id(client):
     body = json.dumps({"type": "customer.subscription.deleted", "data": {"object": {}}}).encode()
     res = await client.post("/webhooks/stripe", content=body, headers={"stripe-signature": _sign(body)})
     assert res.status_code == 400
+
+
+async def test_webhook_accepts_rotation_header_with_multiple_v1(client, tenant):
+    """署名キーのローテーション中、Stripeは1つのヘッダに複数のv1を並べて送る。
+    正当な署名が先頭にあっても(＝最後の1つが旧鍵でも)受け付けること。"""
+    from src.core.db import async_session_factory
+    from src.core.models import Tenant as TenantModel
+
+    customer_id = "cus_test_rotation"
+    async with async_session_factory() as db:
+        row = await db.get(TenantModel, tenant["id"])
+        row.stripe_customer_id = customer_id
+        await db.commit()
+
+    body = json.dumps(
+        {
+            "id": _evt(),
+            "type": "customer.subscription.deleted",
+            "data": {"object": {"customer": customer_id}},
+        }
+    ).encode()
+    valid = _sign(body)  # "t=...,v1=<正しい署名>"
+    header = f"{valid},v1={'0' * 64}"  # 旧鍵で署名された分を後ろに足した形
+
+    res = await client.post("/webhooks/stripe", content=body, headers={"stripe-signature": header})
+    assert res.status_code == 200
+
+
+async def test_webhook_rejects_non_numeric_timestamp(client):
+    """タイムスタンプが数値でないヘッダは、500ではなく400で拒否すること。"""
+    body = json.dumps({"id": _evt(), "type": "customer.subscription.deleted", "data": {"object": {}}}).encode()
+    res = await client.post(
+        "/webhooks/stripe", content=body, headers={"stripe-signature": "t=abc,v1=deadbeef"}
+    )
+    assert res.status_code == 400
