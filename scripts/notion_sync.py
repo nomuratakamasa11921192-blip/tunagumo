@@ -122,6 +122,55 @@ def find_prop(props, *names):
     return None
 
 
+def database_schema(token, db_id):
+    """DBの列名と型を返す。列構成は人が変えるので、決め打ちにしない。"""
+    db = api(token, "GET", f"/databases/{db_id}")
+    return {name: prop.get("type") for name, prop in db.get("properties", {}).items()}
+
+
+def build_property(kind, value):
+    """列の型に合わせた値を組み立てる。対応していない型なら None。"""
+    if kind == "title":
+        return {"title": [{"text": {"content": value[:2000]}}]}
+    if kind == "rich_text":
+        return {"rich_text": [{"text": {"content": value[:2000]}}]}
+    if kind == "url":
+        return {"url": value or None}
+    if kind in ("select", "status"):
+        return {kind: {"name": value}}
+    return None
+
+
+def create_draft(token, db_id, schema, title, caption, media, channel):
+    """ローカルの下書きをNotionへ「下書き」として作る。
+
+    Notionで一覧・承認できるよう、置き場所をNotionへ寄せるための方向
+    (2026-09-21追加)。承認は人がNotion上で行う。
+    """
+    wanted = [
+        (("投稿タイトル", "Name", "名前"), title),
+        (("キャプション", "本文", "Caption"), caption),
+        (("画像URL", "メディア", "Media", "URL"), media),
+        (("チャネル", "Channel"), channel),
+        ((STATE_PROP, "Status", "ステータス"), "下書き"),
+    ]
+    props = {}
+    for names, value in wanted:
+        if value in (None, ""):
+            continue
+        for name in names:
+            if name in schema:
+                built = build_property(schema[name], value)
+                if built is not None:
+                    props[name] = built
+                break
+    if not props:
+        raise RuntimeError("書き込める列が見つかりません。列名を確認してください。")
+    page = api(token, "POST", "/pages",
+               {"parent": {"database_id": db_id}, "properties": props})
+    return page["id"].replace("-", "")
+
+
 def set_state(token, page_id, state, state_type):
     value = {"name": state}
     api(token, "PATCH", f"/pages/{page_id}",
@@ -133,9 +182,70 @@ def safe_filename(title, page_id):
     return f"{datetime.datetime.now():%Y-%m-%d}_{base or 'notion'}_{page_id[:8]}.txt"
 
 
+def push_drafts(token, db_id, dry_run):
+    """sales/drafts/ の下書きをNotionへ「下書き」として送る。
+
+    ローカルに置いた下書きもNotionの一覧に出るようにして、承認する場所を
+    Notionへ一本化するための処理(2026-09-21)。送った下書きは
+    sales/drafts/_sent/ へ移し、同じものを二度作らないようにする。
+    """
+    drafts_root = os.path.join(REPO_ROOT, "sales", "drafts")
+    sent_root = os.path.join(drafts_root, "_sent")
+
+    items = []
+    for channel in auto_post.CHANNELS:
+        d = os.path.join(drafts_root, channel)
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            if name.endswith(".txt") and os.path.isfile(os.path.join(d, name)):
+                items.append((channel, os.path.join(d, name)))
+
+    if not items:
+        print("[notion_sync] Notionへ送る下書きはありません。")
+        return 0
+
+    try:
+        schema = database_schema(token, db_id)
+    except RuntimeError as e:
+        print(f"[notion_sync] {e}", file=sys.stderr)
+        return 1
+    print(f"[notion_sync] Notionの列: {', '.join(sorted(schema))}")
+
+    sent = 0
+    for channel, path in items:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read()
+        media, body = auto_post.parse_item(raw)
+        title = os.path.splitext(os.path.basename(path))[0]
+
+        if dry_run:
+            print(f"  - [{channel}] {title} ({len(body)}文字) を下書きとして作成予定")
+            continue
+
+        try:
+            page_id = create_draft(token, db_id, schema, title, body,
+                                   media[0] if media else "", channel)
+        except RuntimeError as e:
+            print(f"  - [{channel}] {title}: 作成できませんでした（{e}）", file=sys.stderr)
+            continue
+
+        os.makedirs(os.path.join(sent_root, channel), exist_ok=True)
+        os.replace(path, os.path.join(sent_root, channel, os.path.basename(path)))
+        sent += 1
+        print(f"  - [{channel}] {title} → Notionに下書きとして作成しました")
+
+    if not dry_run:
+        print(f"[notion_sync] {sent}件を送りました。Notionで内容を確認し、"
+              "「承認済」にすると投稿されます。")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Notionの承認済を投稿待ちへ取り込む")
-    parser.add_argument("--dry-run", action="store_true", help="取り込まず対象だけ表示する")
+    parser.add_argument("--dry-run", action="store_true", help="変更せず対象だけ表示する")
+    parser.add_argument("--push", action="store_true",
+                        help="ローカルの下書きをNotionへ送る(Notionで一覧・承認できるように)")
     args = parser.parse_args()
 
     env = auto_post.load_env()
@@ -146,6 +256,9 @@ def main():
         print("[notion_sync] Notionでインテグレーションを作り、対象DBを共有してください。",
               file=sys.stderr)
         return 1
+
+    if args.push:
+        return push_drafts(token, db_id, args.dry_run)
 
     try:
         result = api(token, "POST", f"/databases/{db_id}/query", {"page_size": 50})
