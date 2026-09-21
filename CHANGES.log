@@ -204,3 +204,6 @@
 2026-09-21 [Claude] ClaudeはVPSでCodexを使わない方針に合わせ、日次QAとInstagram承認チェックをVPSのcronからPCのタスクスケジューラへ移しました。
 [Claude] daily_qa.shがmain専用のため日次QA用クローンをPCに作成し、Git管理外の設定とBUFFER_API_KEYを移送しました。VPSにはDBバックアップとディスク監視のみ残しています。
 [Claude] cmd経由では日本語パスが壊れログも残らないためGit Bashを直接呼ぶ形にし、実行テストで失敗が正しく失敗として記録されることを確認しました。
+2026-09-21 [Claude] ClaudeはAIもBufferも介さないX自動投稿(scripts/publish_x.py)を作成し、7:30/12:30/20:00の定期実行に登録しました。順番待ちの文章を1件送るだけで、AIの利用上限に左右されません。
+[Claude] OAuth1.0aの署名を含め標準ライブラリのみで実装し、全角2文字計算での上限判定・スレッド分割・空振り時の正常終了を検証しました。X APIキーの登録待ちです。
+[Claude] あわせてpublish_*.pyのload_envが引用符を外さずAPIへ送る不具合を3ファイル修正しました。Buffer APIが401となりInstagram投稿が失敗していた原因です。

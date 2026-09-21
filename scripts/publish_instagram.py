@@ -42,7 +42,12 @@ def load_env(env_path):
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, _, value = line.partition("=")
-            env[key.strip()] = value.strip()
+            value = value.strip()
+            # .env では KEY="値" と引用符付きで書かれることがある。外さずに使うと
+            # 引用符ごとAPIへ送られ、認証が通らない(2026-09-21、Buffer APIが401で発覚)。
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            env[key.strip()] = value
     return env
 
 
