@@ -112,6 +112,46 @@ def find_instagram_channel(api_key):
     return ig_channels[0]
 
 
+def create_post(api_key, channel_id, media_url, caption, is_video=False, schedule=None):
+    """Bufferへ投稿を1件登録する。scheduleを省略するとBufferのキューへ追加する。
+
+    2026-09-21: main()に埋まっていた処理を関数化した(scripts/auto_post.pyからも使うため)。
+    振る舞いは変えていない。
+    """
+    asset_key = "video" if is_video else "image"
+    fields = [
+        f"text: {json.dumps(caption)}",
+        f"channelId: {json.dumps(channel_id)}",
+        "schedulingType: automatic",
+        f"assets: [{{ {asset_key}: {{ url: {json.dumps(media_url)} }} }}]",
+    ]
+    if schedule:
+        fields.append("mode: customScheduled")
+        fields.append(f"dueAt: {json.dumps(schedule)}")
+    else:
+        fields.append("mode: addToQueue")
+
+    result = gql(
+        api_key,
+        f"""
+        mutation CreatePost {{
+          createPost(input: {{ {', '.join(fields)} }}) {{
+            ... on PostActionSuccess {{
+              post {{ id text }}
+            }}
+            ... on MutationError {{
+              message
+            }}
+          }}
+        }}
+        """,
+    )
+    outcome = result["createPost"]
+    if "message" in outcome:
+        raise RuntimeError(outcome["message"])
+    return outcome["post"]["id"]
+
+
 def main():
     parser = argparse.ArgumentParser(description="ツナグモ Instagram自動投稿(Buffer経由・要確認)")
     parser.add_argument("--media-url", required=True, help="公開されている画像/動画URL")
@@ -154,40 +194,15 @@ def main():
             print("キャンセルしました。何も投稿していません。")
             sys.exit(0)
 
-    asset_key = "video" if args.video else "image"
-    fields = [
-        f"text: {json.dumps(caption)}",
-        f"channelId: {json.dumps(channel['id'])}",
-        "schedulingType: automatic",
-        f"assets: [{{ {asset_key}: {{ url: {json.dumps(args.media_url)} }} }}]",
-    ]
-    if args.schedule:
-        fields.append("mode: customScheduled")
-        fields.append(f"dueAt: {json.dumps(args.schedule)}")
-    else:
-        fields.append("mode: addToQueue")
-
-    result = gql(
-        api_key,
-        f"""
-        mutation CreatePost {{
-          createPost(input: {{ {', '.join(fields)} }}) {{
-            ... on PostActionSuccess {{
-              post {{ id text }}
-            }}
-            ... on MutationError {{
-              message
-            }}
-          }}
-        }}
-        """,
-    )
-
-    outcome = result["createPost"]
-    if "message" in outcome:
-        print(f"[ERROR] 投稿に失敗しました: {outcome['message']}", file=sys.stderr)
+    try:
+        post_id = create_post(
+            api_key, channel["id"], args.media_url, caption,
+            is_video=args.video, schedule=args.schedule,
+        )
+    except RuntimeError as e:
+        print(f"[ERROR] 投稿に失敗しました: {e}", file=sys.stderr)
         sys.exit(1)
-    print(f"投稿を作成しました: post_id={outcome['post']['id']}")
+    print(f"投稿を作成しました: post_id={post_id}")
 
 
 if __name__ == "__main__":
