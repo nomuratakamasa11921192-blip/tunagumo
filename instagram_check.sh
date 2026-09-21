@@ -8,6 +8,8 @@
 # Instagramに予約投稿する。投稿時刻は全て19時(19時を過ぎていれば翌日19時)に揃える(2026-09-15変更)。
 # ===========================================================================
 set -uo pipefail
+trap 'ig_exit_status=$?; if (( ig_exit_status != 0 )); then printf "[instagram_check] 処理に失敗したため中断しました（終了コード %s）。正常終了として扱いません。
+" "$ig_exit_status" >&2; fi' EXIT
 cd "$(dirname "$0")"
 
 if [ -f .env ]; then
@@ -49,6 +51,12 @@ run_codex_with_fallback() {
   fi
 
   echo "$out"
+  # codexは利用上限に当たっても終了コード0で返すことがある(2026-09-21、cronログで確認)。
+  # 出力に制限のメッセージが残ったままなら、成功として扱わない。
+  if echo "$out" | grep -qiE "rate.?limit|usage.?cap|429|quota|usage limit"; then
+    echo "[instagram_check] 予備モデルでも利用上限/制限に当たりました。実行できていません。" >&2
+    return 1
+  fi
   return $status
 }
 
@@ -60,6 +68,7 @@ else
   SCHEDULE_AT="$(date -d tomorrow +%Y-%m-%d)T${POST_HOUR}:00:00+09:00"
 fi
 
+codex_status=0
 run_codex_with_fallback "あなたはツナグモのInstagram投稿承認チェック担当です。作業ディレクトリはこのリポジトリのルート。
 YouTube投稿は廃止済み。Instagram(Buffer)投稿のみ行ってください。
 
@@ -81,5 +90,11 @@ f. 失敗した場合は『状態』を変更せず、エラー内容を記録�
 
 ### 4. 完了後
 実際に投稿した行があれば、そのタイトル・画像/動画の別・予約日時(${SCHEDULE_AT})・結果を instagram_check.log に日本語で1行追記せよ。無ければ何もしなくてよい。"
+codex_status=$?
+
+if (( codex_status != 0 )); then
+  echo "[instagram_check] Codexの実行に失敗しました。投稿処理は行われていません。" >&2
+  exit "$codex_status"
+fi
 
 echo "=== [完了] Codex Instagram承認チェック 正常終了 ==="
