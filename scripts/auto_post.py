@@ -26,10 +26,10 @@ Xでスレッドにしたい場合は、本文中に `---` だけの行を入れ
 
 | チャネル | 必要なもの | 状態(2026-09-21) |
 |---|---|---|
-| x | X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET | 未設定 |
+| x | X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET | 設定済み(認証確認済み) |
 | line | LINE_CHANNEL_ACCESS_TOKEN | 設定済み |
 | instagram | BUFFER_API_KEY（Buffer経由）＋ 公開URLのmedia | 設定済み |
-| youtube | YOUTUBE_CLIENT_SECRET_PATH / YOUTUBE_TOKEN_PATH | 要・再認証(スコープ不足) |
+| youtube | YOUTUBE_CLIENT_SECRET_PATH / YOUTUBE_TOKEN_PATH | 設定済み(youtube.upload・更新確認済み) |
 """
 
 import argparse
