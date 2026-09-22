@@ -61,3 +61,15 @@ Codexが利用上限で止まっても、点検と通知は動く。
 - キーの設定は `python scripts/set_env_from_clipboard.py <名前>` を使うと、値を記録に残さずに済む。
 
 仕組みの詳細は `docs/auto_post_2026-09-21.md`。
+
+## 投稿の担当（2026-09-22 ユーザー決定）
+
+**投稿の定期実行はCodexが担当する。** Claudeの投稿系タスク（tsunagumo-post-* / tsunagumo-notion-sync）は
+停止のまま再開しない。Codexは次のどちらかで回すこと。
+
+- 既存の仕組みを使う: `python scripts/notion_sync.py`（Notionの承認済を取り込む）→
+  `python scripts/auto_post.py --channel <x|instagram|youtube|line>`（1件投稿）。どちらもAI不要。
+- Codex自身の定期実行から上記を呼ぶ。
+
+承認はNotion『ツナグモ Instagram投稿予定』の「状態」で行う（下書き→承認済）。
+承認されていないものは auto_post.py が投稿を拒否する。
