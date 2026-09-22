@@ -40,7 +40,7 @@ def read_clipboard():
     try:
         out = subprocess.run(
             ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
-            capture_output=True, timeout=20,
+            capture_output=True, timeout=60,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         print(f"[ERROR] クリップボードを読めませんでした: {e}", file=sys.stderr)
