@@ -239,3 +239,4 @@
 2026-09-22 [Claude] Claudeは撤退済み業種(士業・人材紹介・Web制作)のページに旧価格「月5万円」が残っていたため、不動産向けページへ自動で移動するページに置き換えました(noindex付き)。元のページは方針に沿ってdocs/archive/website_for/へ保管しています。
 2026-09-23 [Claude] Claudeはプロジェクト設定(.claude/settings.json)の既定モデルをFable 5.1からOpus 5.5(claude-opus-5-5)へ変更しました。公開比較でOpus 5.5の方がコーディング性能が高く、料金は約4割のためです。
 2026-09-23 [Claude] ClaudeはチャージされたHiggsfield APIで実際に生成を試し、画像は成功、動画・画像編集は指定モデルが新APIに無く失敗することを確認しました。使えるモデルの確認結果とCodexの次の作業を docs/handoff_to_codex_2026-09-23.md に記録しました。
+2026-09-23 [Claude] ClaudeはCodexの既定モデルをGPT-6 Astraからgpt-6-solへ変更しました(プロジェクトとユーザーのconfig.toml)。引き継ぎのHiggsfield作業を、画像はOpenAI移行済みのため動画だけに訂正しました。
