@@ -243,3 +243,4 @@
 2026-09-23 [Claude] ClaudeはHiggsfield動画を公式の新モデル(写真ありKling 2.5 Turbo・写真なしHailuo 2.3・高画質Kling Pro)へ切り替え、テスト667件と実生成2本の成功を確認しました。SaaSの文章生成をGPT-6 Lunaにする単価表と設定例を追加しました。本番は未反映です。
 2026-09-23 [Claude] ClaudeはSaaSの文章生成をGPT-6 Sol(gpt-6-sol)に変更し単価表へ追加、Codexの既定モデルをユーザー指示でgpt-6-astraへ戻しました。テスト667件成功。
 2026-09-23 [Claude] Claudeは本番反映をユーザー承認のもと準備し、GitHub mainへ送信しました。PCからはroot権限が無いため、rootコンソールで実行する反映スクリプト scripts/deploy_20260923.sh (退避・自動切り戻し付き)を用意しました。
+2026-09-23 [Claude] ユーザーがrootで反映スクリプトを実行し、本番反映(5d12187)が完了しました。稼働モデルgpt-6-sol・Kling反映・ERROR0件・公開ページ200を画面で確認し、引き継ぎに記録しました。

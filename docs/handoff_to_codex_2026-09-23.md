@@ -52,13 +52,13 @@ Seedream・Nano Banana・Qwen・Grok・Recraftの編集系。推測で探すの�
 - Seedance 2.0（約$0.93/秒）は高いため使わない。単価は公開記事の値。正確な単価はコンソールで確認する
 - テスト667件成功。実生成も2本成功（写真なし83秒、写真あり137秒）。結果は
   `saas/workspace/vps-import-20260918/private/higgsfield-video-test-20260923.json`
-- **本番には未反映。** 反映はユーザーの承認を得てから行う
+- **2026-09-23 16:05頃 本番反映済み**（下記）
 
 ## SaaSの文章生成をGPT-6 Solへ（同日、ユーザー指示。いったんLunaにした後Solへ変更）
 
 - `config/*.yaml` の単価表に `gpt-6-sol`（入力$2・出力$10・キャッシュ読込$0.2・書込$2.5）と `gpt-6-luna`（入力$0.10・出力$0.50）を追加（OpenAI公式）
 - `.env.example` を `LLM_PROVIDER=openai`、`LLM_MODEL`・`LLM_MODEL_LIGHT`・`OPENAI_MODEL`・`OPENAI_MODEL_LIGHT` を `gpt-6-sol` に変更
-- **本番の `saas/.env` は未変更。** 反映時は同じ5項目を書き換え、`docker compose up -d` で作り直す（restartでは反映されない）
+- **本番反映済み**（下記）
 
 ## PCでつまずいた点
 
@@ -70,3 +70,11 @@ Seedream・Nano Banana・Qwen・Grok・Recraftの編集系。推測で探すの�
 ## Codexのモデル（同日、ユーザー指示）
 
 Codexの既定モデルは `gpt-6-astra`（プロジェクトとユーザーの `config.toml`）。いったんSolにしたが、Astraに戻した。
+
+## 本番反映（2026-09-23、ユーザー承認・ユーザーがrootで実行）
+
+`scripts/deploy_20260923.sh` を `sudo` で実行。反映コード `5d12187`。api・schedulerのみ作り直し、dbは維持。
+確認結果: 稼働中の文章生成モデル `gpt-6-sol gpt-6-sol`、Klingのコードを反映済み、直近2分のERROR/Traceback 0件、
+app.tunagumo.com/index.html と tunagumo.com が200。
+退避先は `/root/tsunagumo-release-20260923`（更新前コード・ENV・DBバックアップ）。切り戻し用イメージは
+`tsunagumo-rollback-api:20260923` と `tsunagumo-rollback-scheduler:20260923`。
