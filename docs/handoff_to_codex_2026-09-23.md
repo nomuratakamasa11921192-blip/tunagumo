@@ -37,18 +37,28 @@
 試してすべて404だったもの：Kling・Wan・MiniMax・LTX・PixVerseを思いつく命名で書いたもの、
 Seedream・Nano Banana・Qwen・Grok・Recraftの編集系。推測で探すのは効率が悪いので途中でやめた。
 
-## Codexがやること
+## 動画生成の修正（同日、Claudeが完了）
 
-1. **公式のモデル一覧で正しいパスを確認する。** https://console.higgsfield.ai の
-   モデル一覧（モデルごとのAPIドキュメント）を見る。今日はこのPCのDNSが不安定で、
-   `docs.higgsfield.ai`・`github.com` の名前解決に失敗して読めなかった
-2. **動画のモデルを選び直す。** Seedance 2.0は約$0.93/秒と高い（5秒で約$4.7）。
-   安いモデル（Kling 2.5は約$0.042/秒と紹介されている）の正しいパスを確認して既定にする。
-   `start_image` は新APIでは `image_url` という項目名になっている（Seedanceの場合）
-3. 直したら空の依頼で存在を確かめ、そのあと動画を1回だけ実際に生成する
-   （`live_test_higgsfield.py` は画像・編集も試すので、動画だけに絞ってから使う）
-4. 画像はOpenAI側なので、Higgsfieldの `generate_image`・`edit_image` は触らない
-5. 本番への反映は、通常どおりユーザーの承認を得てから行う
+公式ドキュメント（docs.higgsfield.ai/docs/models）で接続先を確認し、`higgsfield_client.py` の
+`generate_video` を次のように切り替えた。費用は顧客負担なので、安いモデルを選んでいる。
+
+| 条件 | モデル（パス） | 長さ | 目安 |
+|---|---|---|---|
+| 物件写真あり・通常 | `/kling-video/v2.5-turbo/standard/image-to-video` | 5秒 | 約$0.21 |
+| 物件写真なし・通常 | `/minimax/hailuo-2.3/standard/text-to-video` | 6秒 | 約$0.28 |
+| 高画質（写真あり／なし） | `/kling-video/v2.5-turbo/pro/image-to-video`・`.../pro/text-to-video` | 5秒 | Pro単価 |
+
+- 写真URLを受け付けない場合（422など）は、同じ画質の文章から作る動画で作り直す
+- Seedance 2.0（約$0.93/秒）は高いため使わない。単価は公開記事の値。正確な単価はコンソールで確認する
+- テスト667件成功。実生成も2本成功（写真なし83秒、写真あり137秒）。結果は
+  `saas/workspace/vps-import-20260918/private/higgsfield-video-test-20260923.json`
+- **本番には未反映。** 反映はユーザーの承認を得てから行う
+
+## SaaSの文章生成をGPT-6 Lunaへ（同日、ユーザー指示）
+
+- `config/*.yaml` の単価表に `gpt-6-luna` を追加（入力$0.10・出力$0.50・キャッシュ読込$0.01・書込$0.125、OpenAI公式）
+- `.env.example` を `LLM_PROVIDER=openai`、`LLM_MODEL`・`LLM_MODEL_LIGHT`・`OPENAI_MODEL`・`OPENAI_MODEL_LIGHT` を `gpt-6-luna` に変更
+- **本番の `saas/.env` は未変更。** 反映時は同じ5項目を書き換え、`docker compose up -d` で作り直す（restartでは反映されない）
 
 ## PCでつまずいた点
 

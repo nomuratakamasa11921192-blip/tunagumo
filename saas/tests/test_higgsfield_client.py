@@ -20,103 +20,70 @@ def _client(handler):
     return HiggsfieldClient("key-id", "key-secret", transport=httpx.MockTransport(handler))
 
 
-async def test_generate_video_draft_sends_plain_prompt_only():
-    seen_bodies = []
+def _recording_handler(calls, reject_image=False):
+    import json
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/text-to-video"):
-            import json
-
-            seen_bodies.append(json.loads(request.content))
-            return httpx.Response(200, json={"request_id": "r1"})
+        if request.method == "POST":
+            calls.append((request.url.path, json.loads(request.content)))
+            if reject_image and request.url.path.endswith("/image-to-video"):
+                return httpx.Response(422, text="image_url could not be fetched")
+            return httpx.Response(200, json={"request_id": "r" + str(len(calls))})
         return _completed_response()
 
-    client = _client(handler)
-    url = await client.generate_video("make a video")
+    return handler
+
+
+async def test_generate_video_draft_without_image_uses_hailuo_text_to_video():
+    calls = []
+    url = await _client(_recording_handler(calls)).generate_video("make a video")
     assert url == "https://cdn.example.com/out.mp4"
-    assert seen_bodies == [{"prompt": "make a video"}]
+    assert calls == [("/minimax/hailuo-2.3/standard/text-to-video", {"prompt": "make a video", "duration": 6})]
 
 
-async def test_generate_video_with_reference_image_sends_start_image():
-    seen_bodies = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/text-to-video"):
-            import json
-
-            seen_bodies.append(json.loads(request.content))
-            return httpx.Response(200, json={"request_id": "r1"})
-        return _completed_response()
-
-    client = _client(handler)
-    url = await client.generate_video(
+async def test_generate_video_draft_with_image_uses_kling_standard_image_to_video():
+    calls = []
+    await _client(_recording_handler(calls)).generate_video(
         "make a video", reference_image_url="https://example.com/photo.jpg"
     )
-    assert url == "https://cdn.example.com/out.mp4"
-    assert seen_bodies[0] == {"prompt": "make a video", "start_image": "https://example.com/photo.jpg"}
+    assert calls == [(
+        "/kling-video/v2.5-turbo/standard/image-to-video",
+        {"prompt": "make a video", "image_url": "https://example.com/photo.jpg", "duration": 5},
+    )]
 
 
-async def test_generate_video_falls_back_when_start_image_rejected():
-    """start_imageパラメータをHiggsfieldが拒否した場合、それを外して再試行すること。"""
-    attempts = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/text-to-video"):
-            import json
-
-            body = json.loads(request.content)
-            attempts.append(body)
-            if "start_image" in body:
-                return httpx.Response(400, text="unknown field: start_image")
-            return httpx.Response(200, json={"request_id": "r" + str(len(attempts))})
-        return _completed_response()
-
-    client = _client(handler)
-    url = await client.generate_video(
-        "make a video", reference_image_url="https://example.com/photo.jpg"
-    )
-    assert url == "https://cdn.example.com/out.mp4"
-    assert attempts == [
-        {"prompt": "make a video", "start_image": "https://example.com/photo.jpg"},
-        {"prompt": "make a video"},
+async def test_generate_video_high_uses_kling_pro():
+    calls = []
+    client = _client(_recording_handler(calls))
+    await client.generate_video("make a video", quality="high")
+    await client.generate_video("make a video", quality="high", reference_image_url="https://example.com/p.jpg")
+    assert [path for path, _ in calls] == [
+        "/kling-video/v2.5-turbo/pro/text-to-video",
+        "/kling-video/v2.5-turbo/pro/image-to-video",
     ]
 
 
-async def test_generate_video_high_quality_with_reference_falls_back_step_by_step():
-    attempts = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/text-to-video"):
-            import json
-
-            body = json.loads(request.content)
-            attempts.append(body)
-            if "start_image" in body or "resolution" in body:
-                return httpx.Response(400, text="rejected")
-            return httpx.Response(200, json={"request_id": "r" + str(len(attempts))})
-        return _completed_response()
-
-    client = _client(handler)
-    url = await client.generate_video(
-        "make a video", quality="high", reference_image_url="https://example.com/photo.jpg"
+async def test_generate_video_falls_back_to_text_when_image_rejected():
+    """画像URLを受け付けない場合、同じ画質のtext-to-videoで作り直すこと。"""
+    calls = []
+    url = await _client(_recording_handler(calls, reject_image=True)).generate_video(
+        "make a video", reference_image_url="https://example.com/photo.jpg"
     )
     assert url == "https://cdn.example.com/out.mp4"
-    assert attempts == [
-        {"prompt": "make a video", "start_image": "https://example.com/photo.jpg", "resolution": "1080p"},
-        {"prompt": "make a video", "resolution": "1080p"},
-        {"prompt": "make a video"},
+    assert [path for path, _ in calls] == [
+        "/kling-video/v2.5-turbo/standard/image-to-video",
+        "/minimax/hailuo-2.3/standard/text-to-video",
     ]
 
 
-async def test_generate_video_raises_when_all_attempts_fail():
+async def test_generate_video_raises_when_text_to_video_rejected():
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/text-to-video"):
+        if request.method == "POST":
             return httpx.Response(400, text="always rejected")
         return _completed_response()
 
-    client = _client(handler)
     with pytest.raises(HiggsfieldError):
-        await client.generate_video("make a video", reference_image_url="https://example.com/photo.jpg")
+        await _client(handler).generate_video("make a video", reference_image_url="https://example.com/photo.jpg")
 
 
 async def test_edit_image_sends_image_references_first():

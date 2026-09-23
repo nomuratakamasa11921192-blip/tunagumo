@@ -12,9 +12,17 @@ import httpx
 
 BASE_URL = "https://api.higgsfield.ai"
 IMAGE_GENERATE_PATH = "/higgsfield-ai/soul/v2/standard"
-# lite/text-to-videoを既定にしている: promptだけで動く最小構成のモデルで、
-# 画像側のsoul/v2/standardと同じ「まずシンプルに動くこと」を優先した選択。
-VIDEO_GENERATE_PATH = "/bytedance/seedance/v1/lite/text-to-video"
+# 2026-09-23: 旧seedance/v1/liteは新APIでmodel_not_found。公式ドキュメント
+# (docs.higgsfield.ai/docs/models)の値に置き換え、費用は顧客負担のため安いモデルを選んだ。
+# 物件写真あり: Kling 2.5 Turbo(約$0.042/秒、5秒)。写真なし: Hailuo 2.3(約$0.047/秒、6秒)。
+# Seedance 2.0は約$0.93/秒と高いため使わない。
+# 高画質は写真の有無にかかわらずKling 2.5 TurboのPro版を使う。
+VIDEO_IMAGE_TO_VIDEO_PATH = "/kling-video/v2.5-turbo/standard/image-to-video"
+VIDEO_IMAGE_TO_VIDEO_HIGH_PATH = "/kling-video/v2.5-turbo/pro/image-to-video"
+VIDEO_TEXT_TO_VIDEO_PATH = "/minimax/hailuo-2.3/standard/text-to-video"
+VIDEO_TEXT_TO_VIDEO_HIGH_PATH = "/kling-video/v2.5-turbo/pro/text-to-video"
+KLING_DURATION_SECONDS = 5
+HAILUO_DURATION_SECONDS = 6
 # 2026-09-01: バーチャルステージング(物件写真に家具などを追加する画像編集)用。
 # 公式ドキュメントに画像編集系モデルのエンドポイント記載が無く、既存の
 # soul/v2/standard・seedance/v1/lite/text-to-videoの命名規則から推測した値。
@@ -138,45 +146,36 @@ class HiggsfieldClient:
         タイムアウトを長めに取っている。顧客のキーが無効な場合や、Higgsfield側の生成が
         失敗した場合はHiggsfieldErrorを送出する。
 
-        quality="draft"(既定)はパラメータを付けず、モデル側の既定解像度(このlite
-        モデルでは720p程度)のまま生成してクレジットを節約する。quality="high"は
-        1080pを明示指定する(4K等の最上位ティアは要求しない方針)。
-
         reference_image_urlを渡すと、その画像(物件URL取込で見つかった写真など)を
-        起点に動画を作る(start_image)。パラメータ名/値はいずれも非公式(公式
-        ドキュメントに明記なし)のため、Higgsfield側が拒否した場合は指定を段階的に
-        外しながら再試行し、最終的にプロンプトのみでのフォールバックまで行う。
+        最初のコマにして動画を作る(image-to-video)。画像URLをHiggsfieldが受け付けない
+        場合(非公開URL等)は、同じ画質のtext-to-videoで作り直す。
+        モデルと項目名は公式ドキュメントの値(上部の定数を参照)。
         """
-        full_body: dict = {"prompt": prompt}
-        if reference_image_url:
-            full_body["start_image"] = reference_image_url
-        if quality == "high":
-            full_body["resolution"] = "1080p"
+        high = quality == "high"
+        if high:
+            text_path, text_body = VIDEO_TEXT_TO_VIDEO_HIGH_PATH, {
+                "prompt": prompt, "duration": KLING_DURATION_SECONDS,
+            }
+        else:
+            text_path, text_body = VIDEO_TEXT_TO_VIDEO_PATH, {
+                "prompt": prompt, "duration": HAILUO_DURATION_SECONDS,
+            }
 
-        # 一番具体的な指定から、段階的にパラメータを外しながら試す。
-        # 最後は必ずプロンプトのみ(元の挙動)になるようにする。重複は除く。
-        candidates: list[dict] = [full_body]
         if reference_image_url:
-            candidates.append({"prompt": prompt, **({"resolution": "1080p"} if quality == "high" else {})})
-        candidates.append({"prompt": prompt})
-        attempts: list[dict] = []
-        for c in candidates:
-            if c not in attempts:
-                attempts.append(c)
-
-        last_error: HiggsfieldError | None = None
-        for attempt_body in attempts:
+            image_path = VIDEO_IMAGE_TO_VIDEO_HIGH_PATH if high else VIDEO_IMAGE_TO_VIDEO_PATH
             try:
                 return await self._submit_and_wait(
-                    VIDEO_GENERATE_PATH,
-                    attempt_body,
+                    image_path,
+                    {"prompt": prompt, "image_url": reference_image_url, "duration": KLING_DURATION_SECONDS},
                     poll_timeout=VIDEO_POLL_TIMEOUT_SECONDS,
                     failure_label="動画",
                 )
-            except _ParameterRejected as e:
-                last_error = e
-        assert last_error is not None
-        raise last_error
+            except _ParameterRejected:
+                pass
+
+        return await self._submit_and_wait(
+            text_path, text_body, poll_timeout=VIDEO_POLL_TIMEOUT_SECONDS, failure_label="動画"
+        )
 
     async def edit_image(self, image_url: str, instruction: str) -> str:
         """既存の画像(物件写真など)を指示文で編集する(家具を追加する、明るくする等の
