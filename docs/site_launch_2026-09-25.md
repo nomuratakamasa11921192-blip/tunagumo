@@ -10,7 +10,7 @@
 
 | ファイル | SHA-256 |
 |---|---|
-| website/index.html | 3be07f8a57f0495cb51224df665a4558221cbf701a455a43c25e4562672fd009 |
+| website/index.html | 3edae82da292f02c5f11e1736572126c6b19dc5f9cf65aa1152c19cc2c0952d5 |
 | website/assets/instagram/launch_20260923_01.jpg | d8b97d0f0d56be9d34d633aa0d42f438047dda9c497f946e2705e181df89037e |
 | website/assets/instagram/launch_20260923_02.jpg | d04864aeec284a6a6e3ce17544b02aac402f8c2037b114b896194866373eba14 |
 | website/assets/instagram/launch_20260923_03.jpg | 7f636fc3e1cbb41a361f8b0ce883980e370f138f452fdb56ffe1c3ceae61e143 |
@@ -37,3 +37,7 @@ PCからのSCPはConnection closedで失敗したため、本番へファイル�
 Notionの全24行を読み取り、新規13件（X10・Instagram3）がすべて下書きであることを確認。承認済み0件、4チャネルのローカル送信待ちも0件。
 Instagram3件の画像URLは未設定。公開後の更新対応表はPCのGit対象外 `saas/workspace/sns-launch-20260923/notion-image-update-plan-20260925.json` に用意した。
 本書作成時点では本番反映・Notion更新・SNS送信を行っていない。
+
+## VPS上の準備完了
+
+`5e46d47f136052b5cdbf434191d9eeb5cbcd9379` を `/home/ubuntu/site-launch-review-20260925` に取得済み。本番外で4ファイルのハッシュを照合した。HTMLはWindowsのCRLFからGit管理のLFへ正規化されるため、上記ハッシュはLF版を記載。正規化済みの配布物とmanifestをPCのGit対象外ディレクトリに `website-sns-20260925.tar.gz` と `website-manifest-20260925.json` として用意した。本番への反映はまだ行っていない。
