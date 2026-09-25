@@ -20,7 +20,7 @@ def meter(create, cap=1):
 REQUEST = {"model": "test-model", "max_completion_tokens": 4096, "messages": []}
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_budget_refuses_next_call_before_network():
     create = AsyncMock(return_value=response())
     subject = meter(create, cap=0.06)
@@ -31,7 +31,7 @@ async def test_budget_refuses_next_call_before_network():
     assert subject.calls[0]["estimated_usd"] == pytest.approx(0.0004)
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize("failure", [TimeoutError(), SimpleNamespace(usage=None)])
 async def test_unknown_outcome_disables_following_calls(failure):
     create = AsyncMock(side_effect=failure) if isinstance(failure, Exception) else AsyncMock(return_value=failure)
@@ -43,7 +43,7 @@ async def test_unknown_outcome_disables_following_calls(failure):
     assert subject.unknown_usage
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_missing_price_never_calls_provider():
     create = AsyncMock()
     subject = meter(create)
@@ -52,7 +52,7 @@ async def test_missing_price_never_calls_provider():
     create.assert_not_awaited()
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_unexpected_excess_usage_retained_and_stops():
     oversized = response()
     oversized.usage.completion_tokens = 10000
