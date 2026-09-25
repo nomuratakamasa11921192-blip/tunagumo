@@ -15,6 +15,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+SCHEDULED_MODEL="${CODEX_SCHEDULED_MODEL:-gpt-6-sol}"
 LOG="ops_check.log"
 stamp() { date "+%Y-%m-%d %H:%M"; }
 
@@ -67,7 +68,7 @@ powershell -NoProfile -Command "
 " >/dev/null 2>&1
 
 # Codexに原因を調べさせる（読むだけ・変更禁止）。上限等で失敗しても点検結果と通知は残っている。
-report=$(codex exec -s danger-full-access "あなたはツナグモ本番VPSの点検担当です。作業ディレクトリはこのリポジトリのルート。
+report=$(codex exec -s danger-full-access --model "$SCHEDULED_MODEL" "あなたはツナグモ本番VPSの点検担当です。作業ディレクトリはこのリポジトリのルート。
 本日の自動点検で次の異常が見つかりました:
 
 $result

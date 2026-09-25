@@ -34,6 +34,8 @@ elif name == 'docker':
         event = 'migrate'
     elif 'pytest' in args:
         event = 'pytest'
+    elif 'unittest' in args:
+        event = 'script-tests'
 elif name == 'codex':
     prompt = args[-1]
     event = 'repair' if '開発用のテスト' in prompt else ('audit' if '本日の自動修正' in prompt else 'save')
@@ -65,7 +67,7 @@ else:
 
 
 class DailyQATests(unittest.TestCase):
-    def run_script(self, fail='', code=1, quota_text=False, dirty=False, unpushed=False, branch='main', start_dirty=False):
+    def run_script(self, fail='', code=1, quota_text=False, dirty=False, unpushed=False, branch='main', start_dirty=False, model=''):
         with tempfile.TemporaryDirectory(prefix='tunagumo-qa-test-') as tmp:
             root = Path(tmp)
             shutil.copy2(ROOT / 'daily_qa.sh', root / 'daily_qa.sh')
@@ -80,7 +82,7 @@ class DailyQATests(unittest.TestCase):
                 executable.chmod(0o755)
             log = root / 'calls.jsonl'
             env = {**os.environ, 'PATH': str(fake_bin) + os.pathsep + os.environ['PATH'],
-                   'QA_TEST_LOG': str(log), 'QA_TEST_FAIL': fail, 'QA_TEST_EXIT': str(code),
+                   'CODEX_SCHEDULED_MODEL': model, 'QA_TEST_LOG': str(log), 'QA_TEST_FAIL': fail, 'QA_TEST_EXIT': str(code),
                    'QA_TEST_QUOTA_TEXT': '1' if quota_text else '',
                    'QA_TEST_BRANCH': branch, 'QA_TEST_START_DIRTY': '1' if start_dirty else '',
                    'QA_TEST_DIRTY': '1' if dirty else '', 'QA_TEST_UNPUSHED': '1' if unpushed else ''}
@@ -106,11 +108,22 @@ class DailyQATests(unittest.TestCase):
             'git:status', 'git:rev-parse', 'git:ls-remote', 'curl',
         ])
         for call in calls:
-            if call['event'] in {'build', 'up', 'migrate', 'pytest'}:
+            if call['event'] in {'repair', 'audit', 'save'}:
+                self.assertEqual(call['args'][call['args'].index('--model') + 1], 'gpt-6-sol')
+            if call['event'] in {'build', 'up', 'migrate', 'pytest', 'script-tests'}:
                 self.assertEqual(call['args'][:9], [
                     'compose', '-p', 'tunagumo-dev', '--env-file', '../.env.test',
                     '-f', 'docker-compose.yml', '-f', 'docker-compose.test.yml',
                 ])
+
+    def test_shell_regressions_run_in_development_container(self):
+        result, calls = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        check = next(c for c in calls if c['event'] == 'script-tests')
+        self.assertEqual(check['args'][-8:], ['api', 'python', '-m', 'unittest', 'discover', '-s', '/qa/tests', '-v'])
+        mounts = [a for a in check['args'] if ':/qa/' in a]
+        self.assertEqual(len(mounts), 3)
+        self.assertTrue(all(m.endswith(':ro') for m in mounts))
 
     def test_manual_branches_stop_before_pull_or_agent(self):
         for branch in ('local/image-check', 'vps/manual-fix'):
@@ -183,12 +196,21 @@ class DailyQATests(unittest.TestCase):
     def test_save_failure_does_not_notify_success(self):
         self.assert_stopped('save', ['curl'])
 
-    def test_main_failure_uses_existing_fallback_model(self):
+    def test_failure_retries_with_scheduled_model(self):
         result, calls = self.run_script(fail='repair1')
         self.assertEqual(result.returncode, 0, result.stderr)
         repair = [c for c in calls if c['event'] == 'repair']
         self.assertEqual(len(repair), 2)
-        self.assertIn('gpt-5.6-sol', repair[1]['args'])
+        for call in repair:
+            self.assertEqual(call['args'][call['args'].index('--model') + 1], 'gpt-6-sol')
+
+    def test_configured_model_applies_to_every_stage_and_retry(self):
+        result, calls = self.run_script(fail='repair1', model='test-model')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        agents = [c for c in calls if c['event'] in {'repair', 'audit', 'save'}]
+        self.assertEqual(len(agents), 4)
+        for call in agents:
+            self.assertEqual(call['args'][call['args'].index('--model') + 1], 'test-model')
 
     def test_successful_quota_test_does_not_rerun_agent(self):
         result, calls = self.run_script(quota_text=True)

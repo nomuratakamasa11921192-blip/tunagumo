@@ -2,13 +2,10 @@
 # ===========================================================================
 # daily_qa.sh - Codex主導・日常バグチェック＆GitHub自動同期スクリプト
 #
-# 実行場所: VPS上の開発用clone（例: ~/dev/tsunagumo）専用。
+# 実行場所: WindowsのGit BashまたはVPSの開発用clone（main専用）。
 # /opt/tsunagumo（本番）には一切触れない。このスクリプト自体もそこに置かない。
-#
-# モデルのフォールバック: config.toml の [model] にはメインモデル(gpt-6-astra)
-# しか宣言できない（Codex CLIに宣言的なフォールバック設定は無い）。そのため
-# ここでは、メインモデルの呼び出しが失敗した場合、gpt-5.6-sol で同じ指示を
-# 再実行するラッパー関数を用意する。
+# 定期実行はCODEX_SCHEDULED_MODEL（既定: gpt-6-sol）を明示し、再試行も同じモデル。
+# 対話作業用のconfig.tomlの既定モデルには依存しない。
 # ===========================================================================
 set -euo pipefail
 trap 'qa_exit_status=$?; if (( qa_exit_status != 0 )); then printf "[daily_qa] 処理に失敗したため中断しました（終了コード %s）。正常終了として扱いません。\n" "$qa_exit_status" >&2; fi' EXIT
@@ -37,22 +34,24 @@ if [ -f .env ]; then
   set +a
 fi
 
-# メインモデル(Codexの既定、アストラ等)が制限・失敗した時の切り替え先。
-# 2026-09-15、ユーザー指定でルナからソル(アストラに次ぐ上位モデル)に変更。
-FALLBACK_MODEL="gpt-5.6-sol"
+# 定期実行だけのモデル指定。対話作業用モデルとは分離する。
+SCHEDULED_MODEL="${CODEX_SCHEDULED_MODEL:-gpt-6-sol}"
+# Windowsのpython3はMicrosoft Storeの別名で実行できない場合がある。
+QA_PYTHON=python3
+case "${OSTYPE:-}" in msys*|cygwin*) QA_PYTHON=python ;; esac
 
 # $1 = Slackに送るメッセージ本文。SLACK_WEBHOOK_URL未設定なら何もしない(黙って続行)
 notify_slack() {
   local text="$1"
   if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
     curl -s -X POST -H 'Content-type: application/json' \
-      --data "{\"text\": $(printf '%s' "$text" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
+      --data "{\"text\": $(printf '%s' "$text" | "$QA_PYTHON" -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}" \
       "$SLACK_WEBHOOK_URL" >/dev/null 2>&1
   fi
 }
 
 # $1 = codexに渡すプロンプト文字列
-run_codex_with_fallback() {
+run_codex_scheduled() {
   local prompt="$1"
   local out
   # codex exec = 非対話(cron)実行専用のサブコマンド。素の `codex "..."` は
@@ -63,7 +62,7 @@ run_codex_with_fallback() {
   # オプションだった)。exec では `-s/--sandbox danger-full-access` を使う
   # (2026-09-10、`codex exec --help`で確認)。
   local status=0
-  if out=$(codex exec -s danger-full-access "$prompt" 2>&1); then
+  if out=$(codex exec -s danger-full-access --model "$SCHEDULED_MODEL" "$prompt" 2>&1); then
     status=0
   else
     status=$?
@@ -72,9 +71,9 @@ run_codex_with_fallback() {
   # 正常なテスト名(test_video_quota_route等)やAPIエラー処理の説明を制限と誤認しない。
   # テストの成否は、保存前にスクリプト自身がpytestを実行して別途確認する。
   if [ "$status" -ne 0 ]; then
-    echo "[daily_qa] メインモデルで失敗/制限を検知。${FALLBACK_MODEL} で再実行します。" >&2
+    echo "[daily_qa] 定期実行モデルで失敗/制限を検知。${SCHEDULED_MODEL} で再実行します。" >&2
     echo "$out"
-    if out=$(codex exec -s danger-full-access --model "$FALLBACK_MODEL" "$prompt" 2>&1); then
+    if out=$(codex exec -s danger-full-access --model "$SCHEDULED_MODEL" "$prompt" 2>&1); then
       status=0
     else
       status=$?
@@ -130,7 +129,7 @@ dc up -d db 2>&1 | tail -3
 dc run --rm -T api alembic upgrade head
 
 echo "=== [1/4] Codexによる日常自動テストとバグ修復 ==="
-run_codex_with_fallback "$(cat <<'QA_PROMPT'
+run_codex_scheduled "$(cat <<'QA_PROMPT'
 AGENTS.mdとSYSTEM_PROMPT.mdに従い、開発用のテストを実行せよ。
 
 【テストの実行方法】saas/docker に移動し、必ず次の形で実行すること:
@@ -162,7 +161,7 @@ QA_PROMPT
 )"
 
 echo "=== [2/4] Codexによる開発途中コードの誤爆チェック ==="
-run_codex_with_fallback "$(cat <<'AUDIT_PROMPT'
+run_codex_scheduled "$(cat <<'AUDIT_PROMPT'
 本日の自動修正が、TODOコメントや未実装のダミー関数など、人間が意図的に
 未完成のまま残している開発途中の機能を誤って削除・書き換えしていないか、
 git diff で確認せよ。もし該当する変更があれば、その部分だけ元に戻せ。
@@ -176,10 +175,18 @@ echo "=== [保存前検証] 再ビルド・DB更新・全テスト ==="
 dc build api 2>&1 | tail -5
 dc run --rm -T api alembic upgrade head
 dc run --rm -T api pytest -v
-python3 -m unittest discover -s tests -v
+# 偽ツールのシェバンを含むシェル回帰テストはLinux上で実行する。
+# WindowsのStore別名python3や、Windows形式のシェバンに依存させない。
+qa_mount_root="$PWD"
+case "${OSTYPE:-}" in msys*|cygwin*) qa_mount_root=$(cygpath -m "$PWD") ;; esac
+MSYS_NO_PATHCONV=1 dc run --rm -T --no-deps \
+  --volume "$qa_mount_root/tests:/qa/tests:ro" \
+  --volume "$qa_mount_root/daily_qa.sh:/qa/daily_qa.sh:ro" \
+  --volume "$qa_mount_root/scripts/ops_check.sh:/qa/scripts/ops_check.sh:ro" \
+  api python -m unittest discover -s /qa/tests -v
 
 echo "=== [3/4] CodexによるGitコミット＆GitHub保存 ==="
-run_codex_with_fallback "$(cat <<'SAVE_PROMPT'
+run_codex_scheduled "$(cat <<'SAVE_PROMPT'
 本日の日常QAが正常終了した。変更があれば
 '[Codex] 定期バグチェックと修復完了' のメッセージでコミットし、
 origin/main へpushせよ（これは本番VPSへの反映ではなく、GitHubリポジトリの
