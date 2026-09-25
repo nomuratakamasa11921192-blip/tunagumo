@@ -14,7 +14,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from src.api.deps import get_current_tenant, get_stt_provider
+from src.api.deps import get_current_tenant, get_stt_provider, get_scoped_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from src.core.ai_budget import lock_budget_tenant, ensure_budget_available, record_cost, BudgetExceededError
 from src.core.models import Tenant
 from src.video.paths import WORKSPACE_ROOT
 from src.video.reel_editor import ReelEditError, edit_reel, new_job_dir
@@ -48,6 +50,7 @@ async def edit_reel_endpoint(
     bgm: str | None = None,
     tenant: Tenant = Depends(get_current_tenant),
     stt_provider: STTProvider | None = Depends(get_stt_provider),
+    db: AsyncSession = Depends(get_scoped_db),
 ) -> FileResponse:
     if stt_provider is None:
         raise HTTPException(
@@ -64,6 +67,12 @@ async def edit_reel_endpoint(
             raise HTTPException(status_code=400, detail="指定されたBGMが見つかりません。")
         bgm_path = candidate
 
+    budget_tenant = await lock_budget_tenant(db, tenant.id)
+    try:
+        ensure_budget_available(budget_tenant)
+    except BudgetExceededError as e:
+        raise HTTPException(status_code=429, detail=str(e))
+    before = getattr(stt_provider, "total_cost_usd", 0.0)
     job_dir = new_job_dir()
     input_path_rel = job_dir / "input.mp4"
     input_path = WORKSPACE_ROOT / input_path_rel
@@ -84,6 +93,9 @@ async def edit_reel_endpoint(
     except ReelEditError as e:
         shutil.rmtree(WORKSPACE_ROOT / job_dir, ignore_errors=True)
         raise HTTPException(status_code=502, detail=str(e))
+    finally:
+        record_cost(budget_tenant, getattr(stt_provider, "total_cost_usd", 0.0) - before)
+        await db.commit()
 
     cleanup = BackgroundTask(shutil.rmtree, WORKSPACE_ROOT / job_dir, ignore_errors=True)
     return FileResponse(result_path, media_type="video/mp4", filename="reel.mp4", background=cleanup)

@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 from croniter import CroniterBadCronError, croniter
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, Field
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +27,7 @@ from src.core.crypto import encrypt_secret
 from src.core.db import get_db
 from src.core.email import send_email
 from src.core.models import Approval, Document, Schedule, Session, Tenant, TenantUser, WebChatSession
-from src.core.ai_budget import PLAN_MONTHLY_BUDGET_USD
+from src.core.ai_budget import PLAN_MONTHLY_BUDGET_USD, monthly_budget_usd
 from src.core.runtime_flags import actions_enabled, set_actions_enabled
 from src.core.validation import (
     validate_anthropic_key_format,
@@ -201,8 +201,9 @@ class TenantCreateRequest(BaseModel):
     # Stripe Webhook(customer.subscription.deleted等)による自動アクセス停止の対象になる。
     # 未指定(管理者が手動発行する場合等)ならStripeとは連動せず、常にアクセス可能なまま。
     stripe_customer_id: str | None = None
-    # プラン別の月間AI予算(src/core/ai_budget.py)。未指定ならモデルの既定"light"。
+    # 新規作成は未指定時basic。既存契約のモデル既定lightは維持する。
     plan: str | None = None
+    enterprise_ai_budget_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class TenantCreateResponse(BaseModel):
@@ -257,6 +258,10 @@ async def create_tenant(
             detail=f"未知のプランです: {req.plan}（利用可能: {list(PLAN_MONTHLY_BUDGET_USD)}）",
         )
 
+    if req.plan == "enterprise" and req.enterprise_ai_budget_usd is None:
+        raise HTTPException(status_code=400, detail="エンタープライズの契約上限を設定してください")
+    if req.plan != "enterprise" and req.enterprise_ai_budget_usd is not None:
+        raise HTTPException(status_code=400, detail="個別上限はエンタープライズでのみ指定できます")
     api_key = f"tsg_{secrets.token_urlsafe(32)}"
     tenant = Tenant(
         name=req.name,
@@ -266,7 +271,8 @@ async def create_tenant(
         openai_api_key=encrypt_secret(req.openai_api_key) if req.openai_api_key else None,
         email=req.email,
         stripe_customer_id=req.stripe_customer_id,
-        **({"plan": req.plan} if req.plan is not None else {}),
+        plan=req.plan or "basic",
+        enterprise_ai_budget_usd=req.enterprise_ai_budget_usd,
     )
     db.add(tenant)
     await db.commit()
@@ -649,6 +655,7 @@ async def set_approval_stages(
 
 class PlanRequest(BaseModel):
     plan: str
+    enterprise_ai_budget_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class PlanResponse(BaseModel):
@@ -668,11 +675,16 @@ async def set_tenant_plan(
             status_code=400, detail=f"未知のプランです: {req.plan}（利用可能: {list(PLAN_MONTHLY_BUDGET_USD)}）"
         )
     tenant = await _get_tenant_or_404(db, tenant_id)
+    if req.plan == "enterprise" and req.enterprise_ai_budget_usd is None:
+        raise HTTPException(status_code=400, detail="エンタープライズの契約上限を設定してください")
+    if req.plan != "enterprise" and req.enterprise_ai_budget_usd is not None:
+        raise HTTPException(status_code=400, detail="個別上限はエンタープライズでのみ指定できます")
     tenant.plan = req.plan
+    tenant.enterprise_ai_budget_usd = req.enterprise_ai_budget_usd
     await db.commit()
 
     return PlanResponse(
-        tenant_id=str(tenant.id), plan=tenant.plan, monthly_ai_budget_usd=PLAN_MONTHLY_BUDGET_USD[req.plan]
+        tenant_id=str(tenant.id), plan=tenant.plan, monthly_ai_budget_usd=monthly_budget_usd(tenant)
     )
 
 

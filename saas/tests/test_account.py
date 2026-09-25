@@ -198,6 +198,7 @@ async def test_usage_reports_percentages_without_exposing_or_mutating_costs(
     assert set(body) == {
         "this_month_session_count", "all_time_session_count", "plan",
         "ai_usage_percent", "ai_remaining_percent", "addon_purchased", "higgsfield_key_registered",
+        "plan_label", "usage_scope", "usage_state", "resets_at", "self_service_addon",
     }
     async with async_session_factory() as db:
         row = await db.get(Tenant, tenant["id"])

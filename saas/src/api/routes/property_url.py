@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.deps import get_current_tenant, get_image_client, get_scoped_db
+from src.core.ai_budget import lock_budget_tenant
 from src.core.ai_budget import (
     ESTIMATED_OPENAI_IMAGE_COST_USD,
     BudgetExceededError,
@@ -117,7 +118,7 @@ async def stage_image(
 
     # tenant(get_current_tenant)はdb(get_scoped_db)とは別セッションなので、
     # コストの記録をcommitできるようdb側で行を取り直す(sessions.pyと同じ理由)。
-    tenant_row = await db.get(Tenant, tenant.id)
+    tenant_row = await lock_budget_tenant(db, tenant.id)
     try:
         ensure_budget_available(tenant_row)
     except BudgetExceededError as e:

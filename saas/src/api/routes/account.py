@@ -1,21 +1,24 @@
 import asyncio
 import secrets
+import uuid
+from html import escape
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.deps import get_current_tenant, get_optional_tenant_user, get_scoped_db, hash_api_key
-from src.core.ai_budget import DEFAULT_PLAN, PLAN_MONTHLY_BUDGET_USD, effective_cost_this_period
+from src.api.deps import get_current_tenant, get_optional_tenant_user, get_scoped_db, hash_api_key, require_account_owner
+from src.core.ai_budget import (COMPANY_PLANS, PLAN_LABELS, effective_cost_this_period,
+                                monthly_budget_usd, next_period_at)
 from src.core.config import settings
 from src.channels.mail import ImapSmtpTransport, MailAccountSettings, MailConfigError
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.db import get_db
 from src.core.email import send_email
 from src.core.models import Session as SessionModel
-from src.core.models import Tenant, TenantMailAccount, TenantUser, TenantUserToken
+from src.core.models import Tenant, TenantMailAccount, TenantUser, TenantUserToken, AuditLog
 from src.core.passwords import hash_password, verify_password
 from src.core.stripe_client import (
     ADDON_PRICE_JPY,
@@ -39,7 +42,7 @@ class AnthropicKeyUpdateRequest(BaseModel):
     anthropic_api_key: str
 
 
-@router.patch("/anthropic-key", status_code=204)
+@router.patch("/anthropic-key", status_code=204, dependencies=[Depends(require_account_owner)])
 async def update_own_anthropic_key(
     req: AnthropicKeyUpdateRequest,
     tenant: Tenant = Depends(get_current_tenant),
@@ -59,7 +62,7 @@ class OpenAIKeyUpdateRequest(BaseModel):
     openai_api_key: str
 
 
-@router.patch("/openai-key", status_code=204)
+@router.patch("/openai-key", status_code=204, dependencies=[Depends(require_account_owner)])
 async def update_own_openai_key(
     req: OpenAIKeyUpdateRequest,
     tenant: Tenant = Depends(get_current_tenant),
@@ -79,7 +82,7 @@ class HiggsfieldKeyUpdateRequest(BaseModel):
     higgsfield_key_secret: str
 
 
-@router.patch("/higgsfield-key", status_code=204)
+@router.patch("/higgsfield-key", status_code=204, dependencies=[Depends(require_account_owner)])
 async def update_own_higgsfield_key(
     req: HiggsfieldKeyUpdateRequest,
     tenant: Tenant = Depends(get_current_tenant),
@@ -129,13 +132,13 @@ def _inquiry_settings(tenant: Tenant) -> InquirySettingsResponse:
     )
 
 
-@router.get("/inquiry-settings", response_model=InquirySettingsResponse)
+@router.get("/inquiry-settings", response_model=InquirySettingsResponse, dependencies=[Depends(require_account_owner)])
 async def get_inquiry_settings(tenant: Tenant = Depends(get_current_tenant)) -> InquirySettingsResponse:
     """問い合わせ一次受けの設定(通知先・緊急連絡先・LINE連携の状態)。キーの中身は返さない。"""
     return _inquiry_settings(tenant)
 
 
-@router.put("/inquiry-settings", response_model=InquirySettingsResponse)
+@router.put("/inquiry-settings", response_model=InquirySettingsResponse, dependencies=[Depends(require_account_owner)])
 async def update_inquiry_settings(
     req: InquirySettingsRequest,
     tenant: Tenant = Depends(get_current_tenant),
@@ -148,7 +151,7 @@ async def update_inquiry_settings(
     return _inquiry_settings(row)
 
 
-@router.put("/line-channel", response_model=InquirySettingsResponse)
+@router.put("/line-channel", response_model=InquirySettingsResponse, dependencies=[Depends(require_account_owner)])
 async def update_line_channel(
     req: LineChannelRequest,
     tenant: Tenant = Depends(get_current_tenant),
@@ -163,7 +166,7 @@ async def update_line_channel(
     return _inquiry_settings(row)
 
 
-@router.delete("/line-channel", response_model=InquirySettingsResponse)
+@router.delete("/line-channel", response_model=InquirySettingsResponse, dependencies=[Depends(require_account_owner)])
 async def delete_line_channel(
     tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_scoped_db),
@@ -210,7 +213,7 @@ def _mail_response(row) -> MailAccountResponse:
     )
 
 
-@router.get("/mail-account", response_model=MailAccountResponse)
+@router.get("/mail-account", response_model=MailAccountResponse, dependencies=[Depends(require_account_owner)])
 async def get_mail_account(
     tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)
 ) -> MailAccountResponse:
@@ -218,7 +221,7 @@ async def get_mail_account(
     return _mail_response(await db.get(TenantMailAccount, tenant.id))
 
 
-@router.put("/mail-account", response_model=MailAccountResponse)
+@router.put("/mail-account", response_model=MailAccountResponse, dependencies=[Depends(require_account_owner)])
 async def update_mail_account(
     req: MailAccountRequest, tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)
 ) -> MailAccountResponse:
@@ -255,7 +258,7 @@ async def update_mail_account(
     return _mail_response(row)
 
 
-@router.delete("/mail-account", response_model=MailAccountResponse)
+@router.delete("/mail-account", response_model=MailAccountResponse, dependencies=[Depends(require_account_owner)])
 async def delete_mail_account(
     tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)
 ) -> MailAccountResponse:
@@ -279,6 +282,11 @@ class UsageResponse(BaseModel):
     this_month_session_count: int
     all_time_session_count: int
     plan: str
+    plan_label: str
+    usage_scope: str = "company"
+    usage_state: str
+    resets_at: datetime
+    self_service_addon: bool
     # 今月のAI利用量(月間枠に対する割合、0〜100)。追加購入分は含めずに計算する
     ai_usage_percent: int
     # 残りの割合(追加購入分を含む。100を超えることがある)
@@ -307,13 +315,18 @@ async def get_usage(
     )
     this_month_count = this_month.scalar_one()
 
-    monthly_budget = PLAN_MONTHLY_BUDGET_USD.get(tenant.plan, PLAN_MONTHLY_BUDGET_USD[DEFAULT_PLAN])
+    monthly_budget = monthly_budget_usd(tenant)
     used = effective_cost_this_period(tenant)
     remaining = max(monthly_budget - used, 0.0) + tenant.addon_credit_usd
     return UsageResponse(
         this_month_session_count=this_month_count,
         all_time_session_count=all_time_count,
         plan=tenant.plan,
+        plan_label=PLAN_LABELS.get(tenant.plan, tenant.plan),
+        usage_state=("exhausted" if remaining <= 0 or monthly_budget <= 0 else
+                     "warning" if used >= monthly_budget * .8 else "available"),
+        resets_at=next_period_at(),
+        self_service_addon=tenant.plan not in COMPANY_PLANS,
         ai_usage_percent=min(round(used / monthly_budget * 100), 100) if monthly_budget > 0 else 0,
         ai_remaining_percent=round(remaining / monthly_budget * 100) if monthly_budget > 0 else 0,
         addon_purchased=tenant.addon_credit_usd > 0,
@@ -330,7 +343,7 @@ class BuyAddonResponse(BaseModel):
     price_jpy: int
 
 
-@router.post("/buy-addon", response_model=BuyAddonResponse)
+@router.post("/buy-addon", response_model=BuyAddonResponse, dependencies=[Depends(require_account_owner)])
 async def buy_addon(
     tenant: Tenant = Depends(get_current_tenant),
 ) -> BuyAddonResponse:
@@ -338,6 +351,8 @@ async def buy_addon(
     支払い完了はStripe Webhook(checkout.session.completed、src/api/routes/stripe_webhook.py)
     が検知し、addon_credit_usdに加算する(このエンドポイント自体は予算を加算しない)。
     """
+    if tenant.plan in COMPANY_PLANS:
+        raise HTTPException(status_code=409, detail="会社プランの利用枠追加は、上位プランについて運営にご相談ください。自動追加課金はありません。")
     if not tenant.stripe_customer_id:
         raise HTTPException(
             status_code=400,
@@ -363,7 +378,7 @@ class BillingPortalResponse(BaseModel):
     portal_url: str
 
 
-@router.post("/billing-portal", response_model=BillingPortalResponse)
+@router.post("/billing-portal", response_model=BillingPortalResponse, dependencies=[Depends(require_account_owner)])
 async def create_billing_portal(
     tenant: Tenant = Depends(get_current_tenant),
 ) -> BillingPortalResponse:
@@ -394,7 +409,7 @@ async def create_billing_portal(
 
 
 class InviteUserRequest(BaseModel):
-    email: str
+    email: str = Field(min_length=3, max_length=320, pattern=r"^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$")
     role: str = "member"  # member/approver/owner。テナント最初の1人は常にownerになる(下記参照)
 
 
@@ -419,6 +434,8 @@ async def invite_user(
     別の入口が必要)。2人目以降は、既存のownerロールのTenantUserとしてログイン
     (X-User-Tokenヘッダ)していないと招待できない。
     """
+    # 最初の管理者の同時作成・重複招待を会社行のロックで直列化する。
+    await db.execute(select(Tenant).where(Tenant.id == tenant.id).with_for_update())
     existing_count = (
         await db.execute(select(func.count()).where(TenantUser.tenant_id == tenant.id))
     ).scalar_one()
@@ -432,10 +449,15 @@ async def invite_user(
             raise HTTPException(status_code=400, detail="roleはmember/approver/ownerのいずれかです")
         role = req.role
 
+    email = req.email.strip().lower()
+    duplicate = await db.execute(select(TenantUser).where(
+        TenantUser.tenant_id == tenant.id, func.lower(TenantUser.email) == email))
+    if duplicate.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="このメールアドレスは登録済みです。未受諾の場合は招待を再送してください。")
     raw_invite_token = secrets.token_urlsafe(32)
     user = TenantUser(
         tenant_id=tenant.id,
-        email=req.email,
+        email=email,
         role=role,
         is_active=False,
         invite_token_hash=hash_api_key(raw_invite_token),
@@ -451,7 +473,9 @@ async def invite_user(
         html=(
             f"<p>ツナグモへの招待が届いています。以下のリンクから初期パスワードを設定してください"
             f"({INVITE_TTL_HOURS}時間以内)。</p>"
+            f"<p>会社ID: <code>{tenant.id}</code></p>"
             f"<p>招待コード: <code>{raw_invite_token}</code></p>"
+            + (f'<p><a href="{escape(settings.saas_public_url.rstrip("/"), quote=True)}/#invite={raw_invite_token}&company={tenant.id}">パスワードを設定する</a></p>' if settings.saas_public_url else "")
         ),
     )
 
@@ -491,12 +515,14 @@ async def list_users(
 
 
 class AcceptInviteRequest(BaseModel):
-    invite_token: str
-    password: str
+    invite_token: str = Field(max_length=200)
+    password: str = Field(max_length=256)
 
 
 class AcceptInviteResponse(BaseModel):
     tenant_user_id: str
+    company_id: str
+    email: str
 
 
 @router.post("/accept-invite", response_model=AcceptInviteResponse)
@@ -505,7 +531,7 @@ async def accept_invite(req: AcceptInviteRequest, db: AsyncSession = Depends(get
     テナントAPIキーもX-User-Tokenも要らない(Phase 16のwidget公開鍵と同じ考え方で、
     トークン自体がテナント横断で一意なのでsuperuser接続で直接引く)。"""
     token_hash = hash_api_key(req.invite_token)
-    result = await db.execute(select(TenantUser).where(TenantUser.invite_token_hash == token_hash))
+    result = await db.execute(select(TenantUser).where(TenantUser.invite_token_hash == token_hash).with_for_update())
     user = result.scalar_one_or_none()
 
     if user is None or user.invite_expires_at is None or user.invite_expires_at < datetime.utcnow():
@@ -521,12 +547,12 @@ async def accept_invite(req: AcceptInviteRequest, db: AsyncSession = Depends(get
     user.invite_expires_at = None
     await db.commit()
 
-    return AcceptInviteResponse(tenant_user_id=str(user.id))
+    return AcceptInviteResponse(tenant_user_id=str(user.id), company_id=str(user.tenant_id), email=user.email)
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    email: str = Field(max_length=320)
+    password: str = Field(max_length=256)
 
 
 class LoginResponse(BaseModel):
@@ -543,29 +569,148 @@ async def login(
 ) -> LoginResponse:
     """テナントAPIキーで自テナントだと確認したうえで、その中の個人ユーザーとして
     ログインする(Phase 13の承認者識別に使うX-User-Tokenを発行する)。"""
-    result = await db.execute(
-        select(TenantUser).where(TenantUser.tenant_id == tenant.id, TenantUser.email == req.email)
-    )
+    return await _authenticate_user(req, tenant, db)
+
+
+class MemberLoginRequest(LoginRequest):
+    company_id: uuid.UUID
+
+
+@router.post("/member-login", response_model=LoginResponse)
+async def member_login(req: MemberLoginRequest, db: AsyncSession = Depends(get_db)) -> LoginResponse:
+    tenant = await db.get(Tenant, req.company_id)
+    if tenant is None:
+        raise HTTPException(status_code=401, detail="会社ID・メールアドレス・パスワードをご確認ください")
+    return await _authenticate_user(req, tenant, db)
+
+
+async def _authenticate_user(req: LoginRequest, tenant: Tenant, db: AsyncSession) -> LoginResponse:
+    result = await db.execute(select(TenantUser).where(
+        TenantUser.tenant_id == tenant.id, func.lower(TenantUser.email) == req.email.strip().lower()
+    ).with_for_update())
     user = result.scalar_one_or_none()
-
-    password_ok = (
-        user is not None
-        and user.is_active
-        and bool(user.password_hash)
-        and await asyncio.to_thread(verify_password, req.password, user.password_hash)
-    )
-    if not password_ok:
-        raise HTTPException(status_code=401, detail="メールアドレスまたはパスワードが違います")
-
+    failure = HTTPException(status_code=401, detail="会社ID・メールアドレス・パスワードをご確認ください。繰り返し失敗した場合は15分後にお試しください")
+    now = datetime.utcnow()
+    if user is None or not user.is_active or not user.password_hash:
+        raise failure
+    if user.login_locked_until and user.login_locked_until > now:
+        raise failure
+    if user.login_locked_until:
+        user.failed_login_attempts = 0
+        user.login_locked_until = None
+    if not await asyncio.to_thread(verify_password, req.password, user.password_hash):
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= 5:
+            user.login_locked_until = now + timedelta(minutes=15)
+        await db.commit()
+        raise failure
+    if not tenant.subscription_active:
+        raise HTTPException(status_code=403, detail="ご契約状況をご確認ください")
+    user.failed_login_attempts = 0
+    user.login_locked_until = None
     raw_token = secrets.token_urlsafe(32)
-    db.add(
-        TenantUserToken(
-            tenant_id=tenant.id,
-            tenant_user_id=user.id,
-            token_hash=hash_api_key(raw_token),
-            expires_at=datetime.utcnow() + timedelta(hours=USER_TOKEN_TTL_HOURS),
-        )
-    )
+    db.add(TenantUserToken(tenant_id=tenant.id, tenant_user_id=user.id,
+        token_hash=hash_api_key(raw_token), expires_at=now + timedelta(hours=USER_TOKEN_TTL_HOURS)))
+    await db.commit()
+    return LoginResponse(token=raw_token, tenant_user_id=str(user.id), role=user.role)
+
+
+@router.get("/me")
+async def account_identity(tenant: Tenant = Depends(get_current_tenant),
+                           actor: TenantUser | None = Depends(get_optional_tenant_user),
+                           db: AsyncSession = Depends(get_scoped_db)):
+    count = (await db.execute(select(func.count()).where(TenantUser.tenant_id == tenant.id))).scalar_one()
+    pending_owner = None
+    if actor is None and count == 1:
+        pending_owner = (await db.execute(select(TenantUser.id).where(TenantUser.tenant_id == tenant.id,
+                        TenantUser.role == "owner", TenantUser.password_hash.is_(None)))).scalar_one_or_none()
+    return {"company_id": str(tenant.id), "company_name": tenant.name,
+            "role": actor.role if actor else "company_key", "can_bootstrap_owner": count == 0,
+            "pending_owner_id": str(pending_owner) if pending_owner else None,
+            "email": actor.email if actor else None}
+
+
+@router.get("/activity")
+async def company_activity(tenant: Tenant = Depends(get_current_tenant),
+                           db: AsyncSession = Depends(get_scoped_db)):
+    """会社の依頼・成果物の状態と、承認や引き継ぎコメントを共有する。"""
+    users = (await db.execute(select(TenantUser).where(TenantUser.tenant_id == tenant.id))).scalars().all()
+    names = {str(u.id): u.email for u in users}
+    names[str(tenant.id)] = "会社キー・定期実行"
+    sessions = (await db.execute(select(SessionModel).where(SessionModel.tenant_id == tenant.id)
+                               .order_by(SessionModel.updated_at.desc()).limit(100))).scalars().all()
+    ids = [s.id for s in sessions]
+    created = (await db.execute(select(AuditLog).where(AuditLog.tenant_id == tenant.id,
+               AuditLog.session_id.in_(ids), AuditLog.action == "REQUEST_CREATED"))).scalars().all() if ids else []
+    creators = {a.session_id: names.get(a.actor, "会社共有") for a in created}
+    logs = (await db.execute(select(AuditLog, SessionModel.request_text)
+        .join(SessionModel, SessionModel.id == AuditLog.session_id)
+        .where(AuditLog.tenant_id == tenant.id, SessionModel.tenant_id == tenant.id,
+               AuditLog.action.in_(["COMMENT", "APPROVE", "REJECT", "IMAGE_GENERATED"]))
+        .order_by(AuditLog.created_at.desc()).limit(100))).all()
+    return {
+        "requests": [{"session_id": str(s.id), "title": s.request_text[:300], "status": s.status,
+                      "requester": creators.get(s.id, "会社共有（旧履歴・定期実行）"),
+                      "updated_at": s.updated_at, "created_at": s.created_at} for s in sessions],
+        "events": [{"session_id": str(a.session_id), "title": title[:150], "action": a.action,
+                    "actor": names.get(a.actor, "会社共有"), "comment": a.comment,
+                    "created_at": a.created_at} for a, title in logs],
+    }
+
+
+@router.post("/logout", status_code=204)
+async def logout_user(actor: TenantUser | None = Depends(get_optional_tenant_user),
+                      db: AsyncSession = Depends(get_scoped_db)):
+    if actor is not None:
+        # 個人ログアウトは全端末のセッションを失効させる。
+        await db.execute(delete(TenantUserToken).where(TenantUserToken.tenant_user_id == actor.id))
+        await db.commit()
+
+
+@router.delete("/users/{user_id}", status_code=204)
+async def deactivate_user(user_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant),
+                          actor: TenantUser | None = Depends(get_optional_tenant_user),
+                          db: AsyncSession = Depends(get_scoped_db)):
+    if actor is None or actor.role != "owner":
+        raise HTTPException(status_code=403, detail="管理者権限が必要です")
+    await db.execute(select(Tenant).where(Tenant.id == tenant.id).with_for_update())
+    user = (await db.execute(select(TenantUser).where(TenantUser.id == user_id,
+                            TenantUser.tenant_id == tenant.id).with_for_update())).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="社員が見つかりません")
+    if user.role == "owner" and user.is_active:
+        owners = (await db.execute(select(func.count()).where(TenantUser.tenant_id == tenant.id,
+                  TenantUser.role == "owner", TenantUser.is_active.is_(True)))).scalar_one()
+        if owners <= 1:
+            raise HTTPException(status_code=409, detail="最後の管理者は利用停止できません")
+    user.is_active = False
+    user.invite_token_hash = None
+    user.invite_expires_at = None
+    await db.execute(delete(TenantUserToken).where(TenantUserToken.tenant_user_id == user.id))
     await db.commit()
 
-    return LoginResponse(token=raw_token, tenant_user_id=str(user.id), role=user.role)
+
+@router.post("/users/{user_id}/resend-invite")
+async def resend_invite(user_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant),
+                        actor: TenantUser | None = Depends(get_optional_tenant_user),
+                        db: AsyncSession = Depends(get_scoped_db)):
+    await db.execute(select(Tenant).where(Tenant.id == tenant.id).with_for_update())
+    user = (await db.execute(select(TenantUser).where(TenantUser.id == user_id,
+                            TenantUser.tenant_id == tenant.id).with_for_update())).scalar_one_or_none()
+    count = (await db.execute(select(func.count()).where(TenantUser.tenant_id == tenant.id))).scalar_one()
+    bootstrap = actor is None and count == 1 and user is not None and user.role == "owner" and not user.password_hash
+    if not bootstrap and (actor is None or actor.role != "owner"):
+        raise HTTPException(status_code=403, detail="管理者権限が必要です")
+    if user is None:
+        raise HTTPException(status_code=404, detail="社員が見つかりません")
+    if user.is_active or user.password_hash:
+        raise HTTPException(status_code=409, detail="初回招待を受諾済みです")
+    token = secrets.token_urlsafe(32)
+    user.invite_token_hash = hash_api_key(token)
+    user.invite_expires_at = datetime.utcnow() + timedelta(hours=INVITE_TTL_HOURS)
+    await db.commit()
+    url = f'{settings.saas_public_url.rstrip("/")}/#invite={token}&company={tenant.id}'
+    sent = await send_email(to=user.email, subject="ツナグモ：アカウント招待のご案内",
+        html=f'<p>会社ID: {tenant.id}</p><p>招待コード: <code>{token}</code></p>'
+             + (f'<p><a href="{escape(url, quote=True)}">パスワードを設定する</a>（48時間以内）</p>' if settings.saas_public_url else ''))
+    return {"invite_sent": sent}

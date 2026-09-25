@@ -36,6 +36,7 @@ from src.channels.inquiries import append_to_open_inquiry, notify_escalation, re
 from src.core.config import active_llm_model_light, settings
 from src.core.db import async_session_factory, tenant_scoped_session_factory
 from src.core.models import Tenant
+from src.core.ai_budget import BudgetExceededError, ensure_budget_available, lock_budget_tenant, record_cost
 from src.core.tenant_context import set_tenant_scope
 from src.rag.embeddings import EmbeddingError, OpenAIEmbeddingProvider
 from src.rag.prompt_safety import render_retrieved_context
@@ -157,6 +158,13 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
             return ChatResponse(session_id=session.id, reply=BUSY_MESSAGE, escalated=True)
 
         app_config = resolve_app_config(request, tenant.industry)
+        budget_tenant = await lock_budget_tenant(db, tenant.id)
+        try:
+            ensure_budget_available(budget_tenant)
+        except BudgetExceededError:
+            await log_request(db, tenant_id=tenant.id, ip_address=ip_address)
+            await append_exchange(db, session=session, user_message=message, reply=BUSY_MESSAGE, escalated=True)
+            return ChatResponse(session_id=session.id, reply=BUSY_MESSAGE, escalated=True)
         model = active_llm_model_light()
         llm = build_llm()
 
@@ -188,6 +196,7 @@ async def chat(public_key: str, req: ChatRequest, request: Request, response: Re
         )
 
         cost = compute_cost_usd(model, result.usage, app_config.pricing) if result.usage else 0.0
+        record_cost(budget_tenant, cost + getattr(embedding_provider, "total_cost_usd", 0.0))
         await log_request(db, tenant_id=tenant.id, ip_address=ip_address, cost_usd=cost)
         await append_exchange(
             db, session=session, user_message=message, reply=result.reply, escalated=result.escalated

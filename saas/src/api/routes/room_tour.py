@@ -16,6 +16,7 @@ from starlette.background import BackgroundTask
 
 from src.agent.llm import StructuredLLM
 from src.api.deps import get_app_config, get_current_tenant, get_llm, get_scoped_db, get_tts_provider
+from src.core.ai_budget import lock_budget_tenant
 from src.core.ai_budget import (
     ESTIMATED_ROOM_TOUR_COST_USD,
     BudgetExceededError,
@@ -84,7 +85,7 @@ async def generate_room_tour_endpoint(
     if has_video and video.content_type not in ALLOWED_VIDEO_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="対応していない動画形式です(mp4/movのみ対応)。")
 
-    tenant_row = await db.get(Tenant, tenant.id)
+    tenant_row = await lock_budget_tenant(db, tenant.id)
     try:
         ensure_budget_available(tenant_row)
     except BudgetExceededError as e:

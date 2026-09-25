@@ -17,6 +17,7 @@ import uuid
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from src.agent.cost import compute_cost_usd
+from src.core.ai_budget import BudgetExceededError, ensure_budget_available, lock_budget_tenant, record_cost
 from src.agent.llm import build_llm
 from src.agent.inquiry_triage import triage
 from src.agent.public_responder import (
@@ -133,8 +134,10 @@ async def _process_event(tenant: Tenant, event: dict, app) -> None:
         if result is None:
             try:
                 await check_daily_cost_cap(db, tenant_id=tenant.id)
+                budget_tenant = await lock_budget_tenant(db, tenant.id)
+                ensure_budget_available(budget_tenant)
                 ai_available = bool(settings.openai_api_key)
-            except DailyCostCapExceededError:
+            except (DailyCostCapExceededError, BudgetExceededError):
                 ai_available = False
 
             if not ai_available:
@@ -146,6 +149,8 @@ async def _process_event(tenant: Tenant, event: dict, app) -> None:
                 )
             else:
                 result, cost = await _ai_respond(db, tenant, session, message, app)
+                record_cost(budget_tenant, cost)
+                await db.commit()
 
         await reply_to_line(access_token=access_token, reply_token=reply_token, text=result.reply)
         await log_request(db, tenant_id=tenant.id, ip_address=rate_key, cost_usd=cost)
@@ -174,7 +179,8 @@ async def _ai_respond(db, tenant: Tenant, session, message: str, app):
 
     rag_context = ""
     try:
-        vectors = await OpenAIEmbeddingProvider(api_key=settings.openai_api_key).embed([message])
+        embedding = OpenAIEmbeddingProvider(api_key=settings.openai_api_key)
+        vectors = await embedding.embed([message])
         results = await hybrid_search(
             db, tenant_id=tenant.id, query_text=message, query_embedding=vectors[0], index_scope="public", top_k=3
         )
@@ -192,4 +198,4 @@ async def _ai_respond(db, tenant: Tenant, session, message: str, app):
         emergency_phone=tenant.emergency_contact_phone,
     )
     cost = compute_cost_usd(model, result.usage, app_config.pricing) if result.usage else 0.0
-    return result, cost
+    return result, cost + getattr(embedding, "total_cost_usd", 0.0)

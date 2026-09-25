@@ -1,3 +1,4 @@
+from src.api.deps import require_approver, require_account_owner
 """物件提案・追客(2026-09-16)の画面用API: 物件・見込み客の登録、提案の確認・送信、設定、配信停止。
 中身の作り方と送信条件は src/core/proposals.py・src/agent/proposal_scan.py を参照。
 """
@@ -20,6 +21,7 @@ from src.agent.llm import LLMFatalError, StructuredLLM
 from src.agent.proposal_scan import ProposalBlockedError, generate_for_tenant, send_proposal
 from src.api.deps import get_app_config, get_current_tenant, get_llm, get_scoped_db
 from src.channels.mail import MailConfigError
+from src.core.ai_budget import lock_budget_tenant
 from src.core.ai_budget import BudgetExceededError, ensure_budget_available, record_cost
 from src.core.config import active_llm_model, settings
 from src.core.db import async_session_factory
@@ -275,7 +277,7 @@ async def edit_proposal(
     return _proposal_out(p, lead, tenant)
 
 
-@router.post("/api/proposals/{proposal_id}/send", response_model=ProposalOut)
+@router.post("/api/proposals/{proposal_id}/send", response_model=ProposalOut, dependencies=[Depends(require_approver)])
 async def send_proposal_now(proposal_id: uuid.UUID, tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)):
     """担当者が内容を確認して送信する。"""
     p, lead = await _own_proposal(db, tenant, proposal_id)
@@ -323,7 +325,7 @@ async def polish_proposal(
     p, lead = await _own_proposal(db, tenant, proposal_id)
     if p.status not in ("pending", "failed"):
         raise HTTPException(status_code=409, detail="送信済み・破棄済みの提案は編集できません。")
-    tenant_row = await db.get(Tenant, tenant.id)
+    tenant_row = await lock_budget_tenant(db, tenant.id)
     try:
         ensure_budget_available(tenant_row)
     except BudgetExceededError as e:
@@ -381,7 +383,7 @@ async def get_proposal_settings(tenant: Tenant = Depends(get_current_tenant)):
     return _settings_out(tenant)
 
 
-@router.put("/api/proposal-settings", response_model=ProposalSettingsOut)
+@router.put("/api/proposal-settings", response_model=ProposalSettingsOut, dependencies=[Depends(require_account_owner)])
 async def update_proposal_settings(req: ProposalSettings, tenant: Tenant = Depends(get_current_tenant), db: AsyncSession = Depends(get_scoped_db)):
     t = await db.get(Tenant, tenant.id)
     t.marketing_sender_name = req.sender_name.strip() or None

@@ -11,7 +11,7 @@ from src.agent.config_models import AppConfig
 from src.agent.graph import build_graph
 from src.agent.llm import StructuredLLM
 from src.agent.state import new_state
-from src.core.ai_budget import record_cost
+from src.core.ai_budget import record_cost, serialize_company_generation
 from src.core.db import async_session_factory
 from src.core.logging_config import RequestContext
 from src.core.models import Approval
@@ -92,7 +92,7 @@ async def _persist(
     tenant_id: str, session_id: str, status: str, org_state: dict, *, app_config: AppConfig
 ) -> None:
     async with async_session_factory() as db:
-        row = await db.get(SessionModel, uuid.UUID(session_id))
+        row = await db.get(SessionModel, uuid.UUID(session_id), with_for_update=True)
         if row is None or str(row.tenant_id) != tenant_id:
             return
         previous_cost_usd = row.cost_usd or 0.0
@@ -108,7 +108,7 @@ async def _persist(
         # COMPLETED等、そのたびに累計を丸ごと加算すると二重計上になるため)。
         cost_delta = new_cost_usd - previous_cost_usd
         if cost_delta > 0:
-            tenant_row = await db.get(Tenant, uuid.UUID(tenant_id))
+            tenant_row = await db.get(Tenant, uuid.UUID(tenant_id), with_for_update=True)
             if tenant_row is not None:
                 record_cost(tenant_row, cost_delta)
 
@@ -128,6 +128,7 @@ async def _persist(
         await db.commit()
 
 
+@serialize_company_generation
 async def run_new_session(
     *,
     tenant_id: str,
@@ -152,6 +153,7 @@ async def run_new_session(
     await _persist(tenant_id, session_id, result["status"], result, app_config=app_config)
 
 
+@serialize_company_generation
 async def submit_clarify_answer(
     *,
     tenant_id: str,
@@ -170,6 +172,7 @@ async def submit_clarify_answer(
     await _persist(tenant_id, session_id, result["status"], result, app_config=app_config)
 
 
+@serialize_company_generation
 async def submit_approval_decision(
     *,
     tenant_id: str,

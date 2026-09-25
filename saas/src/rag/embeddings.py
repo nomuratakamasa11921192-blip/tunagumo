@@ -32,6 +32,7 @@ class OpenAIEmbeddingProvider:
 
     def __init__(self, api_key: str):
         self._api_key = api_key
+        self.total_cost_usd = 0.0
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -45,7 +46,13 @@ class OpenAIEmbeddingProvider:
         if res.status_code >= 400:
             raise EmbeddingError(f"OpenAI embeddings APIエラー(status={res.status_code}): {res.text[:300]}")
 
-        data = res.json()["data"]
+        payload = res.json()
+        # text-embedding-3-small: $0.02/1M tokens。usageなしはUTF-8バイト数で保守的に推定。
+        tokens = (payload.get("usage") or {}).get("total_tokens")
+        if tokens is None:
+            tokens = sum(len(t.encode("utf-8")) for t in texts)
+        self.total_cost_usd += tokens * .02 / 1_000_000
+        data = payload["data"]
         # OpenAIは並び順を保証していると明記しているが、indexで並べ直して確実にする
         ordered = sorted(data, key=lambda d: d["index"])
         vectors = [d["embedding"] for d in ordered]

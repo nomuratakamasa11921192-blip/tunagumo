@@ -1,3 +1,4 @@
+from src.api.deps import require_approver
 """問い合わせ一覧(2026-09-15)。AIが担当者へ回した問い合わせを、顧客(不動産会社)の担当者が
 確認・対応するための画面用API。
 
@@ -22,6 +23,7 @@ from src.agent.llm import LLMFatalError, StructuredLLM
 from src.api.deps import get_app_config, get_current_tenant, get_llm, get_scoped_db
 from src.channels.line import push_to_line
 from src.channels.mail import MailConfigError, reply_subject
+from src.core.ai_budget import lock_budget_tenant
 from src.core.ai_budget import BudgetExceededError, ensure_budget_available, record_cost
 from src.core.config import active_llm_model, settings
 from src.core.crypto import decrypt_secret
@@ -147,7 +149,7 @@ async def update_status(
     return InquiryDetail(**_summary(inquiry, tenant, mail_account), reason=inquiry.reason, messages=inquiry.messages or [])
 
 
-@router.post("/{inquiry_id}/reply", response_model=InquiryDetail)
+@router.post("/{inquiry_id}/reply", response_model=InquiryDetail, dependencies=[Depends(require_approver)])
 async def reply(
     inquiry_id: uuid.UUID,
     req: ReplyRequest,
@@ -217,7 +219,7 @@ async def draft_reply(
 ) -> DraftResponse:
     """AIの返信案を作る(送信はしない)。運営負担のAI利用なので、月間AI予算を確認・消費する。"""
     inquiry = await _get_own(db, tenant, inquiry_id)
-    tenant_row = await db.get(Tenant, tenant.id)
+    tenant_row = await lock_budget_tenant(db, tenant.id)
     try:
         ensure_budget_available(tenant_row)
     except BudgetExceededError as e:

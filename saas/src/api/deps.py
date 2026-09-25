@@ -61,7 +61,16 @@ async def get_current_tenant(
     result = await db.execute(select(Tenant).where(Tenant.api_key_hash == key_hash))
     tenant = result.scalar_one_or_none()
     if tenant is None:
-        raise HTTPException(status_code=401, detail="APIキーが無効です")
+        result = await db.execute(
+            select(Tenant).join(TenantUserToken, TenantUserToken.tenant_id == Tenant.id)
+            .join(TenantUser, TenantUser.id == TenantUserToken.tenant_user_id)
+            .where(TenantUserToken.token_hash == key_hash,
+                   TenantUserToken.expires_at > datetime.utcnow(),
+                   TenantUser.tenant_id == Tenant.id, TenantUser.is_active.is_(True))
+        )
+        tenant = result.scalar_one_or_none()
+        if tenant is None:
+            raise HTTPException(status_code=401, detail="認証情報が無効か期限切れです")
     # stripe_customer_id未設定(Stripe未連携、管理者が手動発行したテナント等)なら
     # subscription_activeはデフォルトTrueのままなのでここには来ない。Stripe Webhookが
     # 解約等を検知した時だけFalseになる(src/api/routes/stripe_webhook.py)。
@@ -83,6 +92,7 @@ async def get_scoped_db(tenant: Tenant = Depends(get_current_tenant)) -> AsyncSe
 
 async def get_optional_tenant_user(
     x_user_token: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
     tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_scoped_db),
 ) -> TenantUser | None:
@@ -92,6 +102,9 @@ async def get_optional_tenant_user(
     できるかどうかは呼び出し側=sessions.pyがtenant.approval_stagesを見て判断する)。
     ヘッダがあるのに無効・期限切れなら、黙って無視せず401で明示的に拒否する。
     """
+    bearer = (authorization or "").removeprefix("Bearer ").strip()
+    if bearer and hash_api_key(bearer) != tenant.api_key_hash:
+        x_user_token = bearer  # 個人ログイン時は別のヘッダで本人を差し替えない
     if not x_user_token:
         return None
 
@@ -111,6 +124,23 @@ async def get_optional_tenant_user(
         raise HTTPException(status_code=401, detail="ユーザートークンが無効です")
 
     return user
+
+
+async def require_account_owner(
+    tenant: Tenant = Depends(get_current_tenant),
+    actor: TenantUser | None = Depends(get_optional_tenant_user),
+) -> Tenant:
+    # 従来の会社キーは管理者・連携用として維持。社員には個人トークンだけを渡す。
+    if actor is not None and actor.role != "owner":
+        raise HTTPException(status_code=403, detail="会社設定・契約の管理には管理者権限が必要です")
+    return tenant
+
+
+async def require_approver(
+    actor: TenantUser | None = Depends(get_optional_tenant_user),
+) -> None:
+    if actor is not None and actor.role not in ("owner", "approver"):
+        raise HTTPException(status_code=403, detail="外部への送信には承認者または管理者権限が必要です")
 
 
 async def get_app_config(

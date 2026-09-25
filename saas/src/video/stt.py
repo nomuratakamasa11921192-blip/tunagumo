@@ -6,6 +6,9 @@
 """
 
 from typing import Protocol
+import io
+import wave
+import math
 
 import httpx
 
@@ -28,6 +31,7 @@ class OpenAISTTProvider:
 
     def __init__(self, api_key: str):
         self._api_key = api_key
+        self.total_cost_usd = 0.0
 
     async def transcribe_to_srt(self, audio_bytes: bytes, *, filename: str = "audio.wav") -> str:
         if not audio_bytes:
@@ -42,5 +46,13 @@ class OpenAISTTProvider:
             )
         if res.status_code >= 400:
             raise STTError(f"OpenAI 音声認識APIエラー(status={res.status_code}): {res.text[:300]}")
+
+        # 編集処理が抽出したPCM WAVの秒数でWhisperの原価を記録（$0.006/分）。
+        try:
+            with wave.open(io.BytesIO(audio_bytes), "rb") as audio:
+                seconds = math.ceil(audio.getnframes() / audio.getframerate())
+            self.total_cost_usd += seconds / 60 * .006
+        except (wave.Error, EOFError):
+            self.total_cost_usd += .1  # 非WAVの外部利用時の暫定フォールバック
 
         return res.text

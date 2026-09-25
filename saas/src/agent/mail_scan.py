@@ -29,6 +29,7 @@ from src.channels.mail import (
     reply_subject,
     run_in_thread,
 )
+from src.core.ai_budget import lock_budget_tenant
 from src.core.ai_budget import BudgetExceededError, ensure_budget_available, record_cost
 from src.core.config import active_llm_model_light, settings
 from src.core.crypto import decrypt_secret
@@ -229,7 +230,7 @@ async def _mark_lead_replied(db, tenant_id, addresses: set) -> None:
 
 async def _ai_or_escalation(db, tenant, parsed, user_message, app_config, llm_factory) -> PublicResponderResult:
     """AIで回答を試みる。予算切れ・運営キー不備の時は推測で答えず担当者へ回す。"""
-    tenant_row = await db.get(Tenant, tenant.id)
+    tenant_row = await lock_budget_tenant(db, tenant.id)
     try:
         ensure_budget_available(tenant_row)
         ai_available = bool(settings.openai_api_key)
@@ -244,7 +245,8 @@ async def _ai_or_escalation(db, tenant, parsed, user_message, app_config, llm_fa
 
     rag_context = ""
     try:
-        vectors = await OpenAIEmbeddingProvider(api_key=settings.openai_api_key).embed([parsed.body])
+        embedding = OpenAIEmbeddingProvider(api_key=settings.openai_api_key)
+        vectors = await embedding.embed([parsed.body])
         results = await hybrid_search(
             db, tenant_id=tenant.id, query_text=parsed.body, query_embedding=vectors[0], index_scope="public", top_k=3
         )
@@ -257,9 +259,9 @@ async def _ai_or_escalation(db, tenant, parsed, user_message, app_config, llm_fa
         llm=llm_factory(), model=model, company_name=app_config.company.name, message=user_message,
         rag_context=rag_context, emergency_phone=tenant.emergency_contact_phone,
     )
-    if result.usage:
-        record_cost(tenant_row, compute_cost_usd(model, result.usage, app_config.pricing))
-        await db.commit()
+    record_cost(tenant_row, (compute_cost_usd(model, result.usage, app_config.pricing) if result.usage else 0.0)
+                + getattr(embedding, "total_cost_usd", 0.0))
+    await db.commit()
     return result
 
 

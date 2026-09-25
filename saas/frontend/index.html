@@ -287,9 +287,18 @@
 <div id="login-wrap">
   <div id="login">
     <h1>ツナグモ</h1>
-    <label for="login-key">APIキー</label>
+    <div id="member-login-fields">
+      <label for="company-id">会社ID</label><input id="company-id" autocomplete="organization" placeholder="招待メールに記載の会社ID">
+      <label for="member-email">メールアドレス</label><input id="member-email" type="email" autocomplete="username">
+      <label for="member-password">パスワード</label><input id="member-password" type="password" autocomplete="current-password">
+      <button id="member-login-btn" style="margin-top:14px;width:100%;">社員アカウントでログイン</button>
+    </div>
+    <details style="margin-top:18px;"><summary>初期設定・会社キーでログイン</summary>
+    <label for="login-key">会社APIキー（管理者専用）</label>
     <input id="login-key" type="password" placeholder="お送りしたAPIキーを入力してください">
     <button id="login-btn" style="margin-top: 14px; width: 100%;">ログイン</button>
+    </details>
+    <details id="invite-panel" style="margin-top:18px;"><summary>招待を受けてパスワードを設定</summary><label for="invite-code">招待コード</label><input id="invite-code" autocomplete="off"><label for="invite-password">新しいパスワード（8文字以上）</label><input id="invite-password" type="password" autocomplete="new-password"><button id="accept-invite-btn" style="margin-top:14px;">設定する</button></details>
     <p id="login-error" class="error-text" style="display:none; margin-top: 10px; font-size: 13px;"></p>
   </div>
 </div>
@@ -298,7 +307,8 @@
   <aside>
     <button id="menu-toggle" class="secondary" type="button" aria-expanded="false">☰ メニュー</button>
     <button id="new-request-btn" style="width: 100%;">＋ 新しい依頼</button>
-    <h2>依頼履歴</h2>
+    <button id="activity-btn" class="secondary" style="width:100%;margin-top:8px;">会社の共有履歴</button>
+    <h2>会社の依頼履歴</h2>
     <ul id="session-list"></ul>
     <h2>アカウント</h2>
     <button id="inquiries-btn" class="secondary" style="width: 100%; margin-bottom: 8px;">問い合わせ</button>
@@ -310,6 +320,8 @@
     <button id="property-csv-btn" class="secondary" style="width: 100%; margin-top: 8px;">ポータル連携CSV</button>
     <button id="schedules-btn" class="secondary" style="width: 100%; margin-top: 8px;">定期実行</button>
     <button id="settings-btn" class="secondary" style="width: 100%; margin-top: 8px;">設定・利用状況</button>
+    <button id="team-btn" class="secondary" style="width:100%;margin-top:8px;">社員・会社情報</button>
+    <p id="company-usage-notice" role="status" style="font-size:12px;"></p>
     <button id="logout-btn" class="secondary" style="width: 100%; margin-top: 8px;">ログアウト</button>
   </aside>
   <main id="main-content">
@@ -325,6 +337,7 @@
 
   var STORAGE_KEY = 'tsunagumo_api_key';
   var apiKey = localStorage.getItem(STORAGE_KEY) || '';
+  var accountIdentity = {role: 'company_key'};
   var currentSessionId = null;
   var pollTimer = null;
   // 画面を切り替えるたびに増える番号。2秒ごとの状態取得など、非同期処理の結果が返ってきた時に
@@ -420,6 +433,8 @@
   }
 
   function logout() {
+    if (apiKey) fetch('/api/account/logout', {method:'POST', headers:{Authorization:'Bearer ' + apiKey}}).catch(function () {});
+    accountIdentity = {role:'company_key'};
     localStorage.removeItem(STORAGE_KEY);
     apiKey = '';
     newView();
@@ -431,6 +446,12 @@
     loginEl.style.display = 'none';
     appEl.classList.add('active');
     loadSessionList();
+    api('/api/account/me').then(function (me) { accountIdentity = me; }).catch(function () {});
+    api('/api/account/usage').then(function (u) {
+      document.getElementById('company-usage-notice').textContent = u.usage_state === 'exhausted'
+        ? '会社全体の今月の利用枠を使い切りました。作成済み資料は引き続き確認できます。'
+        : u.usage_state === 'warning' ? '会社全体の利用量が80%以上です。設定・利用状況をご確認ください。' : '';
+    }).catch(function () {});
   }
 
   document.getElementById('login-btn').addEventListener('click', function () {
@@ -446,6 +467,127 @@
       document.getElementById('login-error').style.display = 'block';
     });
   });
+
+
+  function publicAccount(path, body) {
+    return fetch('/api/account/' + path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : '入力内容をご確認ください'); return d; }); });
+  }
+  function loginError(e) {
+    document.getElementById('login-error').textContent = e.message;
+    document.getElementById('login-error').style.display = 'block';
+  }
+  document.getElementById('member-login-btn').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    publicAccount('member-login', {company_id:document.getElementById('company-id').value.trim(),
+      email:document.getElementById('member-email').value.trim(), password:document.getElementById('member-password').value})
+    .then(function (r) { apiKey = r.token; localStorage.setItem(STORAGE_KEY, apiKey);
+      document.getElementById('member-password').value = ''; document.getElementById('login-error').style.display = 'none'; showApp(); })
+    .catch(loginError).finally(function () { btn.disabled = false; });
+  });
+  var inviteParams = new URLSearchParams(location.hash.slice(1));
+  if (inviteParams.has('invite')) {
+    document.getElementById('invite-panel').open = true;
+    document.getElementById('invite-code').value = inviteParams.get('invite');
+    document.getElementById('company-id').value = inviteParams.get('company') || '';
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+  document.getElementById('accept-invite-btn').addEventListener('click', function () {
+    var btn = this; btn.disabled = true;
+    publicAccount('accept-invite', {invite_token:document.getElementById('invite-code').value.trim(), password:document.getElementById('invite-password').value})
+    .then(function (r) {
+      document.getElementById('company-id').value = r.company_id;
+      document.getElementById('member-email').value = r.email;
+      document.getElementById('invite-code').value = ''; document.getElementById('invite-password').value = '';
+      document.getElementById('invite-panel').open = false;
+      document.getElementById('login-error').style.display = 'none'; toast('パスワードを設定しました。社員アカウントでログインしてください。');
+    }).catch(loginError).finally(function () { btn.disabled = false; });
+  });
+
+  document.getElementById('activity-btn').addEventListener('click', renderCompanyActivity);
+  function renderCompanyActivity() {
+    var viewId = newView(); currentSessionId = null;
+    mainEl.innerHTML = '<div class="card"><h2>会社の共有履歴</h2><p>同じ会社の社員が、依頼・成果物・承認・引き継ぎメモを確認できます。各一覧は最近100件です。</p><button id="refresh-activity" class="secondary">更新する</button><div id="company-activity">読み込み中…</div></div>';
+    document.getElementById('refresh-activity').onclick = renderCompanyActivity;
+    api('/api/account/activity').then(function (data) {
+      if (viewId !== viewToken) return;
+      var statuses = {QUEUED:'受付済み',RUNNING:'処理中',CLARIFYING:'追加情報待ち',AWAITING_APPROVAL:'承認待ち',COMPLETED:'完了',APPROVED:'承認済み',HALTED:'中断',ERROR:'エラー'};
+      var html = '<h3>依頼と成果物</h3>';
+      (data.requests || []).forEach(function (r) {
+        html += '<div class="card"><p><strong>' + escapeHtml(r.title) + '</strong></p><p>' + escapeHtml(statuses[r.status] || r.status) + ' ／ 依頼者：' + escapeHtml(r.requester) + '</p><p class="muted">更新：' + escapeHtml(new Date(r.updated_at + (/Z$|[+-]\d\d:\d\d$/.test(r.updated_at) ? '' : 'Z')).toLocaleString('ja-JP')) + '</p>' +
+          '<button class="activity-open" data-id="' + escapeHtml(r.session_id) + '">依頼・成果物を開く</button>' +
+          '<details style="margin-top:12px;"><summary>引き継ぎメモを共有する</summary><textarea maxlength="2000" aria-label="共有メモ"></textarea><button class="activity-comment" data-id="' + escapeHtml(r.session_id) + '">社内に共有</button></details></div>';
+      });
+      if (!(data.requests || []).length) html += '<p>まだ依頼はありません。</p>';
+      html += '<h3>承認・画像作成・引き継ぎメモ</h3>';
+      (data.events || []).forEach(function (e) {
+        html += '<div class="card"><p><strong>' + escapeHtml({COMMENT:'共有メモ',APPROVE:'承認',REJECT:'差し戻し',IMAGE_GENERATED:'画像作成'}[e.action] || e.action) + '</strong> ／ ' + escapeHtml(e.actor) + '</p><p>' + escapeHtml(e.title) + '</p><p style="white-space:pre-wrap;">' + escapeHtml(e.comment || '') + '</p></div>';
+      });
+      document.getElementById('company-activity').innerHTML = html;
+      mainEl.querySelectorAll('.activity-open').forEach(function (btn) { btn.onclick = function () { currentSessionId = btn.dataset.id; loadSessionDetail(btn.dataset.id); highlightSelected(btn.dataset.id); }; });
+      mainEl.querySelectorAll('.activity-comment').forEach(function (btn) { btn.onclick = function () {
+        var comment = btn.parentElement.querySelector('textarea').value.trim(); if (!comment) return;
+        btn.disabled = true;
+        api('/api/sessions/' + encodeURIComponent(btn.dataset.id) + '/comments', {method:'POST', body:JSON.stringify({comment:comment})})
+          .then(function () { if (viewId === viewToken) renderCompanyActivity(); toast('社内に共有しました'); })
+          .catch(function (e) { toast(e.message); }).finally(function () { btn.disabled = false; });
+      }; });
+    }).catch(function (e) { if (viewId === viewToken) document.getElementById('company-activity').textContent = e.message; });
+  }
+
+  document.getElementById('team-btn').addEventListener('click', renderTeam);
+  function renderTeam() {
+    var viewId = newView();
+    mainEl.innerHTML = '<div class="card"><h2>社員・会社情報</h2><div id="team-body">読み込み中…</div></div>';
+    api('/api/account/me').then(function (me) {
+      if (viewId !== viewToken) return;
+      accountIdentity = me;
+      var owner = me.role === 'owner', canInvite = owner || me.can_bootstrap_owner;
+      var html = '<p>会社名：' + escapeHtml(me.company_name) + '</p><p>会社ID：<code>' + escapeHtml(me.company_id) + '</code></p>' +
+        '<p>利用枠は会社全体で共有します。同じ会社の社員を追加しても、人数分の料金は発生しません。</p>';
+      if (canInvite) html += '<h3>' + (owner ? '社員を招待する' : '最初の管理者を招待する') + '</h3>' +
+        '<p>会社APIキーは社員に配布せず、社員ごとに招待してください。</p><label for="team-email">メールアドレス</label><input id="team-email" type="email">' +
+        '<label for="team-role">権限</label><select id="team-role"><option value="member">一般社員（作成・閲覧）</option><option value="approver">承認者（作成・閲覧・承認）</option><option value="owner">管理者（会社設定・契約・招待も管理）</option></select>' +
+        '<button id="team-invite" style="margin-top:12px;">招待メールを送る</button><p id="team-result" role="status"></p>';
+      else if (!owner) html += '<p>社員の追加・利用停止は、個人アカウントでログインした管理者が行えます。</p>';
+      if (me.pending_owner_id) html += '<button id="resend-owner">最初の管理者への招待を再送</button>';
+      if (owner) html += '<div id="team-list"></div>';
+      document.getElementById('team-body').innerHTML = html;
+      if (me.pending_owner_id) document.getElementById('resend-owner').onclick = function () { var btn=this; btn.disabled=true; api('/api/account/users/' + encodeURIComponent(me.pending_owner_id) + '/resend-invite', {method:'POST'}).then(function (r) { toast(r.invite_sent ? '再送しました' : 'メール設定をご確認ください'); }).catch(function (e) { toast(e.message); }).finally(function () { btn.disabled=false; }); };
+      if (canInvite) document.getElementById('team-invite').onclick = function () {
+        var btn = this; btn.disabled = true;
+        api('/api/account/users', {method:'POST', body:JSON.stringify({email:document.getElementById('team-email').value.trim(), role:document.getElementById('team-role').value})})
+        .then(function (r) { if (viewId !== viewToken) return;
+          document.getElementById('team-result').textContent = r.invite_sent ? '招待メールを送りました。受信者が48時間以内にパスワードを設定してください。' : '招待は登録されましたが、メールを送れませんでした。運営にメール設定をご確認ください。';
+          if (!owner) {
+            document.getElementById('team-invite').style.display = 'none';
+            var resend = document.createElement('button'); resend.textContent = '招待メールを再送する';
+            resend.onclick = function () { api('/api/account/users/' + encodeURIComponent(r.tenant_user_id) + '/resend-invite', {method:'POST'}).then(function (d) { toast(d.invite_sent ? '再送しました' : 'メール設定をご確認ください'); }).catch(function (e) { toast(e.message); }); };
+            document.getElementById('team-result').after(resend);
+          } else loadTeamList(viewId);
+        }).catch(function (e) { if (viewId === viewToken) document.getElementById('team-result').textContent = e.message; })
+        .finally(function () { btn.disabled = false; });
+      };
+      if (owner) loadTeamList(viewId);
+    }).catch(function (e) { if (viewId === viewToken) document.getElementById('team-body').textContent = e.message; });
+  }
+  function loadTeamList(viewId) {
+    api('/api/account/users').then(function (data) {
+      if (viewId !== viewToken) return;
+      var box = document.getElementById('team-list'); box.innerHTML = '<h3>社員一覧</h3>';
+      data.users.forEach(function (u) {
+        var row = document.createElement('p'); row.textContent = u.email + ' — ' + ({owner:'管理者',approver:'承認者',member:'一般社員'}[u.role] || u.role) + ' / ' + (u.is_active ? '利用中' : '招待待ち・利用停止');
+        var btn = document.createElement('button'); btn.className = 'secondary'; btn.textContent = u.is_active ? '利用停止' : '招待を再送';
+        btn.onclick = function () {
+          if (u.is_active && !confirm(u.email + ' の利用を停止しますか？ 全端末からログアウトされます。')) return;
+          btn.disabled = true;
+          api('/api/account/users/' + encodeURIComponent(u.tenant_user_id) + (u.is_active ? '' : '/resend-invite'), {method:u.is_active ? 'DELETE' : 'POST'})
+            .then(function (r) { toast(u.is_active ? '利用を停止しました' : r.invite_sent ? '招待を再送しました' : 'メール設定をご確認ください'); if (viewId === viewToken) loadTeamList(viewId); })
+            .catch(function (e) { toast(e.message); }).finally(function () { btn.disabled = false; });
+        }; row.appendChild(btn); box.appendChild(row);
+      });
+    }).catch(function (e) { if (viewId === viewToken) document.getElementById('team-list').textContent = e.message; });
+  }
 
   document.getElementById('logout-btn').addEventListener('click', logout);
 
@@ -512,7 +654,7 @@
   function renderSettings() {
     var viewId = newView();
     mainEl.innerHTML =
-      '<div class="card"><p class="muted" style="margin-top:0;">今月の利用状況</p>' +
+      '<div class="card"><p class="muted" style="margin-top:0;">会社全体の今月の利用状況</p>' +
       '<div id="usage-body">読み込み中…</div>' +
       '<button id="buy-addon-btn" class="secondary" style="margin-top:12px;">追加のご利用枠を購入する(¥25,000)</button>' +
       '<div id="buy-addon-result"></div>' +
@@ -581,10 +723,13 @@
 
     api('/api/account/usage').then(function (u) {
       if (viewId !== viewToken) return;
-      var planLabel = { light: 'ライト', standard: 'スタンダード', unlimited: '無制限' }[u.plan] || u.plan;
+      var planLabel = u.plan_label || {basic:'ベーシック',business:'ビジネス',enterprise:'エンタープライズ',light:'ライト（旧プラン）',standard:'スタンダード（旧プラン）',unlimited:'プレミアム（旧プラン）'}[u.plan] || u.plan;
+      document.getElementById('buy-addon-btn').style.display = u.self_service_addon === false ? 'none' : '';
+      var usageNotice = u.usage_state === 'exhausted' ? '今月の利用枠を使い切りました。翌月の更新を待つか、上位プランについてご相談ください。' : u.usage_state === 'warning' ? '会社全体の利用量が80%以上です。残量をご確認ください。' : '';
+      var resetText = u.resets_at ? '次回更新：' + new Date(u.resets_at).toLocaleString('ja-JP') : '';
       // 2026-09-17: AI利用量は割合で表示する(金額を出すと原価・利益率が推測できてしまうため)
       var pct = u.ai_usage_percent;
-      var barColor = pct >= 90 ? '#B8452F' : (pct >= 70 ? '#B8792F' : 'var(--accent, #4d7a4e)');
+      var barColor = pct >= 100 ? '#B8452F' : (pct >= 80 ? '#B8792F' : 'var(--accent, #4d7a4e)');
       var addonText = u.addon_purchased ? '(追加購入分を含む)' : '';
       document.getElementById('usage-body').innerHTML =
         '<p style="font-size:14px;">今月のご依頼: <strong>' + u.this_month_session_count + '件</strong></p>' +
@@ -595,7 +740,12 @@
         '<div style="background:#0000000f; border-radius:6px; height:8px; margin-top:6px; overflow:hidden;">' +
         '<div style="background:' + barColor + '; width:' + Math.min(pct, 100) + '%; height:100%;"></div>' +
         '</div>' +
-        '<p class="muted" style="font-size:12px; margin-top:8px;">※ 文章作成などのAI利用料は月額料金に含まれています。上限に近づいた場合は、追加のご利用枠のご購入、またはプランのご変更をご検討ください。</p>';
+        '<p class="muted" style="font-size:12px; margin-top:8px;">会社全体で共有する月間枠です。社員を追加しても枠は増えません。追加料金は自動では発生しません。上限到達後も作成済み資料の閲覧・ダウンロードはできます。</p>';
+      document.getElementById('usage-body').insertAdjacentHTML('beforeend', '<p role="status">' + escapeHtml(usageNotice) + '</p><p class="muted">' + escapeHtml(resetText) + '</p><p><a href="https://tunagumo.com/trial" target="_blank" rel="noopener">上位プランについて相談する</a></p>');
+      if (accountIdentity.role === 'member' || accountIdentity.role === 'approver') {
+        document.getElementById('buy-addon-btn').style.display = 'none'; document.getElementById('billing-portal-btn').style.display = 'none';
+        mainEl.querySelectorAll('.card').forEach(function (card, i) { if (i > 0) card.style.display = 'none'; });
+      }
       showHiggsfieldKeyStatus(u.higgsfield_key_registered);
     }).catch(function (e) {
       if (viewId !== viewToken) return;

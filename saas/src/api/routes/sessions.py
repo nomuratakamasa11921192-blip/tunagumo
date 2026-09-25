@@ -26,6 +26,7 @@ from src.api.deps import (
     get_optional_tenant_user,
     get_scoped_db,
 )
+from src.core.ai_budget import lock_budget_tenant
 from src.core.ai_budget import (
     ESTIMATED_OPENAI_IMAGE_COST_USD,
     BudgetExceededError,
@@ -96,6 +97,7 @@ async def _get_owned_session(db: AsyncSession, tenant: Tenant, session_id: uuid.
 @router.post("", response_model=CreateSessionResponse, status_code=202)
 async def create_session(
     req: CreateSessionRequest,
+    actor: TenantUser | None = Depends(get_optional_tenant_user),
     tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_scoped_db),
     app_config: AppConfig = Depends(get_app_config),
@@ -129,6 +131,9 @@ async def create_session(
         status="QUEUED",
     )
     db.add(session)
+    await db.flush()
+    db.add(AuditLog(tenant_id=tenant.id, session_id=session.id, action="REQUEST_CREATED",
+                    actor=str(actor.id) if actor else str(tenant.id)))
     await db.commit()
     await db.refresh(session)
 
@@ -136,7 +141,7 @@ async def create_session(
         run_new_session(
             tenant_id=str(tenant.id),
             session_id=str(session.id),
-            requester_id=str(tenant.id),  # Phase 10でテナント内ユーザーの識別に差し替える
+            requester_id=str(actor.id) if actor else str(tenant.id),
             raw_message=req.text,
             app_config=app_config,
             llm=llm,
@@ -276,6 +281,7 @@ async def generate_session_image(
     tenant: Tenant = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_scoped_db),
     image_client: OpenAIImageClient | None = Depends(get_image_client),
+    actor: TenantUser | None = Depends(get_optional_tenant_user),
 ) -> GenerateImageResponse:
     """完成した文章に付随する画像を生成する(OpenAI。運営(ツナグモ)自身のキーを使い、
     コストは月間AI予算から消費する、src/core/ai_budget.py参照。2026-09-15にHiggsfieldから移行)。
@@ -286,7 +292,7 @@ async def generate_session_image(
             detail="画像生成は現在ご利用いただけません。お手数ですが運営までお問い合わせください。",
         )
 
-    tenant_row = await db.get(Tenant, tenant.id)
+    tenant_row = await lock_budget_tenant(db, tenant.id)
     try:
         ensure_budget_available(tenant_row)
     except BudgetExceededError as e:
@@ -315,9 +321,30 @@ async def generate_session_image(
     generated_images.append({"url": image_url, "prompt_hint": req.prompt_hint, "quality": req.quality})
     result["generated_images"] = generated_images
     session.result = result
+    db.add(AuditLog(tenant_id=tenant.id, session_id=session.id, action="IMAGE_GENERATED",
+                    actor=str(actor.id) if actor else str(tenant.id)))
     await db.commit()
 
     return GenerateImageResponse(image_url=image_url)
+
+
+class SharedCommentRequest(BaseModel):
+    comment: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/{session_id}/comments", status_code=201)
+async def add_shared_comment(session_id: uuid.UUID, req: SharedCommentRequest,
+                             tenant: Tenant = Depends(get_current_tenant),
+                             actor: TenantUser | None = Depends(get_optional_tenant_user),
+                             db: AsyncSession = Depends(get_scoped_db)):
+    session = await _get_owned_session(db, tenant, session_id)
+    comment = req.comment.strip()
+    if not comment:
+        raise HTTPException(status_code=400, detail="共有する内容を入力してください")
+    db.add(AuditLog(tenant_id=tenant.id, session_id=session.id, action="COMMENT",
+                    actor=str(actor.id) if actor else str(tenant.id), comment=comment))
+    await db.commit()
+    return {"shared": True}
 
 
 @router.post("/{session_id}/generate-video", response_model=GenerateVideoResponse, status_code=201)
@@ -348,7 +375,7 @@ async def generate_session_video(
 
     # tenant(get_current_tenant)はdb(get_scoped_db)とは別のDBセッションに属するため、
     # ここでのカウント更新をdb.commit()で永続化できるよう、dbに紐づく行を取り直す。
-    tenant_row = await db.get(Tenant, tenant.id)
+    tenant_row = await lock_budget_tenant(db, tenant.id)
     try:
         ensure_budget_available(tenant_row)
     except BudgetExceededError as e:

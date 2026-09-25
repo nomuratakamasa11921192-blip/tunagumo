@@ -77,10 +77,9 @@ class Tenant(Base):
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     subscription_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     # 2026-09-01: プラン別の動画生成本数制限(src/core/plan_limits.py参照)。このSaaSは
-    # 顧客自身のAIキーを使うため(AI利用の実費はツナグモではなく顧客が負担)、この制限は
-    # 「原価防止」ではなく「プランによる価格差別化(松竹梅)」が目的。テキスト生成・画像生成
-    # ・物件データ取得は全プラン無制限のまま(制限するのは動画生成だけ)。
+    # 文章・画像等は会社の月間AI共有枠で管理する。Higgsfield動画は顧客負担。
     plan: Mapped[str] = mapped_column(String(20), default="light", server_default="'light'")
+    enterprise_ai_budget_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     video_generations_this_period: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # この値の年月と現在の年月が異なれば、動画生成カウントを0にリセットしてから判定する
     # (月次バッチを別途動かす必要がない、参照時リセット方式)。
@@ -459,6 +458,8 @@ class TenantUser(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id"), index=True)
     email: Mapped[str] = mapped_column(String(320))
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    login_locked_until: Mapped[datetime | None] = mapped_column(nullable=True)
     role: Mapped[str] = mapped_column(String(20), default="member")  # member/approver/owner
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     # 招待リンクのトークンはハッシュ化して保存する(APIキーと同じ方式、src/api/deps.pyのhash_api_key)。

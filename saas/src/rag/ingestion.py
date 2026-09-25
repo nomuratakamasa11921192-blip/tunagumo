@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.db import async_session_factory
+from src.core.ai_budget import lock_budget_tenant, ensure_budget_available, record_cost
 from src.core.logging_config import RequestContext
 from src.core.models import Chunk, Document
 from src.rag.chunking import chunk_text
@@ -126,10 +127,13 @@ async def _process_document(
         raise ExtractionError("文書からチャンクを1件も作成できませんでした。")
 
     # 埋め込みを全件終えてから書き込む(7-1-4: 中途半端なチャンクを残さない)
-    try:
+    async with async_session_factory() as budget_db:
+        tenant = await lock_budget_tenant(budget_db, tenant_id)
+        ensure_budget_available(tenant)
+        before = getattr(embedding_provider, "total_cost_usd", 0.0)
         vectors = await embedding_provider.embed([c.content for c in chunks])
-    except EmbeddingError:
-        raise
+        record_cost(tenant, getattr(embedding_provider, "total_cost_usd", 0.0) - before)
+        await budget_db.commit()
 
     async with async_session_factory() as db:
         document = await db.get(Document, document_id)

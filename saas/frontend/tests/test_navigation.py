@@ -40,6 +40,9 @@ class NavigationTests(unittest.TestCase):
         self.page.on('pageerror', lambda error: self.errors.append(str(error)))
         self.held = []
         self.delay = None
+        self.company_usage = None
+        self.member_login_body = None
+        self.last_comment = None
         self.session = dict(session_id='current', status='RUNNING', request_text='処理中の依頼', created_at='2026-09-17T00:00:00', result={})
         self.context.add_init_script("localStorage.setItem('tsunagumo_api_key', 'test-only')")
         self.page.route('**/*', self.route)
@@ -63,10 +66,22 @@ class NavigationTests(unittest.TestCase):
             data = {'sessions': [self.session]}
         elif path == '/api/sessions/current':
             data = self.session
+        elif path == '/api/account/member-login':
+            self.member_login_body = route.request.post_data_json
+            data = dict(token='member-test-token', role='member', tenant_user_id='person')
+        elif path == '/api/account/me':
+            data = dict(company_id='company', company_name='テスト会社', role='owner', can_bootstrap_owner=False)
+        elif path == '/api/account/activity':
+            data = dict(requests=[dict(session_id='current', title='<script>共有依頼</script>', status='COMPLETED', requester='社員@example.com', updated_at='2026-09-25T00:00:00')],
+                        events=[dict(session_id='current', title='共有依頼', action='COMMENT', actor='社員@example.com', comment=self.last_comment or '<img src=x onerror=alert(1)>')])
+        elif path == '/api/sessions/current/comments':
+            self.last_comment = route.request.post_data_json['comment']
+            data = {'shared': True}
         elif path == '/api/account/usage':
             data = dict(this_month_session_count=3, all_time_session_count=8, plan='light',
                         ai_usage_percent=40, ai_remaining_percent=110, addon_purchased=True,
                         higgsfield_key_registered=False)
+            if self.company_usage: data.update(self.company_usage)
         elif path == '/api/account/inquiry-settings':
             data = dict(line_webhook_url='https://example.test/webhook')
         elif path == '/api/market-data/prefectures':
@@ -179,6 +194,39 @@ class NavigationTests(unittest.TestCase):
         self.session.update(status='COMPLETED', result={'reply': '回答を反映しました'})
         self.release()
         expect(self.page.locator('#main-content')).to_contain_text('回答を反映しました')
+
+
+    def test_company_usage_warning_and_no_addon_purchase(self):
+        self.company_usage = dict(plan='basic', plan_label='ベーシック', ai_usage_percent=80,
+            ai_remaining_percent=20, usage_state='warning', self_service_addon=False,
+            resets_at='2026-10-01T00:00:00Z')
+        self.page.click('#settings-btn')
+        expect(self.page.locator('#usage-body')).to_contain_text('会社全体')
+        expect(self.page.locator('#usage-body')).to_contain_text('80%以上')
+        expect(self.page.locator('#buy-addon-btn')).to_be_hidden()
+        expect(self.page.locator('#usage-body')).to_contain_text('追加料金は自動では発生しません')
+
+    def test_employee_login_does_not_need_company_master_key(self):
+        self.page.click('#logout-btn')
+        self.page.fill('#company-id', 'company-id')
+        self.page.fill('#member-email', 'member@example.com')
+        self.page.fill('#member-password', 'employee-password')
+        self.page.click('#member-login-btn')
+        expect(self.page.locator('#app')).to_have_class('active')
+        self.assertEqual(self.member_login_body, dict(company_id='company-id', email='member@example.com', password='employee-password'))
+        self.assertEqual(self.page.evaluate("localStorage.getItem('tsunagumo_api_key')"), 'member-test-token')
+        expect(self.page.locator('#member-password')).to_have_value('')
+
+    def test_company_feed_escapes_content_and_shares_note(self):
+        self.page.click('#activity-btn')
+        expect(self.page.locator('#company-activity')).to_contain_text('<script>共有依頼</script>')
+        expect(self.page.locator('#company-activity img')).to_have_count(0)
+        self.page.locator('#company-activity summary').click()
+        self.page.get_by_label('共有メモ').fill('明日、内容を確認してください')
+        self.page.locator('.activity-comment').click()
+        expect(self.page.locator('#company-activity')).to_contain_text('明日、内容を確認してください')
+        self.page.locator('.activity-open').click()
+        expect(self.page.locator('#main-content')).to_contain_text('処理中の依頼')
 
 
 if __name__ == '__main__':
