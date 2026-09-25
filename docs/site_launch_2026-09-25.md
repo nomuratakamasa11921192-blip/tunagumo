@@ -1,4 +1,21 @@
-# サイトとInstagram画像の公開準備（2026-09-25）
+# サイトとInstagram画像の本番反映（2026-09-25）
+
+## 完了結果
+
+ユーザーの明示承認を受け、2026-09-25 19:52:07 JSTに下記4ファイルを本番へ反映した。反映元は `5e46d47f136052b5cdbf434191d9eeb5cbcd9379`。旧ページは `/root/website-before-sns-20260925_195207.tar.gz` に保存済み（権限600）。
+
+- サイトのトップページと画像3枚の公開URLでHTTP 200を確認し、配信内容のSHA-256が下表とすべて一致した。
+- アプリの `https://app.tunagumo.com/index.html` もHTTP 200。VPSから通常のTLS検証付きで確認した結果であり、PCブラウザの実画面確認とは区別する。
+- NotionのInstagram下書き3件へ画像URLを設定し、読み直してURL一致・状態「下書き」を確認した。承認変更とSNS投稿は行っていない。
+- アプリ・DB・ENVの変更、コンテナ再起動は行っていない。
+
+| NotionページID | 公開画像 |
+|---|---|
+| 3e49baaf-6d95-81ad-9549-dfbc9acaa3e4 | https://tunagumo.com/assets/instagram/launch_20260923_01.jpg |
+| 3e49baaf-6d95-8142-bf8c-e8e391cf6901 | https://tunagumo.com/assets/instagram/launch_20260923_02.jpg |
+| 3e49baaf-6d95-819e-8293-defabb698f76 | https://tunagumo.com/assets/instagram/launch_20260923_03.jpg |
+
+Notionの変更前データと検証結果はPCのGit対象外 `saas/workspace/sns-launch-20260923/notion-image-before-20260925.json` と `notion-image-update-result-20260925.json` に保存した。以下は反映前の確認・準備記録。
 
 ## 反映候補
 
