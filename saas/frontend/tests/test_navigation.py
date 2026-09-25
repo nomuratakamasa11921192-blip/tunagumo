@@ -217,6 +217,16 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(self.page.evaluate("localStorage.getItem('tsunagumo_api_key')"), 'member-test-token')
         expect(self.page.locator('#member-password')).to_have_value('')
 
+    def test_invitation_opens_password_setup_with_existing_company_login(self):
+        # Mail links must take priority over a saved company/member session.
+        self.page.goto('http://frontend.test/?invite-test=1#invite=test-invite&company=invited-company')
+        expect(self.page.locator('#invite-password')).to_be_visible()
+        expect(self.page.locator('#app')).not_to_have_class('active')
+        expect(self.page.locator('#invite-code')).to_have_value('test-invite')
+        expect(self.page.locator('#company-id')).to_have_value('invited-company')
+        self.assertNotIn('#', self.page.url)
+        self.assertEqual(self.page.evaluate("localStorage.getItem('tsunagumo_api_key')"), 'test-only')
+
     def test_company_feed_escapes_content_and_shares_note(self):
         self.page.click('#activity-btn')
         expect(self.page.locator('#company-activity')).to_contain_text('<script>共有依頼</script>')

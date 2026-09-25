@@ -2610,7 +2610,8 @@
     }
   }
 
-  if (apiKey) {
+  // Keep invitation setup visible even when a company/member login is saved.
+  if (apiKey && !inviteParams.has('invite')) {
     api('/api/sessions').then(showApp).catch(logout);
   }
 })();
