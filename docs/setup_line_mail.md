@@ -24,10 +24,11 @@
 
 ### 1-1. LINE 側でチャネルを作る
 
-1. https://developers.line.biz/console/ にLINEアカウントでログイン
-2. 「新規プロバイダー作成」→ 名前は会社名でよい（顧客には表示されない）
-3. そのプロバイダーで「新規チャネル作成」→ **Messaging API** を選ぶ
-4. チャネル名（**顧客に表示される**ので会社名・店舗名が無難）、説明、業種、メールアドレスを入力して作成
+1. 顧客対応に使うLINE公式アカウントを用意し、[LINE Official Account Manager](https://manager.line.biz/) にログインする。
+2. 対象アカウントの「設定」→「Messaging API」から利用を有効にし、所属するプロバイダーを選ぶ。既存の営業用アカウントを顧客用に転用しない。
+3. [LINE Developersコンソール](https://developers.line.biz/console/) で作成されたチャネルを開く。
+
+2024年9月4日以降、DevelopersコンソールからMessaging APIチャネルを直接新規作成する手順は廃止されている。[公式の開始手順](https://developers.line.biz/ja/docs/messaging-api/getting-started/)（2026-09-25確認）。チャネルを既に持っている場合は作り直さない。
 
 ### 1-2. 2つの値をツナグモに登録する
 
@@ -49,10 +50,11 @@
 
 「応答メッセージ」の「編集」→ LINE公式アカウントマネージャーが開く。
 
-- 応答モード: **Bot**
 - 応答メッセージ: **オフ**
 - Webhook: **オン**
 - あいさつメッセージ: どちらでもよい
+
+画面の項目名はLINE側の更新で変わる場合がある。旧画面の「応答モード: Bot」を探すのではなく、Webhookの利用と応答メッセージの設定を確認する。[公式ボット作成手順](https://developers.line.biz/ja/docs/messaging-api/building-bot/)（2026-09-25確認）。
 
 **これをやらないと、LINEの定型文（「メッセージありがとうございます」）が代わりに返ってしまう。**
 
@@ -78,7 +80,9 @@
 
 1. Googleアカウントで **2段階認証**を有効にする（https://myaccount.google.com/security）
 2. https://myaccount.google.com/apppasswords で**アプリパスワード**を発行（表示される16桁を控える）
-3. Gmailの設定 → 「メール転送とPOP/IMAP」→ **IMAPを有効にする**
+3. 個人用Gmailでは、2025年1月以降IMAPは常に有効で、有効化スイッチはない。Google Workspaceは管理者のアクセス制限も確認する。
+
+アプリパスワードが表示されないアカウントでは、セキュリティ設定を弱めず、管理者に利用可否を確認する。本サービスの接続フォームはIMAP/SMTPのパスワード方式で、Google OAuthログインの代替実装はない。[Gmail公式説明](https://support.google.com/mail/answer/7126229?hl=ja)、[アプリパスワードの条件](https://support.google.com/accounts/answer/185833?hl=ja)（2026-09-25確認）。
 
 | 項目 | 値 |
 |---|---|
