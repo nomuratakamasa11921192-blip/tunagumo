@@ -328,7 +328,7 @@ async function bookCalendarEvent(env, { start_iso, end_iso, label, contact }) {
   return { booked: true, label, zoom_url: env.ZOOM_PERSONAL_ROOM_URL, event_link: data.htmlLink };
 }
 
-async function stripeRequest(env, method, path, params) {
+async function stripeRequest(env, method, path, params, idempotencyKey) {
   let url = `${STRIPE_API}/${path}`;
   let body;
   if (method === "GET") {
@@ -341,6 +341,7 @@ async function stripeRequest(env, method, path, params) {
     headers: {
       Authorization: "Basic " + btoa(`${env.STRIPE_SECRET_KEY}:`),
       "content-type": "application/x-www-form-urlencoded",
+      ...(idempotencyKey ? {"Idempotency-Key": idempotencyKey} : {}),
     },
     body,
   });
@@ -385,42 +386,56 @@ async function listPendingBookings(env) {
 }
 
 // 申込み時のプラン。料金ページ(website/pricing.html)とStripeの商品、SaaS側のプラン名を対応させる。
-// 未指定ならライト(いちばん小さいプラン)で始め、必要なら後から管理画面で変更する。
+// 新規はベーシック。プラン未記録の旧予約だけ従来のライトを維持する。
 const PLANS = {
+  basic: { priceVar: "STRIPE_PRICE_BASIC", saasPlan: "basic", label: "ベーシック", amount: 39800 },
+  business: { priceVar: "STRIPE_PRICE_BUSINESS", saasPlan: "business", label: "ビジネス", amount: 59800 },
   light: { priceVar: "STRIPE_PRICE_LIGHT", saasPlan: "light", label: "ライト" },
   standard: { priceVar: "STRIPE_PRICE_STANDARD", saasPlan: "standard", label: "スタンダード" },
   premium: { priceVar: "STRIPE_PRICE_PREMIUM", saasPlan: "unlimited", label: "プレミアム" },
 };
 
 function planFor(record) {
+  // plan未記録の旧予約は旧ライトを維持。新規予約は明示的にbasicを記録する。
   const key = (record && record.plan) || "light";
-  return PLANS[key] || PLANS.light;
+  if (!Object.hasOwn(PLANS, key)) throw new Error("ご契約プランをご確認ください");
+  return PLANS[key];
 }
 
-async function activateTrial(env, customerId) {
+async function activateTrial(env, customerId, selectedPlan) {
+  const bookingRaw = await env.CHAT_HISTORY.get(`booking:${customerId}`);
+  if (!bookingRaw) throw new Error("該当する予約が見つかりません");
+  const record = JSON.parse(bookingRaw);
+  if (record.subscription_id || record.status !== "awaiting_trial") throw new Error("この予約は開始済みか、開始対象ではありません");
+  if (selectedPlan) record.plan = selectedPlan;
+  const plan = planFor(record);
+  const priceId = env[plan.priceVar];
+  if (!priceId) throw new Error(`Stripeの価格IDが未設定です(${plan.priceVar})`);
+  if (plan.amount) {
+    const price = await stripeRequest(env, "GET", `prices/${encodeURIComponent(priceId)}`);
+    if (!price.active || price.currency !== "jpy" || price.unit_amount !== plan.amount ||
+        price.tax_behavior !== "inclusive" || price.recurring?.interval !== "month" || price.recurring?.interval_count !== 1) {
+      throw new Error("Stripeの会社プラン価格が税込月額と一致しません。開始を中止しました");
+    }
+  }
   const pms = await stripeRequest(env, "GET", "payment_methods", { customer: customerId, type: "card" });
   const pm = pms.data && pms.data[0];
   if (!pm) {
     throw new Error("この顧客にはまだカードが登録されていません");
-  }
-  const bookingRaw = await env.CHAT_HISTORY.get(`booking:${customerId}`);
-  const plan = planFor(bookingRaw ? JSON.parse(bookingRaw) : null);
-  const priceId = env[plan.priceVar];
-  if (!priceId) {
-    throw new Error(`Stripeの価格IDが未設定です(${plan.priceVar})`);
   }
   const subscription = await stripeRequest(env, "POST", "subscriptions", {
     customer: customerId,
     "items[0][price]": priceId,
     trial_period_days: String(TRIAL_DAYS),
     default_payment_method: pm.id,
-  });
+    "metadata[tsunagumo_plan]": plan.saasPlan,
+  }, `tsunagumo-trial-${customerId}`);
 
   const raw = await env.CHAT_HISTORY.get(`booking:${customerId}`);
   if (raw) {
     const record = JSON.parse(raw);
     record.status = "trial_active";
-    record.plan = record.plan || "light";
+    record.plan = selectedPlan || record.plan || "light";
     record.subscription_id = subscription.id;
     record.trial_started_at = new Date().toISOString();
     await saveBooking(env, customerId, record);
@@ -452,7 +467,7 @@ async function createSaasTenant(env, { name, industry, anthropicApiKey, email, s
       email: email || null,
       stripe_customer_id: stripeCustomerId || null,
       // Stripeで契約したプランと、SaaS側の月間AI予算・動画枠を一致させる
-      plan: plan || "light",
+      plan: plan || "basic",
     }),
   });
   const json = await res.json();
@@ -823,6 +838,7 @@ async function handleReserveApi(request, env, pathname, originUrl) {
       });
       await saveBooking(env, customer.id, {
         ...contact,
+        plan: "basic",
         label,
         event_link: result.event_link,
         status: "awaiting_trial",
@@ -996,6 +1012,15 @@ function adminBookingsHtml(bookings) {
           <div style="margin-top:8px;">
             <label style="font-size:12px;color:#4B5165;">SaaS側の業種</label><br>
             <select name="saas_industry">${industryOptions()}</select>
+          </div>
+          <div style="margin-top:8px;">
+            <label>顧客と合意した会社プラン</label><br>
+            <select name="plan">
+              <option value="basic" ${b.plan === "basic" ? "selected" : ""}>ベーシック 月39,800円（税込）／社</option>
+              <option value="business" ${b.plan === "business" ? "selected" : ""}>ビジネス 月59,800円（税込）／社</option>
+              ${!["basic", "business"].includes(b.plan) ? `<option value="${Object.hasOwn(PLANS, b.plan || "light") ? b.plan || "light" : "light"}" selected>旧契約の条件を維持</option>` : ""}
+            </select>
+            <p>14日間の無料期間終了後に月額課金されます。個別見積もりは運営側で別途設定してください。</p>
           </div>
           <button type="submit" style="margin-top:10px;padding:8px 16px;border:none;border-radius:6px;background:#22283A;color:#fff;cursor:pointer;">③ 相談完了・トライアル開始(①②の完了後)</button>
         </form>
@@ -1229,7 +1254,7 @@ async function handleAdminApi(request, env, pathname, url) {
     const customerId = form.get("customer_id");
     let bookingRecord;
     try {
-      await activateTrial(env, customerId);
+      await activateTrial(env, customerId, form.get("plan"));
       const raw = await env.CHAT_HISTORY.get(`booking:${customerId}`);
       bookingRecord = raw ? JSON.parse(raw) : null;
     } catch (err) {
