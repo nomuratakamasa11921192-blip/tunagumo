@@ -144,3 +144,7 @@ Workerは上記2価格IDを設定し、`wrangler deploy --keep-vars` で反映�
 既存の有効なAPIキーがある環境で、saasを作業ディレクトリとして `python -m scripts.benchmark_company_plan --run` を明示実行する。指定なしは課金しないpreview。VPSの既存コンテナで試す場合は、確認済みrelease cloneのスクリプトを標準入力で `docker exec -i -w /app docker-api-1 python - --run` に渡せる（既存のcompare_writing_models.pyがあることを先に確認）。キーをPCへコピーしたり、ログへ出す必要はない。
 
 ローカルの既存APIコンテナにもOpenAIキーがないことを確認したため、有料生成は未実行。実行後は状態・成果物の品質・呼び出し数・USDを記録する。未完了の業務を成功1件の単価に含めない。画像・音声・資料取込は今回の文章グラフ検証に含まず、3件だけで全社員の月間十分性を保証しない。
+
+## 管理者の初期設定・個人ログイン完了（2026-09-26）
+
+ユーザーの設定完了報告後、対象ユーザーの状態をサーバーで読み取り、active=true、password_set=true、invite_pending=false、role=owner、有効期限内のログインセッション1件を確認した。パスワード設定と個人アカウントでのログインが完了している。パスワード・トークン値は取得・記録していない。先に追加した招待画面優先表示の修正（df9af54）はGit側のみであり、本番反映待ちという記録は維持する。
