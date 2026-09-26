@@ -28,3 +28,5 @@ sales/post_*.log
 sales/rejected/
 sales/notion_sync.log
 ops_check.log
+# Local demo recordings and raw browser frames (not source files).
+/artifacts/mail-demo-20260927/
