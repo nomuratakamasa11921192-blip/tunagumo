@@ -168,7 +168,7 @@ async def _handle_message(*, tenant, account, uid, raw, uidvalidity, app_config,
         if result is None:
             result = await _ai_or_escalation(db, tenant, parsed, user_message, app_config, llm_factory)
 
-        body = compose_auto_reply(result.reply, company_name=app_config.company.name)
+        body = compose_auto_reply(result.reply, company_name=tenant.name)
         sent = True
         try:
             await run_in_thread(
@@ -260,7 +260,7 @@ async def _ai_or_escalation(db, tenant, parsed, user_message, app_config, llm_fa
 
     model = active_llm_model_light()
     result = await respond(
-        llm=llm_factory(), model=model, company_name=app_config.company.name, message=user_message,
+        llm=llm_factory(), model=model, company_name=tenant.name, message=user_message,
         rag_context=rag_context, emergency_phone=tenant.emergency_contact_phone,
     )
     record_cost(tenant_row, (compute_cost_usd(model, result.usage, app_config.pricing) if result.usage else 0.0)

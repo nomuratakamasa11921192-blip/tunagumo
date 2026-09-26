@@ -17,7 +17,7 @@ from src.channels import mail as mail_module
 from src.channels.mail import MailAccountSettings, MailConfigError, FetchResult, parse_mail, validate_account_settings
 from src.core.crypto import decrypt_secret, encrypt_secret
 from src.core.db import async_session_factory
-from src.core.models import Inquiry, MailProcessedMessage, TenantMailAccount
+from src.core.models import Inquiry, MailProcessedMessage, Tenant, TenantMailAccount
 
 _async = pytest.mark.asyncio(loop_scope="session")
 
@@ -129,8 +129,10 @@ def _fake_ai(monkeypatch):
     monkeypatch.setattr(mail_scan_module, "hybrid_search", fake_search)
 
 
-def _ai(monkeypatch, *, escalated: bool, reply: str = "土曜日も内見を承っております。"):
+def _ai(monkeypatch, *, escalated: bool, reply: str = "土曜日も内見を承っております。", company_names=None):
     async def fake_respond(**kwargs):
+        if company_names is not None:
+            company_names.append(kwargs['company_name'])
         return PublicResponderResult(
             reply="担当者から折り返しご連絡いたします。少々お待ちください。" if escalated else reply,
             escalated=escalated, reason="test", usage={}, category="内見・物件",
@@ -210,6 +212,27 @@ async def test_answerable_mail_is_auto_replied_and_recorded_as_resolved(config, 
         assert len(transport.sent) == 1
     finally:
         await _cleanup(tenant["id"])
+
+
+@_async
+@pytest.mark.parametrize('company_name', ['ツナグモ', '別会社の不動産'])
+async def test_mail_uses_registered_tenant_name_for_ai_and_signature(config, tenant, monkeypatch, sent_notifications, company_name):
+    assert config.company.name != company_name
+    async with async_session_factory() as db:
+        (await db.get(Tenant, tenant['id'])).name = company_name
+        await db.commit()
+    await _setup_account(tenant['id'])
+    company_names = []
+    _ai(monkeypatch, escalated=False, company_names=company_names)
+    transport = FakeTransport([_raw()])
+    try:
+        await _scan(config, transport)
+        assert len(transport.sent) == 1
+        assert f'このメールは{company_name}の自動応答です。' in transport.sent[0]['body']
+        assert config.company.name not in transport.sent[0]['body']
+        assert company_names == [company_name]
+    finally:
+        await _cleanup(tenant['id'])
 
 
 @_async
