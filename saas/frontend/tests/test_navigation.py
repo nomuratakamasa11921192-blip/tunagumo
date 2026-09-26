@@ -45,6 +45,7 @@ class NavigationTests(unittest.TestCase):
         self.last_comment = None
         self.mail_account = {'configured': False, 'subject_prefix': '[TSUNAGUMO-TEST]'}
         self.saved_mail = None
+        self.mail_failure = None
         self.session = dict(session_id='current', status='RUNNING', request_text='処理中の依頼', created_at='2026-09-17T00:00:00', result={})
         self.context.add_init_script("localStorage.setItem('tsunagumo_api_key', 'test-only')")
         self.page.route('**/*', self.route)
@@ -88,6 +89,10 @@ class NavigationTests(unittest.TestCase):
             data = dict(line_webhook_url='https://example.test/webhook')
         elif path == '/api/account/mail-account':
             if route.request.method == 'PUT':
+                if self.mail_failure:
+                    status, detail = self.mail_failure
+                    route.fulfill(status=status, json={'detail': detail})
+                    return
                 self.saved_mail = route.request.post_data_json
                 self.mail_account = {**self.saved_mail, 'configured': True}
             data = self.mail_account
@@ -214,6 +219,44 @@ class NavigationTests(unittest.TestCase):
         self.mail_account = {'configured': True, 'enabled': True, 'subject_prefix': ''}
         self.page.click('#settings-btn')
         expect(self.page.locator('#mail-subject-prefix')).to_have_value('')
+
+    def test_mail_validation_errors_are_japanese_and_do_not_echo_inputs(self):
+        self.page.click('#settings-btn')
+        self.page.fill('#mail-pass', 'password-kept-on-failure')
+        cases = [
+            (422, [
+                {'loc': ['body', 'imap_host'], 'type': 'string_too_short', 'msg': 'String should have at least 3 characters', 'input': ''},
+                {'loc': ['body', 'smtp_host'], 'type': 'string_too_short', 'msg': 'String should have at least 3 characters', 'input': ''},
+                {'loc': ['body', 'password'], 'type': 'string_too_long', 'input': 'secret-should-not-appear'},
+            ], '受信サーバー(IMAP)を入力してください。'),
+            (400, {'unexpected': 'secret-should-not-appear'}, '入力内容をご確認ください。'),
+            (500, 'Internal Server Error', '処理に失敗しました。'),
+            (400, '受信サーバーにログインできませんでした。', '受信サーバーにログインできませんでした。'),
+        ]
+        for status, detail, expected in cases:
+            self.mail_failure = (status, detail)
+            self.page.click('#mail-save-btn')
+            result = self.page.locator('#mail-result')
+            expect(result).to_contain_text(expected)
+            expect(result).not_to_contain_text('[object Object]')
+            expect(result).not_to_contain_text('secret-should-not-appear')
+            expect(result).not_to_contain_text('Internal Server Error')
+            expect(self.page.locator('#mail-pass')).to_have_value('password-kept-on-failure')
+            expect(self.page.locator('#mail-save-btn')).to_be_enabled()
+
+    def test_gmail_preset_corrects_company_name_without_sending_or_clearing_password(self):
+        self.page.click('#settings-btn')
+        self.page.fill('#mail-from', 'owner@gmail.com')
+        self.page.fill('#mail-user', 'ツナグモ')
+        self.page.fill('#mail-pass', 'test-app-password')
+        self.page.click('#mail-gmail-btn')
+        expect(self.page.locator('#mail-user')).to_have_value('owner@gmail.com')
+        expect(self.page.locator('#mail-imap-host')).to_have_value('imap.gmail.com')
+        expect(self.page.locator('#mail-smtp-host')).to_have_value('smtp.gmail.com')
+        expect(self.page.locator('#mail-smtp-port')).to_have_value('465')
+        expect(self.page.locator('#mail-pass')).to_have_value('test-app-password')
+        expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TSUNAGUMO-TEST]')
+        self.assertIsNone(self.saved_mail)
 
     def test_answer_still_polls_and_displays_completion_on_same_view(self):
         self.open_session('CLARIFYING', {'questions': ['希望は？']})

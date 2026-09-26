@@ -408,6 +408,34 @@
     setTimeout(function () { toastEl.style.display = 'none'; }, 3000);
   }
 
+  function apiErrorMessage(detail, status) {
+    // FastAPIの入力エラー配列を文字列化すると[object Object]になる。
+    // input/ctx/msgの生値は表示せず、日本語の項目名だけで案内する。
+    var labels = {from_address:'返信用メールアドレス', username:'ログインユーザー名',
+      password:'パスワード', imap_host:'受信サーバー(IMAP)', smtp_host:'送信サーバー(SMTP)',
+      imap_port:'受信サーバーのポート', smtp_port:'送信サーバーのポート',
+      subject_prefix:'自動返信する件名の先頭', email:'メールアドレス', company_id:'会社ID'};
+    if (status === 422 && Array.isArray(detail)) {
+      var messages = [];
+      detail.forEach(function (item) {
+        var location = item && Array.isArray(item.loc) ? item.loc : [];
+        var field = location[location.length - 1];
+        var label = Object.prototype.hasOwnProperty.call(labels, field) ? labels[field] : '';
+        var message = label ? label + ((item.type === 'missing' || item.type === 'string_too_short')
+          ? 'を入力してください。' : 'の入力内容を確認してください。') : '入力内容をご確認ください。';
+        if (messages.indexOf(message) < 0) messages.push(message);
+      });
+      return messages.join(' ') || '入力内容をご確認ください。';
+    }
+    if (typeof detail === 'string' && /[\u3040-\u30ff\u3400-\u9fff]/.test(detail)) return detail;
+    var messagesByStatus = {400:'入力内容をご確認ください。', 401:'ログインし直してください。',
+      403:'この操作を行う権限がありません。管理者にご確認ください。', 404:'対象の情報が見つかりません。',
+      409:'情報が更新されています。画面を更新してもう一度お試しください。',
+      413:'ファイルが大きすぎます。サイズを小さくしてお試しください。',
+      422:'入力内容をご確認ください。', 429:'操作が集中しています。少し待ってからお試しください。'};
+    return messagesByStatus[status] || '処理に失敗しました。しばらく待ってからもう一度お試しください。';
+  }
+
   function api(path, options) {
     options = options || {};
     options.headers = options.headers || {};
@@ -426,7 +454,7 @@
         return null;
       }
       return res.json().then(function (data) {
-        if (!res.ok) throw new Error(data.detail || ('エラー: ' + res.status));
+        if (!res.ok) throw new Error(apiErrorMessage(data.detail, res.status));
         return data;
       });
     });
@@ -471,7 +499,7 @@
 
   function publicAccount(path, body) {
     return fetch('/api/account/' + path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
-      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(typeof d.detail === 'string' ? d.detail : '入力内容をご確認ください'); return d; }); });
+      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(apiErrorMessage(d.detail, r.status)); return d; }); });
   }
   function loginError(e) {
     document.getElementById('login-error').textContent = e.message;
@@ -687,8 +715,10 @@
       '<p class="muted" style="font-size:12px;">メールサーバーの情報は、ご契約中のメールサービス(Gmail、Xserverなど)の案内ページに記載されています。Gmailの場合は、Googleアカウントで2段階認証を有効にしたうえで「アプリパスワード」を発行して使ってください。</p>' +
       '<label for="mail-from">返信に使うメールアドレス</label>' +
       '<input id="mail-from" type="text" autocomplete="off" placeholder="例: info@example.co.jp">' +
+      '<button id="mail-gmail-btn" class="secondary" style="margin-top:8px;">Gmailのサーバー設定を入力</button>' +
       '<label for="mail-user">ログインユーザー名(多くの場合はメールアドレスと同じ)</label>' +
       '<input id="mail-user" type="text" autocomplete="off">' +
+      '<p class="muted" style="font-size:12px;">Gmailの場合は会社名ではなく、@gmail.comまで含むメールアドレスを入力してください。</p>' +
       '<label for="mail-pass">パスワード(アプリパスワード)</label>' +
       '<input id="mail-pass" type="password" autocomplete="new-password" placeholder="変更しない場合は空欄">' +
       '<label for="mail-imap-host">受信サーバー(IMAP)</label>' +
@@ -846,6 +876,19 @@
     }
     api('/api/account/mail-account').then(showMailAccount).catch(mailError);
 
+    document.getElementById('mail-gmail-btn').addEventListener('click', function () {
+      var address = document.getElementById('mail-from').value.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) {
+        mailError(new Error('先に「返信に使うメールアドレス」へGmailのメールアドレスを入力してください。'));
+        return;
+      }
+      document.getElementById('mail-user').value = address;
+      document.getElementById('mail-imap-host').value = 'imap.gmail.com';
+      document.getElementById('mail-smtp-host').value = 'smtp.gmail.com';
+      document.getElementById('mail-smtp-port').value = '465';
+      document.getElementById('mail-result').textContent = 'Gmailの接続先を入力しました。アプリパスワードと対象件名を確認して保存してください。';
+    });
+
     document.getElementById('mail-save-btn').addEventListener('click', function () {
       var subjectPrefix = document.getElementById('mail-subject-prefix').value.trim();
       if (!subjectPrefix && !confirm('すべての新着メールを自動返信の対象にします。業務用の問い合わせ専用メールであることをご確認ください。')) return;
@@ -875,7 +918,7 @@
         })
         .catch(function (e) {
           if (viewId !== viewToken) return;
-          mailError(e.message.indexOf('エラー: 422') === 0 ? new Error('入力内容の形式をご確認ください(メールアドレス・サーバー名・件名の先頭)。') : e);
+          mailError(e);
         })
         .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = '接続を確認して保存する'; });
     });
@@ -1457,7 +1500,7 @@
         body: formData
       })
         .then(function (res) {
-          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+          if (!res.ok) return res.json().then(function (d) { throw new Error(apiErrorMessage(d.detail, res.status)); });
           return res.blob();
         })
         .then(function (blob) {
@@ -1539,7 +1582,7 @@
         body: formData
       })
         .then(function (res) {
-          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+          if (!res.ok) return res.json().then(function (d) { throw new Error(apiErrorMessage(d.detail, res.status)); });
           return res.blob();
         })
         .then(function (blob) {
@@ -1622,7 +1665,7 @@
         body: JSON.stringify(body)
       })
         .then(function (res) {
-          if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('エラー: ' + res.status)); });
+          if (!res.ok) return res.json().then(function (d) { throw new Error(apiErrorMessage(d.detail, res.status)); });
           return res.blob();
         })
         .then(function (blob) {
@@ -2545,7 +2588,7 @@
         })
           .then(function (res) {
             if (viewId !== viewToken) return;
-            if (!res.ok) return res.json().then(function (d) { if (viewId !== viewToken) return; throw new Error(d.detail || ('エラー: ' + res.status)); });
+            if (!res.ok) return res.json().then(function (d) { if (viewId !== viewToken) return; throw new Error(apiErrorMessage(d.detail, res.status)); });
             return res.blob();
           })
           .then(function (blob) {
