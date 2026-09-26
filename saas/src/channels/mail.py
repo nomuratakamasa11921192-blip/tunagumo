@@ -156,6 +156,7 @@ class MailAccountSettings:
     smtp_port: int
     username: str
     password: str
+    subject_prefix: str = ""
 
 
 @dataclass
@@ -280,7 +281,9 @@ class ImapSmtpTransport:
             _, data = conn.response("UIDVALIDITY")
             current_validity = int(data[0]) if data and data[0] else None
 
-            _, data = conn.uid("SEARCH", None, "ALL")
+            typ, data = conn.uid("SEARCH", None, "ALL")
+            if typ != "OK":
+                raise MailConfigError("受信メールの一覧を確認できませんでした。")
             all_uids = [int(u) for u in (data[0] or b"").split()]
             max_uid = max(all_uids) if all_uids else 0
 
@@ -288,16 +291,36 @@ class ImapSmtpTransport:
                 # 初回(またはサーバー側でUIDが振り直された)は、既存のメールに返信しない
                 return FetchResult(uidvalidity=current_validity, last_uid=max_uid)
 
-            new_uids = sorted(u for u in all_uids if u > last_uid)[:MAX_MESSAGES_PER_RUN]
+            candidates = sorted(u for u in all_uids if u > last_uid)
+            if account.subject_prefix:
+                # 対象外の私用メール本文を取得しない。値は保存時にも検証する。
+                if not re.fullmatch(r"[A-Za-z0-9 _\[\]-]{1,80}", account.subject_prefix):
+                    raise MailConfigError("テスト件名の形式をご確認ください。")
+                typ, data = conn.uid("SEARCH", None, "UID", f"{last_uid + 1}:*", "HEADER", "Subject", f'"{account.subject_prefix}"')
+                if typ != "OK":
+                    raise MailConfigError("テスト対象のメールを検索できませんでした。")
+                matched = {int(u) for u in (data[0] or b"").split()}
+                candidates = [u for u in candidates if u in matched]
+            new_uids = candidates[:MAX_MESSAGES_PER_RUN]
             messages: list[tuple[int, bytes]] = []
             for uid in new_uids:
+                if account.subject_prefix:
+                    typ, headers = conn.uid("FETCH", str(uid), "(BODY.PEEK[HEADER.FIELDS (SUBJECT)])")
+                    header_raw = next((item[1] for item in headers if isinstance(item, tuple)), None) if headers else None
+                    if typ != "OK" or not header_raw:
+                        raise MailConfigError("テスト対象の件名を確認できませんでした。")
+                    subject = _header(email.message_from_bytes(header_raw, policy=email.policy.default), "Subject")
+                    if not subject.startswith(account.subject_prefix):
+                        continue
                 typ, fetched = conn.uid("FETCH", str(uid), "(BODY.PEEK[])")
                 if typ == "OK":
                     raw = next((item[1] for item in fetched if isinstance(item, tuple)), None)
                     if raw:
                         messages.append((uid, raw))
             return FetchResult(
-                uidvalidity=current_validity, last_uid=new_uids[-1] if new_uids else last_uid, messages=messages
+                uidvalidity=current_validity,
+                last_uid=new_uids[-1] if len(candidates) > MAX_MESSAGES_PER_RUN else max(last_uid, max_uid),
+                messages=messages,
             )
         finally:
             try:

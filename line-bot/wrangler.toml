@@ -34,3 +34,7 @@ STRIPE_PRICE_BUSINESS = "price_1UJZTjGj5LbAzw5NoElecOWp"  # ビジネス 税込5
 #   ZOOM_PERSONAL_ROOM_URL
 #   SAAS_ADMIN_API_KEY   (saas/.envのADMIN_API_KEYと同じ値)
 #   STRIPE_SECRET_KEY    (Stripe本番化時は sk_live_... に必ず差し替える。sk_test_のままだと課金されない)
+# 本人限定のSaaS問い合わせテストを行うときだけ両方を設定する。未設定では営業動作を維持。
+#   SAAS_TEST_LINE_USER_ID (本人の1対1トークのuserId。グループ・ルームは対象外)
+#   SAAS_TEST_TENANT_ID    (既存の会社ID。チャネル認証情報を同社へ先に登録する)
+# テスト本文は [TSUNAGUMO-TEST] で開始する。Webhook URL自体は変更しない。

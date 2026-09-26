@@ -43,6 +43,8 @@ class NavigationTests(unittest.TestCase):
         self.company_usage = None
         self.member_login_body = None
         self.last_comment = None
+        self.mail_account = {'configured': False, 'subject_prefix': '[TSUNAGUMO-TEST]'}
+        self.saved_mail = None
         self.session = dict(session_id='current', status='RUNNING', request_text='処理中の依頼', created_at='2026-09-17T00:00:00', result={})
         self.context.add_init_script("localStorage.setItem('tsunagumo_api_key', 'test-only')")
         self.page.route('**/*', self.route)
@@ -84,6 +86,11 @@ class NavigationTests(unittest.TestCase):
             if self.company_usage: data.update(self.company_usage)
         elif path == '/api/account/inquiry-settings':
             data = dict(line_webhook_url='https://example.test/webhook')
+        elif path == '/api/account/mail-account':
+            if route.request.method == 'PUT':
+                self.saved_mail = route.request.post_data_json
+                self.mail_account = {**self.saved_mail, 'configured': True}
+            data = self.mail_account
         elif path == '/api/market-data/prefectures':
             data = []
         route.fulfill(json=data)
@@ -185,6 +192,28 @@ class NavigationTests(unittest.TestCase):
         expect(usage).to_contain_text('追加購入分を含む')
         expect(usage).not_to_contain_text('$')
         expect(usage).not_to_contain_text('NaN')
+
+    def test_new_mail_connection_preserves_test_limit_on_save(self):
+        self.page.click('#settings-btn')
+        expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TSUNAGUMO-TEST]')
+        self.page.fill('#mail-from', 'test@example.net')
+        self.page.fill('#mail-user', 'test@example.net')
+        self.page.fill('#mail-pass', 'test-password')
+        self.page.fill('#mail-imap-host', 'imap.example.net')
+        self.page.fill('#mail-smtp-host', 'smtp.example.net')
+        self.page.click('#mail-save-btn')
+        expect(self.page.locator('#mail-pass')).to_have_value('')
+        self.assertEqual(self.saved_mail['subject_prefix'], '[TSUNAGUMO-TEST]')
+        self.saved_mail = None
+        self.page.fill('#mail-subject-prefix', '')
+        self.page.once('dialog', lambda dialog: dialog.dismiss())
+        self.page.click('#mail-save-btn')
+        self.assertIsNone(self.saved_mail)
+
+    def test_existing_mail_scope_is_shown_without_replacing_it(self):
+        self.mail_account = {'configured': True, 'enabled': True, 'subject_prefix': ''}
+        self.page.click('#settings-btn')
+        expect(self.page.locator('#mail-subject-prefix')).to_have_value('')
 
     def test_answer_still_polls_and_displays_completion_on_same_view(self):
         self.open_session('CLARIFYING', {'questions': ['希望は？']})

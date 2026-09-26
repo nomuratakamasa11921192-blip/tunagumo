@@ -52,6 +52,7 @@ def account_settings(row: TenantMailAccount) -> MailAccountSettings:
         smtp_port=row.smtp_port,
         username=row.username,
         password=decrypt_secret(row.password_encrypted),
+        subject_prefix=row.subject_prefix,
     )
 
 
@@ -123,6 +124,9 @@ async def _save_state(tenant_id: uuid.UUID, *, last_uid=None, uidvalidity=None, 
 
 async def _handle_message(*, tenant, account, uid, raw, uidvalidity, app_config, llm_factory, transport) -> str:
     parsed = parse_mail(raw, own_address=account.from_address, fallback_id=f"<uid-{uidvalidity}-{uid}@tsunagumo.invalid>")
+    # 別transportから取得した場合も、顧客記録・AI処理・通知の前に対象を絞る。
+    if account.subject_prefix and not parsed.subject.startswith(account.subject_prefix):
+        return "skipped"
 
     async with tenant_scoped_session_factory() as db:
         db._rls_tenant_id = tenant.id

@@ -448,6 +448,98 @@ def test_imap_first_run_and_uidvalidity_change_only_record_position(real_transpo
     assert changed.messages == [] and changed.last_uid == 102
 
 
+def test_subject_scope_does_not_fetch_private_bodies(real_transport, monkeypatch):
+    prefix = "[TSUNAGUMO-TEST]"
+
+    class ScopedIMAP(_FakeIMAP):
+        def uid(self, command, *args):
+            self.commands.append(("uid", command) + args)
+            if command == "SEARCH":
+                return "OK", [b"100 101 102 103" if args == (None, "ALL") else b"102 103"]
+            uid = int(args[0])
+            subject = prefix + " 内見" if uid == 102 else "個人 " + prefix
+            if "HEADER.FIELDS" in args[1]:
+                raw = _raw(subject=subject).split(b"\n\n", 1)[0] + b"\n\n"
+            else:
+                assert uid == 102, "対象外メール本文を取得しない"
+                raw = _raw(subject=subject)
+            return "OK", [(b"header", raw)]
+
+    monkeypatch.setattr(mail_module.imaplib, "IMAP4_SSL", ScopedIMAP)
+    account = _account()
+    account.subject_prefix = prefix
+    result = real_transport.fetch_new(account, last_uid=100, uidvalidity=555)
+    assert [uid for uid, _ in result.messages] == [102]
+    assert result.last_uid == 103
+    commands = _FakeIMAP.instances[-1].commands
+    assert ("uid", "SEARCH", None, "UID", "101:*", "HEADER", "Subject", '"[TSUNAGUMO-TEST]"') in commands
+    assert not any(c[:3] == ("uid", "FETCH", "101") for c in commands)
+
+
+def test_subject_search_failure_does_not_fall_back_to_all_mail(real_transport, monkeypatch):
+    class FailedSearch(_FakeIMAP):
+        def uid(self, command, *args):
+            if command == "SEARCH" and "HEADER" in args:
+                return "NO", [b"failed"]
+            assert command != "FETCH"
+            return super().uid(command, *args)
+
+    monkeypatch.setattr(mail_module.imaplib, "IMAP4_SSL", FailedSearch)
+    account = _account()
+    account.subject_prefix = "[TSUNAGUMO-TEST]"
+    with pytest.raises(MailConfigError, match="検索"):
+        real_transport.fetch_new(account, last_uid=100, uidvalidity=555)
+
+
+@_async
+async def test_subject_scope_skips_recording_and_notifications(config, tenant, monkeypatch, sent_notifications):
+    await _setup_account(tenant["id"], subject_prefix="[TSUNAGUMO-TEST]")
+    _ai(monkeypatch, escalated=False)
+    transport = FakeTransport([
+        _raw(subject="私用のメール", msg_id="<private@example.net>"),
+        _raw(subject="[TSUNAGUMO-TEST] 内見", msg_id="<test@example.net>"),
+    ])
+    try:
+        result = await _scan(config, transport)
+        assert result["skipped"] == 1 and result["auto_replied"] == 1
+        assert len(transport.sent) == 1
+        assert len(await _inquiries(tenant["id"])) == 1
+        async with async_session_factory() as db:
+            assert await db.get(MailProcessedMessage, (tenant["id"], "<private@example.net>")) is None
+    finally:
+        await _cleanup(tenant["id"])
+
+
+@_async
+async def test_mail_scope_defaults_preserves_and_resets_on_change(client, tenant, monkeypatch):
+    headers = {"Authorization": f"Bearer {tenant['api_key']}"}
+    monkeypatch.setattr(account_module, "mail_transport", lambda: FakeTransport())
+    body = {"from_address": OWN, "username": OWN, "password": "test-app-password",
+            "imap_host": "imap.example.com", "smtp_host": "smtp.example.com"}
+    try:
+        response = await client.put("/api/account/mail-account", json=body, headers=headers)
+        assert response.status_code == 200
+        assert response.json()["subject_prefix"] == "[TSUNAGUMO-TEST]"
+        for update in ({"subject_prefix": "[ANOTHER-TEST]"}, {"username": "business@example.net"}, {"enabled": False}):
+            async with async_session_factory() as db:
+                row = await db.get(TenantMailAccount, tenant["id"])
+                row.last_uid, row.uidvalidity = 200, 555
+                await db.commit()
+            body.update(update)
+            response = await client.put("/api/account/mail-account", json=body, headers=headers)
+            assert response.status_code == 200
+            async with async_session_factory() as db:
+                row = await db.get(TenantMailAccount, tenant["id"])
+                assert row.last_uid is None and row.uidvalidity is None
+        body.pop("subject_prefix")
+        response = await client.put("/api/account/mail-account", json=body, headers=headers)
+        assert response.json()["subject_prefix"] == "[ANOTHER-TEST]"
+        body["subject_prefix"] = 'bad"\r\nALL'
+        assert (await client.put("/api/account/mail-account", json=body, headers=headers)).status_code == 422
+    finally:
+        await _cleanup(tenant["id"])
+
+
 def test_imap_refuses_private_peer_address(real_transport, monkeypatch):
     class PrivatePeer(_FakeIMAP):
         def __init__(self, *args, **kwargs):

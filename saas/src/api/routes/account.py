@@ -188,6 +188,8 @@ class MailAccountRequest(BaseModel):
     # 更新時に空ならパスワードは変更しない(画面にパスワードを再表示しないため)
     password: str = Field(default="", max_length=500)
     enabled: bool = True
+    # 未指定は既存設定を維持。新規接続だけテスト限定から始める。
+    subject_prefix: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9 _\[\]-]*$")
 
 
 class MailAccountResponse(BaseModel):
@@ -199,6 +201,7 @@ class MailAccountResponse(BaseModel):
     smtp_port: int | None = None
     username: str | None = None
     enabled: bool = False
+    subject_prefix: str = "[TSUNAGUMO-TEST]"
     last_checked_at: datetime | None = None
     last_error: str | None = None
 
@@ -209,7 +212,7 @@ def _mail_response(row) -> MailAccountResponse:
     return MailAccountResponse(
         configured=True, from_address=row.from_address, imap_host=row.imap_host, imap_port=row.imap_port,
         smtp_host=row.smtp_host, smtp_port=row.smtp_port, username=row.username, enabled=row.enabled,
-        last_checked_at=row.last_checked_at, last_error=row.last_error,
+        last_checked_at=row.last_checked_at, last_error=row.last_error, subject_prefix=row.subject_prefix,
     )
 
 
@@ -227,19 +230,25 @@ async def update_mail_account(
 ) -> MailAccountResponse:
     """接続を試してから保存する(つながらない設定のまま即レスが止まっているのに気付かない、を防ぐ)。"""
     row = await db.get(TenantMailAccount, tenant.id)
+    subject_prefix = req.subject_prefix.strip() if req.subject_prefix is not None else (
+        row.subject_prefix if row is not None else "[TSUNAGUMO-TEST]"
+    )
     password = req.password or (decrypt_secret(row.password_encrypted) if row is not None else "")
     if not password:
         raise HTTPException(status_code=400, detail="パスワードを入力してください。")
     account = MailAccountSettings(
         from_address=req.from_address.strip(), imap_host=req.imap_host.strip(), imap_port=req.imap_port,
         smtp_host=req.smtp_host.strip(), smtp_port=req.smtp_port, username=req.username.strip(), password=password,
+        subject_prefix=subject_prefix,
     )
     try:
         await asyncio.to_thread(mail_transport().test_connection, account)
     except MailConfigError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    server_changed = row is None or (row.imap_host, row.username) != (account.imap_host, account.username)
+    server_changed = row is None or (row.imap_host, row.username, row.subject_prefix, row.enabled) != (
+        account.imap_host, account.username, subject_prefix, req.enabled
+    )
     if row is None:
         row = TenantMailAccount(tenant_id=tenant.id)
         db.add(row)
@@ -249,9 +258,10 @@ async def update_mail_account(
     row.username = account.username
     row.password_encrypted = encrypt_secret(password)
     row.enabled = req.enabled
+    row.subject_prefix = subject_prefix
     row.last_error = None
     if server_changed:
-        # 別のメールボックスに変わったら、既存のメールに返信しないよう初回扱いに戻す
+        # 接続先・対象件名の変更や再開時は、過去のメールへ返信しないよう初回扱いに戻す
         row.last_uid = None
         row.uidvalidity = None
     await db.commit()

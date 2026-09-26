@@ -306,6 +306,8 @@ class TenantMailAccount(Base):
     username: Mapped[str] = mapped_column(String(320))
     password_encrypted: Mapped[str] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 空文字は全件。個人メールでの動作確認は件名の先頭一致で限定する。
+    subject_prefix: Mapped[str] = mapped_column(String(80), default="", server_default="")
     # 次回はこのUIDより後のメールだけを見る。NULLは「まだ一度も接続していない」(初回は既存の
     # メールに返信しないよう、その時点の最新UIDを記録するだけにする)
     last_uid: Mapped[int | None] = mapped_column(Integer, nullable=True)

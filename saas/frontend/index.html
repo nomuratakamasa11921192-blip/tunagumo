@@ -697,6 +697,9 @@
       '<input id="mail-smtp-host" type="text" autocomplete="off" placeholder="例: smtp.gmail.com">' +
       '<label for="mail-smtp-port">送信サーバーのポート</label>' +
       '<select id="mail-smtp-port"><option value="465">465(SSL/TLS)</option><option value="587">587(STARTTLS)</option></select>' +
+      '<label for="mail-subject-prefix">自動返信する件名の先頭(半角英数字・空白・[]・_・-)</label>' +
+      '<input id="mail-subject-prefix" type="text" maxlength="80" autocomplete="off" value="[TSUNAGUMO-TEST]">' +
+      '<p class="muted" style="font-size:12px;">最初は [TSUNAGUMO-TEST] で始まる件名だけを処理します。個人メールではこの制限を残してください。業務用の問い合わせ専用メールで全件を対象にするときだけ空欄にします。対象や接続先を変更すると、次の確認時点より後に届いたメールから処理します。連携先は後から変更できます。</p>' +
       '<label style="margin-top:10px;"><input id="mail-enabled" type="checkbox" checked style="width:auto; margin-right:6px;">自動返信を有効にする</label>' +
       '<button id="mail-save-btn" style="margin-top:8px;">接続を確認して保存する</button> ' +
       '<button id="mail-remove-btn" class="secondary" style="margin-top:8px;">連携を解除する</button>' +
@@ -834,6 +837,7 @@
       document.getElementById('mail-smtp-host').value = m.smtp_host || '';
       document.getElementById('mail-smtp-port').value = String(m.smtp_port || 465);
       document.getElementById('mail-enabled').checked = m.configured ? m.enabled : true;
+      document.getElementById('mail-subject-prefix').value = m.subject_prefix == null ? (m.configured ? '' : '[TSUNAGUMO-TEST]') : m.subject_prefix;
       document.getElementById('mail-remove-btn').style.display = m.configured ? '' : 'none';
     }
     function mailError(e) {
@@ -843,6 +847,8 @@
     api('/api/account/mail-account').then(showMailAccount).catch(mailError);
 
     document.getElementById('mail-save-btn').addEventListener('click', function () {
+      var subjectPrefix = document.getElementById('mail-subject-prefix').value.trim();
+      if (!subjectPrefix && !confirm('すべての新着メールを自動返信の対象にします。業務用の問い合わせ専用メールであることをご確認ください。')) return;
       var btn = document.getElementById('mail-save-btn');
       btn.disabled = true;
       btn.textContent = '接続を確認中…';
@@ -856,7 +862,8 @@
           imap_port: 993,
           smtp_host: document.getElementById('mail-smtp-host').value.trim(),
           smtp_port: parseInt(document.getElementById('mail-smtp-port').value, 10),
-          enabled: document.getElementById('mail-enabled').checked
+          enabled: document.getElementById('mail-enabled').checked,
+          subject_prefix: subjectPrefix
         })
       })
         .then(function (m) {
@@ -868,7 +875,7 @@
         })
         .catch(function (e) {
           if (viewId !== viewToken) return;
-          mailError(e.message.indexOf('エラー: 422') === 0 ? new Error('入力内容の形式をご確認ください(メールアドレス・サーバー名)。') : e);
+          mailError(e.message.indexOf('エラー: 422') === 0 ? new Error('入力内容の形式をご確認ください(メールアドレス・サーバー名・件名の先頭)。') : e);
         })
         .then(function () { if (viewId !== viewToken) return; btn.disabled = false; btn.textContent = '接続を確認して保存する'; });
     });

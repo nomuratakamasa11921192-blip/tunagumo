@@ -1,3 +1,5 @@
+import { forwardOwnerTest } from "./owner-test.js";
+
 const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -575,6 +577,7 @@ async function replyToLine(env, replyToken, text) {
 }
 
 async function handleEvent(env, event, reserveUrl) {
+  if (await forwardOwnerTest(env, event)) return;
   if (event.type !== "message" || event.message?.type !== "text") {
     if (event.replyToken) {
       await replyToLine(env, event.replyToken, "テキストメッセージでお送りください。");
