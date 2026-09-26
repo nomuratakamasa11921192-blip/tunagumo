@@ -432,8 +432,30 @@
       403:'この操作を行う権限がありません。管理者にご確認ください。', 404:'対象の情報が見つかりません。',
       409:'情報が更新されています。画面を更新してもう一度お試しください。',
       413:'ファイルが大きすぎます。サイズを小さくしてお試しください。',
-      422:'入力内容をご確認ください。', 429:'操作が集中しています。少し待ってからお試しください。'};
+      422:'入力内容をご確認ください。', 429:'操作が集中しています。少し待ってからお試しください。',
+      502:'サーバーが一時的に応答できません。しばらく待ってからもう一度お試しください。',
+      503:'サーバーが一時的に応答できません。しばらく待ってからもう一度お試しください。',
+      504:'サーバーからの応答が時間内に届きませんでした。処理結果は接続回復後に画面でご確認ください。'};
     return messagesByStatus[status] || '処理に失敗しました。しばらく待ってからもう一度お試しください。';
+  }
+
+  function request(path, options) {
+    // fetchの拒否はHTTPエラーとは別。TLSや通信断の詳細はブラウザーが隠すため断定しない。
+    // 保存済みで応答だけ失われた可能性があるので、自動再送・未保存の断定はしない。
+    return fetch(path, options).catch(function () {
+      throw new Error('サーバーとの通信に失敗しました。接続状況とブラウザーの証明書エラーをご確認ください。処理結果は接続回復後に画面でご確認ください。');
+    });
+  }
+
+  function readApiJson(res) {
+    return res.json().catch(function () {
+      throw new Error(res.ok
+        ? 'サーバーの応答を読み取れませんでした。処理結果は画面を開き直してご確認ください。'
+        : apiErrorMessage(null, res.status));
+    }).then(function (data) {
+      if (!res.ok) throw new Error(apiErrorMessage(data && data.detail, res.status));
+      return data;
+    });
   }
 
   function api(path, options) {
@@ -443,7 +465,7 @@
     // FormData(ファイルアップロード)はブラウザがboundary付きのContent-Typeを
     // 自動設定するため、ここで上書きしない
     if (options.body && !(options.body instanceof FormData)) options.headers['Content-Type'] = 'application/json';
-    return fetch(path, options).then(function (res) {
+    return request(path, options).then(function (res) {
       if (res.status === 401) {
         logout();
         throw new Error('認証エラー');
@@ -453,10 +475,7 @@
         if (!res.ok) throw new Error('エラー: ' + res.status);
         return null;
       }
-      return res.json().then(function (data) {
-        if (!res.ok) throw new Error(apiErrorMessage(data.detail, res.status));
-        return data;
-      });
+      return readApiJson(res);
     });
   }
 
@@ -498,8 +517,8 @@
 
 
   function publicAccount(path, body) {
-    return fetch('/api/account/' + path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
-      .then(function (r) { return r.json().then(function (d) { if (!r.ok) throw new Error(apiErrorMessage(d.detail, r.status)); return d; }); });
+    return request('/api/account/' + path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+      .then(readApiJson);
   }
   function loginError(e) {
     document.getElementById('login-error').textContent = e.message;
@@ -1494,13 +1513,13 @@
       var formData = new FormData();
       formData.append('file', file);
       var url = '/api/reel/edit' + (bgm ? '?bgm=' + encodeURIComponent(bgm) : '');
-      fetch(url, {
+      request(url, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + apiKey },
         body: formData
       })
         .then(function (res) {
-          if (!res.ok) return res.json().then(function (d) { throw new Error(apiErrorMessage(d.detail, res.status)); });
+          if (!res.ok) return readApiJson(res);
           return res.blob();
         })
         .then(function (blob) {
@@ -1576,13 +1595,13 @@
       } else {
         Array.prototype.forEach.call(photoFiles, function (f) { formData.append('photos', f); });
       }
-      fetch('/api/room-tour/generate', {
+      request('/api/room-tour/generate', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + apiKey },
         body: formData
       })
         .then(function (res) {
-          if (!res.ok) return res.json().then(function (d) { throw new Error(apiErrorMessage(d.detail, res.status)); });
+          if (!res.ok) return readApiJson(res);
           return res.blob();
         })
         .then(function (blob) {
@@ -1659,13 +1678,13 @@
       var btn = document.getElementById('csv-export-btn');
       btn.disabled = true;
       btn.textContent = '作成中…';
-      fetch('/api/property-export/csv', {
+      request('/api/property-export/csv', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
         .then(function (res) {
-          if (!res.ok) return res.json().then(function (d) { throw new Error(apiErrorMessage(d.detail, res.status)); });
+          if (!res.ok) return readApiJson(res);
           return res.blob();
         })
         .then(function (blob) {
@@ -2581,14 +2600,14 @@
         generateFlyerBtn.disabled = true;
         generateFlyerBtn.textContent = '作成中…';
         var imageUrls = (result.generated_images || []).map(function (img) { return img.url; });
-        fetch('/api/sessions/' + data.session_id + '/generate-flyer', {
+        request('/api/sessions/' + data.session_id + '/generate-flyer', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
           body: JSON.stringify({ image_urls: imageUrls })
         })
           .then(function (res) {
             if (viewId !== viewToken) return;
-            if (!res.ok) return res.json().then(function (d) { if (viewId !== viewToken) return; throw new Error(apiErrorMessage(d.detail, res.status)); });
+            if (!res.ok) return readApiJson(res);
             return res.blob();
           })
           .then(function (blob) {

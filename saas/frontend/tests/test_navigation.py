@@ -46,6 +46,7 @@ class NavigationTests(unittest.TestCase):
         self.mail_account = {'configured': False, 'subject_prefix': '[TSUNAGUMO-TEST]'}
         self.saved_mail = None
         self.mail_failure = None
+        self.mail_transport_failure = None
         self.session = dict(session_id='current', status='RUNNING', request_text='処理中の依頼', created_at='2026-09-17T00:00:00', result={})
         self.context.add_init_script("localStorage.setItem('tsunagumo_api_key', 'test-only')")
         self.page.route('**/*', self.route)
@@ -89,6 +90,15 @@ class NavigationTests(unittest.TestCase):
             data = dict(line_webhook_url='https://example.test/webhook')
         elif path == '/api/account/mail-account':
             if route.request.method == 'PUT':
+                if self.mail_transport_failure == 'network':
+                    route.abort('connectionfailed')
+                    return
+                if self.mail_transport_failure == 'gateway':
+                    route.fulfill(status=502, content_type='text/html', body='<h1>Bad Gateway</h1>')
+                    return
+                if self.mail_transport_failure == 'invalid_json':
+                    route.fulfill(status=200, content_type='application/json', body='invalid response')
+                    return
                 if self.mail_failure:
                     status, detail = self.mail_failure
                     route.fulfill(status=status, json={'detail': detail})
@@ -243,6 +253,32 @@ class NavigationTests(unittest.TestCase):
             expect(result).not_to_contain_text('Internal Server Error')
             expect(self.page.locator('#mail-pass')).to_have_value('password-kept-on-failure')
             expect(self.page.locator('#mail-save-btn')).to_be_enabled()
+
+    def test_mail_transport_errors_are_japanese_and_preserve_unsaved_inputs(self):
+        self.page.click('#settings-btn')
+        self.page.fill('#mail-from', 'owner@gmail.com')
+        self.page.click('#mail-gmail-btn')
+        self.page.fill('#mail-pass', 'password-kept-on-failure')
+        cases = [
+            ('network', 'サーバーとの通信に失敗しました。'),
+            ('gateway', 'サーバーが一時的に応答できません。'),
+            ('invalid_json', 'サーバーの応答を読み取れませんでした。'),
+        ]
+        for failure, expected in cases:
+            with self.subTest(failure=failure):
+                self.mail_transport_failure = failure
+                self.page.click('#mail-save-btn')
+                result = self.page.locator('#mail-result')
+                expect(result).to_contain_text(expected)
+                expect(result).not_to_contain_text('Failed to fetch')
+                expect(result).not_to_contain_text('Unexpected token')
+                expect(result).not_to_contain_text('Bad Gateway')
+                expect(self.page.locator('#mail-pass')).to_have_value('password-kept-on-failure')
+                expect(self.page.locator('#mail-user')).to_have_value('owner@gmail.com')
+                expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TSUNAGUMO-TEST]')
+                expect(self.page.locator('#mail-status')).to_contain_text('未連携')
+                expect(self.page.locator('#mail-save-btn')).to_be_enabled()
+                self.assertIsNone(self.saved_mail)
 
     def test_gmail_preset_corrects_company_name_without_sending_or_clearing_password(self):
         self.page.click('#settings-btn')
