@@ -45,6 +45,8 @@ class NavigationTests(unittest.TestCase):
         self.last_comment = None
         self.mail_account = {'configured': False, 'subject_prefix': '[TSUNAGUMO-TEST]'}
         self.saved_mail = None
+        self.uploaded_document_body = None
+        self.documents = []
         self.mail_failure = None
         self.mail_transport_failure = None
         self.session = dict(session_id='current', status='RUNNING', request_text='処理中の依頼', created_at='2026-09-17T00:00:00', result={})
@@ -108,6 +110,12 @@ class NavigationTests(unittest.TestCase):
             data = self.mail_account
         elif path == '/api/market-data/prefectures':
             data = []
+        elif path == '/api/documents':
+            if route.request.method == 'POST':
+                self.uploaded_document_body = route.request.post_data_buffer.decode('utf-8')
+                data = {'document_id': 'demo-document', 'status': 'PROCESSING'}
+            else:
+                data = {'documents': self.documents}
         route.fulfill(json=data)
 
     def release(self, data=None, status=200):
@@ -118,6 +126,29 @@ class NavigationTests(unittest.TestCase):
     def new_draft(self):
         self.page.click('#new-request-btn')
         self.page.fill('#new-text', '入力途中の文章を保持')
+
+    def test_document_scope_defaults_private_and_resets_after_public_upload(self):
+        self.page.click('#documents-btn')
+        expect(self.page.locator('#doc-scope')).to_have_value('internal')
+        demo = {'name': 'demo.txt', 'mimeType': 'text/plain', 'buffer': b'Fictional demo only'}
+        self.page.locator('#doc-file').set_input_files(demo)
+        self.page.click('#doc-upload-btn')
+        expect(self.page.locator('#doc-file')).to_have_value('')
+        self.assertIn('name="index_scope"\r\n\r\ninternal', self.uploaded_document_body)
+        self.page.locator('#doc-file').set_input_files(demo)
+        self.page.select_option('#doc-scope', 'public')
+        self.page.click('#doc-upload-btn')
+        expect(self.page.locator('#doc-file')).to_have_value('')
+        self.assertIn('name="index_scope"\r\n\r\npublic', self.uploaded_document_body)
+        expect(self.page.locator('#doc-scope')).to_have_value('internal')
+
+    def test_document_list_shows_which_documents_can_answer_customers(self):
+        self.documents = [dict(id=str(i), title=scope, filename='demo.txt', status='ACTIVE',
+                               version=1, valid_until=None, index_scope=scope)
+                          for i, scope in enumerate(['public', 'internal'])]
+        self.page.click('#documents-btn')
+        expect(self.page.locator('.doc-row').filter(has_text='public')).to_contain_text('お客様への回答にも使用')
+        expect(self.page.locator('.doc-row').filter(has_text='internal')).to_contain_text('社内のみ')
 
     def assert_draft(self):
         expect(self.page.locator('#new-text')).to_have_value('入力途中の文章を保持')

@@ -1032,6 +1032,11 @@
       '<input id="doc-file" type="file" accept=".pdf,.docx,.txt,.md">' +
       '<label for="doc-title">タイトル(空欄可、ファイル名を使用)</label>' +
       '<input id="doc-title" type="text" placeholder="例: 就業規則">' +
+      '<label for="doc-scope">資料の使用範囲</label>' +
+      '<select id="doc-scope" aria-describedby="doc-scope-help">' +
+      '<option value="internal">社内だけで使う</option>' +
+      '<option value="public">お客様への回答にも使う</option></select>' +
+      '<p id="doc-scope-help" class="muted" style="font-size:13px;">お客様への回答にも使う資料は、メール・LINE・Webチャットの回答に参照されます。社外に伝えてよい物件情報やFAQだけを選んでください。</p>' +
       '<label for="doc-valid-until">有効期限(任意、資料の鮮度管理に使います)</label>' +
       '<input id="doc-valid-until" type="date">' +
       '<button id="doc-upload-btn" style="margin-top:14px;">アップロード</button>' +
@@ -1047,6 +1052,7 @@
 
       var formData = new FormData();
       formData.append('file', file);
+      formData.append('index_scope', document.getElementById('doc-scope').value);
       var title = document.getElementById('doc-title').value.trim();
       if (title) formData.append('title', title);
       var validUntil = document.getElementById('doc-valid-until').value;
@@ -1060,6 +1066,7 @@
           document.getElementById('doc-upload-result').innerHTML = '';
           fileInput.value = '';
           document.getElementById('doc-title').value = '';
+          document.getElementById('doc-scope').value = 'internal';
           document.getElementById('doc-valid-until').value = '';
           loadDocumentList();
         })
@@ -1089,7 +1096,8 @@
         if (d.status === 'PROCESSING') hasProcessing = true;
         var badge = '<span class="status-badge status-' + d.status + '">' +
           (documentStatusLabels[d.status] || d.status) + '</span>';
-        var meta = d.filename + (d.valid_until ? ' ・ 有効期限: ' + d.valid_until : '') +
+        var scopeLabel = d.index_scope === 'public' ? 'お客様への回答にも使用' : '社内のみ';
+        var meta = d.filename + ' ・ ' + scopeLabel + (d.valid_until ? ' ・ 有効期限: ' + d.valid_until : '') +
           (d.version > 1 ? ' ・ v' + d.version : '');
         html += '<div class="doc-row" data-id="' + d.id + '">' +
           '<div class="doc-info"><p class="doc-title">' + escapeHtml(d.title) + ' ' + badge + '</p>' +
