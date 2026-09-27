@@ -1493,6 +1493,9 @@
       '(設定画面から登録できます)。処理に数分かかることがあります。</p>' +
       '<label for="reel-video-file">動画ファイル(mp4/mov)</label>' +
       '<input id="reel-video-file" type="file" accept="video/mp4,video/quicktime">' +
+      '<label for="reel-vocabulary" style="margin-top:10px;">会社名・物件名などの表記(任意)</label>' +
+      '<input id="reel-vocabulary" type="text" maxlength="800" placeholder="例: ツナグモ、ツナグモハイツ、春日部">' +
+      '<p class="muted">音声に出てくる名前の表記を入力してください。生成後も字幕をご確認ください。</p>' +
       '<label for="reel-bgm-select" style="margin-top:10px;">BGM(任意)</label>' +
       '<select id="reel-bgm-select"><option value="">なし</option></select>' +
       '<button id="reel-edit-submit" style="margin-top:14px;">編集を開始する</button>' +
@@ -1520,6 +1523,7 @@
       btn.textContent = '編集中…(数分かかります)';
       var formData = new FormData();
       formData.append('file', file);
+      formData.append('vocabulary', document.getElementById('reel-vocabulary').value.trim());
       var url = '/api/reel/edit' + (bgm ? '?bgm=' + encodeURIComponent(bgm) : '');
       request(url, {
         method: 'POST',
@@ -1566,6 +1570,9 @@
       '<input id="room-tour-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple>' +
       '<label for="room-tour-video" style="margin-top:10px;">または、生動画(1本)</label>' +
       '<input id="room-tour-video" type="file" accept="video/mp4,video/quicktime">' +
+      '<label for="room-tour-seconds" style="margin-top:10px;">動画の長さの上限(任意・5〜120秒)</label>' +
+      '<input id="room-tour-seconds" type="number" min="5" max="120" step="1" placeholder="例: 25">' +
+      '<p class="muted">指定した場合は台本を短くし、必要に応じて再生速度を調整します。空欄なら音声の長さに合わせます。</p>' +
       '<label for="room-tour-bgm" style="margin-top:10px;">BGM(任意)</label>' +
       '<select id="room-tour-bgm"><option value="">なし</option></select>' +
       '<button id="room-tour-submit" style="margin-top:14px;">動画を作成する</button>' +
@@ -1585,6 +1592,8 @@
 
     document.getElementById('room-tour-submit').addEventListener('click', function () {
       var info = document.getElementById('room-tour-info').value.trim();
+      var secondsInput = document.getElementById('room-tour-seconds');
+      if (!secondsInput.checkValidity()) { toast('動画の長さは5〜120秒の整数で指定してください'); return; }
       if (!info) { toast('物件情報を入力してください'); return; }
       var photoFiles = document.getElementById('room-tour-photos').files;
       var videoFiles = document.getElementById('room-tour-video').files;
@@ -1597,6 +1606,7 @@
       btn.textContent = '作成中…(数分かかります)';
       var formData = new FormData();
       formData.append('property_info', info);
+      if (secondsInput.value) formData.append('target_seconds', secondsInput.value);
       if (bgm) formData.append('bgm', bgm);
       if (hasVideo) {
         formData.append('video', videoFiles[0]);

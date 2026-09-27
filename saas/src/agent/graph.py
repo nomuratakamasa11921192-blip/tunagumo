@@ -39,7 +39,10 @@ def build_graph(
 
     dept_ids = [d for d in config.departments if d not in ("ceo_office", "qa_auditor")]
 
-    graph.add_node("ceo_office", functools.partial(ceo_office_node, app_config=config, llm=llm))
+    graph.add_node("ceo_office", functools.partial(
+        ceo_office_node, app_config=config, llm=llm,
+        retrieval_available=embedding_provider is not None,
+    ))
     graph.add_node("clarify", clarify_node)
     graph.add_node("join", join_node)
     graph.add_node("qa_auditor", functools.partial(qa_auditor_node, app_config=config, llm=llm))

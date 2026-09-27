@@ -45,14 +45,16 @@ async def test_edit_reel_rejects_unknown_bgm(client, tenant, with_fake_stt_provi
     assert res.status_code == 400
 
 
+@pytest.mark.parametrize("vocabulary", ["", "ツナグモ、春日部"])
 async def test_edit_reel_calls_pipeline_and_returns_video(
-    client, tenant, with_fake_stt_provider, monkeypatch
+    client, tenant, with_fake_stt_provider, monkeypatch, vocabulary
 ):
     from pathlib import Path
 
     from src.video.paths import WORKSPACE_ROOT
 
-    async def fake_edit_reel(input_video_path, *, stt_provider, bgm_path=None, job_dir=None):
+    async def fake_edit_reel(input_video_path, *, stt_provider, bgm_path=None, job_dir=None, **kwargs):
+        assert kwargs.get("vocabulary", "") == vocabulary
         out = WORKSPACE_ROOT / job_dir / "final.mp4"
         out.write_bytes(b"fake-final-mp4-bytes")
         return out
@@ -61,7 +63,7 @@ async def test_edit_reel_calls_pipeline_and_returns_video(
 
     headers = {"Authorization": f"Bearer {tenant['api_key']}"}
     files = {"file": ("video.mp4", b"fake video bytes", "video/mp4")}
-    res = await client.post("/api/reel/edit", files=files, headers=headers)
+    res = await client.post("/api/reel/edit", files=files, data={"vocabulary": vocabulary}, headers=headers)
 
     assert res.status_code == 200
     assert res.content == b"fake-final-mp4-bytes"

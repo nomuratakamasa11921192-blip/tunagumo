@@ -36,7 +36,8 @@ async def test_generate_script_includes_target_seconds_in_prompt():
 
     await generate_script(llm=llm, model="gpt-5.6-terra", topic="お知らせ動画", target_seconds=30)
 
-    assert "約30秒" in llm.structured_calls[0]["user_message"]
+    assert "30秒以内" in llm.structured_calls[0]["user_message"]
+    assert "120文字以内" in llm.structured_calls[0]["user_message"]
 
 
 async def test_generate_script_raises_script_generation_error_on_llm_failure():

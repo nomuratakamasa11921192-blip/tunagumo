@@ -26,7 +26,8 @@ async def generate_script(
 ) -> tuple[VideoScript, dict]:
     user_message = f"【依頼内容】\n{topic}"
     if target_seconds:
-        user_message += f"\n\n【目標尺】約{target_seconds}秒"
+        user_message += (f"\n\n【目標尺】{target_seconds}秒以内。ナレーション全体は"
+                         f"{target_seconds * 4}文字以内を目安に短くまとめてください。")
 
     try:
         script, usage = await llm.call_structured(

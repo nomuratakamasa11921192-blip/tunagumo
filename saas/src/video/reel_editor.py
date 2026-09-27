@@ -41,6 +41,7 @@ async def edit_reel(
     stt_provider: STTProvider,
     bgm_path: str | Path | None = None,
     job_dir: str | Path | None = None,
+    vocabulary: str = "",
 ) -> Path:
     """input_video_pathはworkspace/配下の相対パス(またはworkspace/配下の絶対パス)。
     戻り値も同様にworkspace/配下の絶対パス。job_dirを渡さない場合は新規作成する。
@@ -55,7 +56,8 @@ async def edit_reel(
 
     audio_bytes = (WORKSPACE_ROOT / (workdir / "audio.wav")).read_bytes()
     try:
-        srt_text = await stt_provider.transcribe_to_srt(audio_bytes, filename="audio.wav")
+        options = {"vocabulary": vocabulary} if vocabulary else {}
+        srt_text = await stt_provider.transcribe_to_srt(audio_bytes, filename="audio.wav", **options)
     except STTError as e:
         raise ReelEditError(f"字幕の自動生成に失敗しました: {e}") from e
 

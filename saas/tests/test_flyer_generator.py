@@ -43,3 +43,16 @@ def test_generate_flyer_pdf_embeds_generated_image(tmp_path, monkeypatch):
     )
 
     assert len(with_image) - len(without_image) > len(buf.getvalue()) // 2
+
+
+def test_flyer_formats_markdown_without_activating_customer_html():
+    from src.core.flyer_generator import _render_html
+    rendered = _render_html(FlyerData(
+        title="架空物件", body_text="## 設備\n- 宅配ボックス\n- **独立洗面台**\n\n<script>alert(1)</script>"
+    ))
+    assert "<h2>設備</h2>" in rendered
+    assert "## 設備" not in rendered
+    assert "<li>宅配ボックス</li>" in rendered
+    assert "<strong>独立洗面台</strong>" in rendered
+    assert "<script>" not in rendered
+    assert "&lt;script&gt;" in rendered

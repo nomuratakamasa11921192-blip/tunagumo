@@ -6,6 +6,7 @@ PDF化にはWeasyPrint(Pure Python、HTML+CSS→PDF)を使う。
 """
 
 import html
+import re
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -44,7 +45,10 @@ _TEMPLATE = """<!DOCTYPE html>
   /* flexだとWeasyPrintが画像を描画しない(63.1で確認)ため、2列のgridで並べる */
   .images {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }}
   .images img {{ width: 100%; height: 70mm; object-fit: cover; border-radius: 4px; }}
-  .body-text {{ white-space: pre-wrap; font-size: 12.5px; line-height: 1.8; }}
+  .body-text {{ font-size: 12.5px; line-height: 1.8; }}
+  .body-text h2 {{ font-size: 15px; margin: 14px 0 6px; break-after: avoid; }}
+  .body-text p {{ margin: 6px 0; }}
+  .body-text ul {{ padding-left: 20px; margin: 6px 0; }}
   .footer {{ margin-top: 24px; font-size: 9px; color: #888; border-top: 1px solid #ddd; padding-top: 8px; }}
 </style>
 </head>
@@ -59,6 +63,42 @@ _TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
+def _render_body(text: str) -> str:
+    """Render a small Markdown subset after escaping all supplied HTML."""
+    blocks: list[str] = []
+    paragraph: list[str] = []
+    items: list[str] = []
+
+    def flush() -> None:
+        if paragraph:
+            blocks.append("<p>" + "<br>".join(paragraph) + "</p>")
+            paragraph.clear()
+        if items:
+            blocks.append("<ul>" + "".join(f"<li>{item}</li>" for item in items) + "</ul>")
+            items.clear()
+
+    for raw in text.splitlines():
+        line = html.escape(raw.strip())
+        line = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", line)
+        heading = re.match(r"^#{1,6}\s+(.+)$", line)
+        item = re.match(r"^[-*+]\s+(.+)$", line)
+        if not line:
+            flush()
+        elif heading:
+            flush()
+            blocks.append(f"<h2>{heading.group(1)}</h2>")
+        elif item:
+            if paragraph:
+                flush()
+            items.append(item.group(1))
+        else:
+            if items:
+                flush()
+            paragraph.append(line)
+    flush()
+    return "\n".join(blocks)
+
+
 def _render_html(data: FlyerData) -> str:
     images_html = "".join(
         f'<img src="{html.escape(u)}">' for u in data.image_urls[:MAX_FLYER_IMAGES]
@@ -66,7 +106,7 @@ def _render_html(data: FlyerData) -> str:
     return _TEMPLATE.format(
         title=html.escape(data.title),
         images_html=images_html,
-        body_text=html.escape(data.body_text),
+        body_text=_render_body(data.body_text),
     )
 
 

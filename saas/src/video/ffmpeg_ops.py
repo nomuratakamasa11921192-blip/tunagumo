@@ -60,6 +60,32 @@ async def probe_duration(video_path: str | Path, *, timeout: float = DEFAULT_TIM
     return float(stdout.decode().strip())
 
 
+async def fit_video_duration(
+    video_path: str | Path, out_path: str | Path, *, target_seconds: int,
+    max_speed: float = 1.35, timeout: float = DEFAULT_TIMEOUT_SECONDS,
+) -> Path:
+    """Keep all speech and frames; speed up moderately instead of cutting the ending."""
+    video_path = ensure_in_workspace(video_path)
+    out_path = ensure_in_workspace(out_path)
+    duration = await probe_duration(video_path, timeout=timeout)
+    if not 5 <= target_seconds <= 120:
+        raise FFmpegError("動画の長さは5〜120秒で指定してください")
+    if duration <= target_seconds:
+        return video_path
+    speed = duration / (target_seconds - 0.1)
+    if speed > max_speed:
+        raise FFmpegError("指定の長さに収まりません。物件情報を短くするか、長さの上限を増やしてください")
+    await _run(
+        "ffmpeg",
+        ["-y", "-i", str(video_path), "-vf", f"setpts=PTS/{speed:.8f}",
+         "-af", f"atempo={speed:.8f}", "-c:v", "libx264", "-c:a", "aac", str(out_path)],
+        timeout=timeout,
+    )
+    if await probe_duration(out_path, timeout=timeout) > target_seconds + 0.1:
+        raise FFmpegError("長さの調整に失敗しました。指定秒数を増やして再度お試しください")
+    return out_path
+
+
 async def burn_subtitles(
     video_path: str | Path, srt_path: str | Path, out_path: str | Path, *, timeout: float = DEFAULT_TIMEOUT_SECONDS
 ) -> Path:

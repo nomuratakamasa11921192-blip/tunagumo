@@ -17,7 +17,7 @@ OPENAI_TRANSCRIPTION_MODEL = "whisper-1"
 
 
 class STTProvider(Protocol):
-    async def transcribe_to_srt(self, audio_bytes: bytes, *, filename: str = "audio.wav") -> str:
+    async def transcribe_to_srt(self, audio_bytes: bytes, *, filename: str = "audio.wav", vocabulary: str = "") -> str:
         """音声データを認識し、SRT形式の字幕テキストを返す。"""
         ...
 
@@ -33,7 +33,7 @@ class OpenAISTTProvider:
         self._api_key = api_key
         self.total_cost_usd = 0.0
 
-    async def transcribe_to_srt(self, audio_bytes: bytes, *, filename: str = "audio.wav") -> str:
+    async def transcribe_to_srt(self, audio_bytes: bytes, *, filename: str = "audio.wav", vocabulary: str = "") -> str:
         if not audio_bytes:
             raise STTError("空の音声データは認識できません")
 
@@ -41,7 +41,11 @@ class OpenAISTTProvider:
             res = await client.post(
                 OPENAI_TRANSCRIPTION_URL,
                 headers={"Authorization": f"Bearer {self._api_key}"},
-                data={"model": OPENAI_TRANSCRIPTION_MODEL, "response_format": "srt"},
+                data={
+                    "model": OPENAI_TRANSCRIPTION_MODEL, "response_format": "srt",
+                    "language": "ja",
+                    "prompt": "ツナグモ。" + vocabulary.strip()[:800],
+                },
                 files={"file": (filename, audio_bytes, "audio/wav")},
             )
         if res.status_code >= 400:

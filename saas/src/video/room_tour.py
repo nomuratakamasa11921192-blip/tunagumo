@@ -19,6 +19,7 @@ from src.agent.llm import StructuredLLM
 from src.video.ffmpeg_ops import (
     FFmpegError,
     burn_subtitles,
+    fit_video_duration,
     jump_cut_silence,
     mix_audio,
     photos_to_video,
@@ -85,12 +86,15 @@ async def generate_room_tour(
     tts_provider: TTSProvider,
     bgm_path: str | Path | None = None,
     job_dir: str | Path | None = None,
+    target_seconds: int | None = None,
 ) -> Path:
     """property_infoから台本を作り、下地映像(video_pathがあれば生動画の無音カット後、
     無ければimage_paths=顧客がアップロードした実際の写真のスライドショー)に
     ナレーション・BGM・字幕を合成した動画を返す。image_paths/video_pathのどちらか
     一方は必須(video_path優先)。
     """
+    if target_seconds is not None and not 5 <= target_seconds <= 120:
+        raise RoomTourError("動画の長さは5〜120秒で指定してください")
     image_paths = image_paths or []
     if not image_paths and video_path is None:
         raise RoomTourError("写真または動画のいずれかをアップロードしてください")
@@ -98,7 +102,9 @@ async def generate_room_tour(
     workdir = Path(job_dir) if job_dir is not None else new_job_dir()
 
     try:
-        script, _usage = await generate_script(llm=llm, model=model, topic=property_info)
+        script, _usage = await generate_script(
+            llm=llm, model=model, topic=property_info, target_seconds=target_seconds
+        )
     except ScriptGenerationError as e:
         raise RoomTourError(f"台本の生成に失敗しました: {e}") from e
 
@@ -146,4 +152,9 @@ async def generate_room_tour(
     else:
         final = narrated
 
+    if target_seconds is not None:
+        try:
+            final = await fit_video_duration(final, workdir / "duration_adjusted.mp4", target_seconds=target_seconds)
+        except FFmpegError as e:
+            raise RoomTourError(str(e)) from e
     return final

@@ -89,8 +89,9 @@ async def test_generate_room_tour_rejects_unknown_bgm(client, tenant, with_fake_
     assert res.status_code == 400
 
 
+@pytest.mark.parametrize("target", [None, 25])
 async def test_generate_room_tour_calls_pipeline_with_photos_and_returns_video(
-    client, tenant, with_fake_tts_provider, monkeypatch
+    client, tenant, with_fake_tts_provider, monkeypatch, target
 ):
     from pathlib import Path
 
@@ -99,8 +100,9 @@ async def test_generate_room_tour_calls_pipeline_with_photos_and_returns_video(
     captured = {}
 
     async def fake_generate_room_tour(
-        *, llm, model, property_info, image_paths, video_path=None, tts_provider, bgm_path=None, job_dir=None
+        *, llm, model, property_info, image_paths, video_path=None, tts_provider, bgm_path=None, job_dir=None, **kwargs
     ):
+        assert kwargs.get("target_seconds") == target
         captured["image_paths"] = image_paths
         captured["video_path"] = video_path
         out = WORKSPACE_ROOT / job_dir / "final.mp4"
@@ -112,7 +114,7 @@ async def test_generate_room_tour_calls_pipeline_with_photos_and_returns_video(
     headers = {"Authorization": f"Bearer {tenant['api_key']}"}
     res = await client.post(
         "/api/room-tour/generate",
-        data={"property_info": "テスト物件、2LDK"},
+        data={"property_info": "テスト物件、2LDK", **({"target_seconds": str(target)} if target else {})},
         files=_photo_files(),
         headers=headers,
     )

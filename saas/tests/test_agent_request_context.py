@@ -64,3 +64,28 @@ async def test_clarified_facts_and_qa_verdict_reach_later_stages(config):
         assert REQUEST in call["user_message"]
         assert "賃料: 6.8万円" in call["user_message"]
     assert "【QA判定】PASS" in stage_calls(llm, "routing")[-1]["user_message"]
+
+
+async def test_available_retrieval_is_explained_without_passing_documents_to_router(config):
+    from src.agent.nodes import ceo_office_node
+    llm = FakeLLM()
+    llm.queue_structured(SupervisorDecision(verdict="ASSIGN", target_depts=["planning_dept"], reason="資料検索"))
+    state = new_state("tenant-a", "rag-routing", "user", "登録済み社内資料から定休日を教えて")
+    state["goal"] = state["raw_message"]
+    await ceo_office_node(state, app_config=config, llm=llm, retrieval_available=True)
+    prompt = llm.structured_calls[0]["user_message"]
+    assert "まず該当部署にASSIGNして検索" in prompt
+    assert "<retrieved_document" not in prompt
+
+
+async def test_approval_summary_preserves_unresolved_qa_issues(config):
+    from src.agent.nodes import _build_approval_summary, _CostTracker
+    llm = FakeLLM()
+    llm.queue_structured(ApprovalSummary(headline="回答", qa_result="QAの警告事項はありません"))
+    state = new_state("tenant-a", "qa-warning", "user", "回答して")
+    state.update(qa_verdict="FAIL", qa_findings=[{"issue": "資料との照合が必要"}], qa_warnings=[])
+    result = await _build_approval_summary(state, app_config=config, llm=llm, cost=_CostTracker(config))
+    assert "資料との照合が必要" in llm.structured_calls[0]["user_message"]
+    assert "資料との照合が必要" in result.qa_result
+    assert "要確認" in result.qa_result
+    assert "警告事項はありません" not in result.qa_result

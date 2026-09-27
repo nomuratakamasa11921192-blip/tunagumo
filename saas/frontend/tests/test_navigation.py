@@ -46,6 +46,7 @@ class NavigationTests(unittest.TestCase):
         self.mail_account = {'configured': False, 'subject_prefix': '[TSUNAGUMO-TEST]'}
         self.saved_mail = None
         self.uploaded_document_body = None
+        self.video_uploads = []
         self.documents = []
         self.mail_failure = None
         self.mail_transport_failure = None
@@ -68,6 +69,13 @@ class NavigationTests(unittest.TestCase):
             route.fulfill(content_type='text/html', body=HTML.read_text(encoding='utf-8'))
             return
         data = {}
+        if path in ('/api/room-tour/generate', '/api/reel/edit'):
+            self.video_uploads.append(route.request.post_data_buffer.decode('utf-8'))
+            route.fulfill(content_type='video/mp4', body=b'demo-video')
+            return
+        if path == '/api/reel/bgm-options':
+            route.fulfill(json=[])
+            return
         if path == '/api/sessions':
             data = {'sessions': [self.session]}
         elif path == '/api/sessions/current':
@@ -376,6 +384,31 @@ class NavigationTests(unittest.TestCase):
         expect(self.page.locator('#company-activity')).to_contain_text('明日、内容を確認してください')
         self.page.locator('.activity-open').click()
         expect(self.page.locator('#main-content')).to_contain_text('処理中の依頼')
+
+
+    def test_video_forms_send_vocabulary_and_duration(self):
+        self.page.click('#reel-editor-btn')
+        self.page.locator('#reel-video-file').set_input_files(
+            {'name': 'demo.mp4', 'mimeType': 'video/mp4', 'buffer': b'fake video'})
+        self.page.fill('#reel-vocabulary', 'ツナグモ、春日部')
+        self.page.click('#reel-edit-submit')
+        expect(self.page.locator('#reel-edit-result')).to_contain_text('ダウンロードしました')
+        self.assertIn('name="vocabulary"\r\n\r\nツナグモ、春日部', self.video_uploads[-1])
+        self.page.click('#room-tour-btn')
+        self.page.fill('#room-tour-info', '架空物件')
+        self.page.fill('#room-tour-seconds', '25')
+        self.page.locator('#room-tour-photos').set_input_files(
+            {'name': 'demo.jpg', 'mimeType': 'image/jpeg', 'buffer': b'fake image'})
+        self.page.click('#room-tour-submit')
+        expect(self.page.locator('#room-tour-result')).to_contain_text('ダウンロードしました')
+        self.assertIn('name="target_seconds"\r\n\r\n25', self.video_uploads[-1])
+
+    def test_video_duration_rejects_fraction_without_sending(self):
+        self.page.click('#room-tour-btn')
+        self.page.fill('#room-tour-info', '架空物件')
+        self.page.fill('#room-tour-seconds', '25.5')
+        self.page.click('#room-tour-submit')
+        self.assertEqual(self.video_uploads, [])
 
 
 if __name__ == '__main__':

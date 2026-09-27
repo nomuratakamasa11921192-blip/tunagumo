@@ -9,7 +9,7 @@
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
@@ -48,6 +48,7 @@ async def list_bgm_options(tenant: Tenant = Depends(get_current_tenant)) -> list
 async def edit_reel_endpoint(
     file: UploadFile,
     bgm: str | None = None,
+    vocabulary: str = Form("", max_length=800),
     tenant: Tenant = Depends(get_current_tenant),
     stt_provider: STTProvider | None = Depends(get_stt_provider),
     db: AsyncSession = Depends(get_scoped_db),
@@ -88,7 +89,8 @@ async def edit_reel_endpoint(
 
     try:
         result_path = await edit_reel(
-            input_path_rel, stt_provider=stt_provider, bgm_path=bgm_path, job_dir=job_dir
+            input_path_rel, stt_provider=stt_provider, bgm_path=bgm_path, job_dir=job_dir,
+            **({"vocabulary": vocabulary} if vocabulary else {}),
         )
     except ReelEditError as e:
         shutil.rmtree(WORKSPACE_ROOT / job_dir, ignore_errors=True)

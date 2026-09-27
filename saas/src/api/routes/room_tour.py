@@ -59,6 +59,7 @@ async def generate_room_tour_endpoint(
     video: UploadFile | None = File(default=None),
     property_info: str = Form(...),
     bgm: str | None = Form(None),
+    target_seconds: int | None = Form(None, ge=5, le=120),
     tenant: Tenant = Depends(get_current_tenant),
     db=Depends(get_scoped_db),
     llm: StructuredLLM = Depends(get_llm),
@@ -132,6 +133,7 @@ async def generate_room_tour_endpoint(
             tts_provider=tts_provider,
             bgm_path=bgm_path,
             job_dir=job_dir,
+            **({"target_seconds": target_seconds} if target_seconds is not None else {}),
         )
     except RoomTourError as e:
         shutil.rmtree(WORKSPACE_ROOT / job_dir, ignore_errors=True)

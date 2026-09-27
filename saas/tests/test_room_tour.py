@@ -153,3 +153,29 @@ async def test_generate_room_tour_wraps_tts_failure():
             tts_provider=_FailingTTS(),
             job_dir=d,
         )
+
+
+async def test_room_tour_respects_explicit_duration_without_cutting_speech():
+    from src.video.ffmpeg_ops import probe_duration
+    d = _workdir()
+    await _make_test_photo(f"{d}/photos/a.jpg")
+    audio = await _fake_narration_audio_bytes(6.0)
+    class TimedLLM(_FakeLLM):
+        async def call_structured(self, **kwargs):
+            assert "5秒以内" in kwargs["user_message"]
+            return await super().call_structured(**kwargs)
+    result = await generate_room_tour(
+        llm=TimedLLM(), model="test-model", property_info="架空物件", image_paths=[f"{d}/photos/a.jpg"],
+        tts_provider=_FakeTTSProvider(audio), job_dir=d, target_seconds=5,
+    )
+    assert 4.8 <= await probe_duration(result) <= 5.1
+
+
+async def test_duration_limit_rejects_unintelligible_speedup():
+    from src.video.ffmpeg_ops import FFmpegError, fit_video_duration
+    d = _workdir()
+    video = f"{d}/long.mp4"
+    await _run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=blue:s=160x120:d=8",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=8", "-shortest", str(WORKSPACE_ROOT / video)])
+    with pytest.raises(FFmpegError, match="指定の長さに収まりません"):
+        await fit_video_duration(video, f"{d}/short.mp4", target_seconds=5)

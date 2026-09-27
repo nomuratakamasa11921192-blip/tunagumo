@@ -97,13 +97,23 @@ def _request_context(state: OrgState, *, goal: str | None = None) -> list[str]:
     return parts
 
 
-def _build_routing_prompt(state: OrgState, *, app_config: AppConfig, goal: str) -> str:
+def _build_routing_prompt(
+    state: OrgState, *, app_config: AppConfig, goal: str, retrieval_available: bool = False
+) -> str:
     board = state.get("board", {}) or {}
     candidates = _dept_candidates(app_config, board)
     lines = [
         f"【会社情報】\n{app_config.company.context}",
         *_request_context(state, goal=goal),
     ]
+    if retrieval_available:
+        lines.append(
+            "【利用できる資料検索】部署は登録済みの社内資料を検索できます。"
+            "登録資料についての依頼は、本文が依頼文にないという理由だけで聞き返さず、"
+            "まず該当部署にASSIGNして検索・回答を依頼してください。"
+            "検索で必要な根拠が得られなかった場合に不足を明示してください。"
+            "資料の有無や本文はこの振り分け段階では未確認です。"
+        )
     done = {d: t for d, t in board.items() if t}
     if done:
         text = "\n\n".join(f"### {d}\n{t}" for d, t in done.items())
@@ -126,11 +136,20 @@ async def _build_approval_summary(
     dept = app_config.departments["ceo_office"]
     board = state.get("board", {}) or {}
     deliverables_text = "\n\n".join(f"### {d}\n{t}" for d, t in board.items() if t)
-    qa_report = "合格" if state.get("qa_verdict") == "PASS" else "警告付きで進行(差し戻し上限到達)"
+    warnings = list(state.get("qa_warnings", []) or [])
+    if state.get("qa_verdict") != "PASS":
+        warnings = list(state.get("qa_findings", []) or []) + warnings
+        qa_report = "要確認（差し戻し上限到達。未解消の指摘があります）"
+    else:
+        qa_report = "合格（確認事項あり）" if warnings else "合格"
+    warning_text = " / ".join(
+        str(w.get("issue") or w.get("reason") or w.get("criterion") or "確認事項あり")
+        for w in warnings
+    )
     user_message = "\n\n".join(_request_context(state)) + "\n\n" + (
         f"【成果物】\n{deliverables_text}\n\n"
         f"【QA結果】{qa_report}\n"
-        f"【QAの警告】{state.get('qa_warnings', [])}"
+        f"【QAの警告】{warnings}"
     )
     summary, usage = await llm.call_structured(
         model=dept.model,
@@ -139,7 +158,8 @@ async def _build_approval_summary(
         output_model=ApprovalSummary,
     )
     cost.add(dept.model, usage)
-    return summary
+    # QA status is authoritative; a language-model summary must not erase warnings.
+    return summary.model_copy(update={"qa_result": qa_report + ("：" + warning_text if warning_text else "")})
 
 
 async def _route(
@@ -150,9 +170,12 @@ async def _route(
     goal: str,
     cost: _CostTracker,
     retry: int = 0,
+    retrieval_available: bool = False,
 ) -> dict:
     dept = app_config.departments["ceo_office"]
-    user_message = _build_routing_prompt(state, app_config=app_config, goal=goal)
+    user_message = _build_routing_prompt(
+        state, app_config=app_config, goal=goal, retrieval_available=retrieval_available
+    )
 
     try:
         decision, usage = await llm.call_structured(
@@ -183,7 +206,8 @@ async def _route(
                 "next_depts": [],
                 "cost_usd": cost.total,
             }
-        return await _route(state, app_config=app_config, llm=llm, goal=goal, cost=cost, retry=retry + 1)
+        return await _route(state, app_config=app_config, llm=llm, goal=goal, cost=cost,
+                            retry=retry + 1, retrieval_available=retrieval_available)
 
     verdict = decision.verdict
     clarify_count = state.get("clarify_count", 0)
@@ -308,7 +332,9 @@ async def _route(
     }
 
 
-async def ceo_office_node(state: OrgState, *, app_config: AppConfig, llm: StructuredLLM) -> dict:
+async def ceo_office_node(
+    state: OrgState, *, app_config: AppConfig, llm: StructuredLLM, retrieval_available: bool = False
+) -> dict:
     stopper = _check_stoppers(state, app_config)
     if stopper is not None:
         return stopper
@@ -343,7 +369,8 @@ async def ceo_office_node(state: OrgState, *, app_config: AppConfig, llm: Struct
     else:
         goal = state["goal"]
 
-    return await _route(state, app_config=app_config, llm=llm, goal=goal, cost=cost)
+    return await _route(state, app_config=app_config, llm=llm, goal=goal, cost=cost,
+                        retrieval_available=retrieval_available)
 
 
 async def _retrieve_rag_context(

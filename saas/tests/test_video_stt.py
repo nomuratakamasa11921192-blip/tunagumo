@@ -47,3 +47,17 @@ async def test_transcribe_rejects_empty_audio(monkeypatch):
     provider = OpenAISTTProvider(api_key="sk-test")
     with pytest.raises(STTError):
         await provider.transcribe_to_srt(b"")
+
+
+async def test_transcription_uses_japanese_and_user_supplied_spelling(monkeypatch):
+    async def fake_post(self, url, headers=None, data=None, files=None):
+        assert data["language"] == "ja"
+        assert "ツナグモ" in data["prompt"]
+        assert "ツナグモハイツ" in data["prompt"]
+        return httpx.Response(200, request=httpx.Request("POST", url),
+                              text="1\n00:00:00,000 --> 00:00:01,000\nツナグモハイツ\n")
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    result = await OpenAISTTProvider("sk-test").transcribe_to_srt(
+        b"fake-wav", vocabulary="ツナグモハイツ、春日部"
+    )
+    assert "ツナグモハイツ" in result
