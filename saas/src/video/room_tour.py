@@ -45,11 +45,10 @@ def new_job_dir() -> Path:
 
 
 def _fmt_timestamp(seconds: float) -> str:
-    seconds = max(seconds, 0.0)
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    millis = int(round((seconds - int(seconds)) * 1000))
+    total_millis = round(max(seconds, 0.0) * 1000)
+    whole_seconds, millis = divmod(total_millis, 1000)
+    hours, remaining_seconds = divmod(whole_seconds, 3600)
+    minutes, secs = divmod(remaining_seconds, 60)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 

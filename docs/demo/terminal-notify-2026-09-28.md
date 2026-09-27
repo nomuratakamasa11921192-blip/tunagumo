@@ -43,3 +43,7 @@ Windows Terminal 1件、OpenConsole 2件、pwsh 2件のPIDは前回から不変�
 4. 顧客LINEの本人ログイン・本人限定送受信テスト。
 5. Instagramのスマホでのプロフィールリンク追加・保存確認。
 6. 動画・投稿文の本人確認と承認、対象アカウント/投稿条件の確認後のSNS公開。
+
+## ユーザー録画による訂正
+
+後続の録画で、チャット開始直後にGitのコンソールウィンドウが繰り返し表示されることを確認。このページのnotify対策は症状に合わず、notify設定だけ元へ復元した。features.daemon_auto_start=false と --no-daemon での同じ会話の再開を準備。現行プロセスの切替・再発確認は未完了。詳細は offline-finish-2026-09-28.md。
