@@ -65,6 +65,7 @@ STATE_PROP = "状態"
 STATE_APPROVED = "承認済"
 STATE_QUEUED = "投稿待ち"
 STATE_POSTED = "投稿済"
+STATE_BUFFER_QUEUED = "Buffer予約済"
 
 DEFAULT_DATABASE_ID = "83b85a552c124499b1e9ba5bd19f7acd"
 DEFAULT_CHANNEL = "instagram"
@@ -128,6 +129,22 @@ def database_schema(token, db_id):
     return {name: prop.get("type") for name, prop in db.get("properties", {}).items()}
 
 
+def query_all_pages(token, db_id):
+    rows, cursor = [], None
+    while True:
+        payload = {"page_size": 100}
+        if cursor:
+            payload["start_cursor"] = cursor
+        result = api(token, "POST", f"/databases/{db_id}/query", payload)
+        rows.extend(result.get("results", []))
+        if not result.get("has_more"):
+            return rows
+        next_cursor = result.get("next_cursor")
+        if not next_cursor or next_cursor == cursor:
+            raise RuntimeError("Notionの次ページを取得できません。処理を中止します。")
+        cursor = next_cursor
+
+
 def build_property(kind, value):
     """列の型に合わせた値を組み立てる。対応していない型なら None。"""
     if kind == "title":
@@ -154,6 +171,12 @@ def create_draft(token, db_id, schema, title, caption, media, channel):
         (("チャネル", "Channel"), channel),
         ((STATE_PROP, "Status", "ステータス"), "下書き"),
     ]
+    for names in (("投稿タイトル", "Name", "名前"), ("キャプション", "本文", "Caption"),
+                  ("チャネル", "Channel"), (STATE_PROP, "Status", "ステータス")):
+        if not any(schema.get(name) in ("title", "rich_text", "select", "status") for name in names):
+            raise RuntimeError(f"下書きに必要な列がありません: {names[0]}")
+    if media and not any(schema.get(name) in ("url", "rich_text") for name in ("画像URL", "メディア", "Media", "URL")):
+        raise RuntimeError("メディアを保存できる列がありません。")
     props = {}
     for names, value in wanted:
         if value in (None, ""):
@@ -171,15 +194,31 @@ def create_draft(token, db_id, schema, title, caption, media, channel):
     return page["id"].replace("-", "")
 
 
-def set_state(token, page_id, state, state_type):
+def set_state(token, page_id, state, state_type, state_name=STATE_PROP):
     value = {"name": state}
     api(token, "PATCH", f"/pages/{page_id}",
-        {"properties": {STATE_PROP: {state_type: value}}})
+        {"properties": {state_name: {state_type: value}}})
 
 
 def safe_filename(title, page_id):
     base = re.sub(r"[^\w぀-ヿ一-鿿-]+", "_", title).strip("_")[:40]
-    return f"{datetime.datetime.now():%Y-%m-%d}_{base or 'notion'}_{page_id[:8]}.txt"
+    return f"{datetime.datetime.now():%Y-%m-%d}_{base or 'notion'}_{page_id}.txt"
+
+
+def already_imported(page_id):
+    """A Notion page is a single delivery, even if its title/date/state changes."""
+    for root in (auto_post.QUEUE_ROOT, auto_post.POSTED_ROOT):
+        for channel in auto_post.CHANNELS:
+            folder = os.path.join(root, channel)
+            if not os.path.isdir(folder):
+                continue
+            for name in os.listdir(folder):
+                if not name.endswith('.txt'):
+                    continue
+                with open(os.path.join(folder, name), encoding='utf-8') as f:
+                    if auto_post.notion_page_of(f.read()) == page_id:
+                        return True
+    return False
 
 
 def push_drafts(token, db_id, dry_run):
@@ -237,8 +276,8 @@ def push_drafts(token, db_id, dry_run):
 
     if not dry_run:
         print(f"[notion_sync] {sent}件を送りました。Notionで内容を確認し、"
-              "「承認済」にすると投稿されます。")
-    return 0
+              "「承認済」にした原稿だけが取込・投稿処理の対象になります。定期実行の稼働状態も確認してください。")
+    return 0 if dry_run or sent == len(items) else 1
 
 
 def main():
@@ -261,12 +300,11 @@ def main():
         return push_drafts(token, db_id, args.dry_run)
 
     try:
-        result = api(token, "POST", f"/databases/{db_id}/query", {"page_size": 50})
+        rows = query_all_pages(token, db_id)
     except RuntimeError as e:
         print(f"[notion_sync] {e}", file=sys.stderr)
         return 1
 
-    rows = result.get("results", [])
     targets = []
     for page in rows:
         props = page.get("properties", {})
@@ -284,6 +322,9 @@ def main():
     taken = 0
     for page, props, state_type in targets:
         page_id = page["id"].replace("-", "")
+        if already_imported(page_id):
+            print(f"  - {page_id}: 取込済みの記録があるため再送しません")
+            continue
         title = plain_text(find_prop(props, "投稿タイトル", "Name", "名前"))
         caption = plain_text(find_prop(props, "キャプション", "本文", "Caption"))
         media = plain_text(find_prop(props, "画像URL", "メディア", "Media", "URL"))
@@ -314,12 +355,17 @@ def main():
         dest_dir = os.path.join(auto_post.QUEUE_ROOT, channel)
         os.makedirs(dest_dir, exist_ok=True)
         dest = os.path.join(dest_dir, safe_filename(title, page_id))
-        with open(dest, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
+        try:
+            with open(dest, "x", encoding="utf-8") as f:
+                f.write("\n".join(lines) + "\n")
+        except FileExistsError:
+            print(f"  - {title}: 取込済みのため上書きしません")
+            continue
 
         # 取り込み済みにして、次回の実行で二重に取り込まないようにする
         try:
-            set_state(token, page_id, STATE_QUEUED, state_type)
+            state_name = next(name for name in (STATE_PROP, "Status", "ステータス") if name in props)
+            set_state(token, page_id, STATE_QUEUED, state_type, state_name)
         except RuntimeError as e:
             os.remove(dest)
             print(f"  - {title}: 状態を更新できなかったため取り消しました（{e}）", file=sys.stderr)
@@ -329,7 +375,7 @@ def main():
         print(f"  - [{channel}] {title} → 投稿待ちへ取り込みました")
 
     if not args.dry_run:
-        print(f"[notion_sync] {taken}件を取り込みました。次の定期実行の時刻に投稿されます。")
+        print(f"[notion_sync] {taken}件を取り込みました。手動実行または有効な定期実行で送信されます。")
     return 0
 
 

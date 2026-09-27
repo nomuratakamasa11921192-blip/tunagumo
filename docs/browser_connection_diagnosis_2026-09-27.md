@@ -34,3 +34,15 @@
 - https://status.openai.com/
 
 アプリ再起動による恒久解決は未検証。受信画面の追加録画も未完了。
+
+## 15時台の追加診断
+
+- 同じ会話でChromeへのタブ作成と一覧取得が再び同じ接続ポリシーエラー。組み込みブラウザは `Browser is not available: iab`。
+- 15:09 JSTのプロセス確認でもChrome・ChatGPT・codexに9/25開始プロセスが存在。本人へ完全終了後の再起動を依頼。根本原因とは断定しない。
+- CLIの公式診断 `codex doctor --summary --no-color --ascii` は終了コード0。通信先HTTP到達・WebSocket HTTP 101が成功し、認証設定と状態DBは正常。21 ok・1 idle・6 notes・3 warn・0 fail、総合degraded。
+- CLI 0.156.1に対して0.157.1、デスクトップに対してbuild 26.924.2738.0の更新が利用可能と表示。インストール済み `OpenAI.Codex` は26.917.8451.0 / Status Ok。
+- 診断はデスクトップを「not running」と表示したが、プロセス一覧にはChatGPTが存在する。CLIの検出対象と現在のアプリが一致するかは不明なので、「アプリが動いていない」とは断定しない。
+- Defender除外やDev Drive等の一般的な注意も出たが、本件との因果関係は未確認。セキュリティ設定・認証・MCP設定は変更しない。
+- 更新による本件の解消は未検証。CLIの更新だけでブラウザが直るとは扱わない。
+
+参照：[OpenAI公式・WindowsのCodex Doctor](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)。診断コマンドの存在と引数は、このPCの`codex --help`と`codex doctor --help`でも確認。

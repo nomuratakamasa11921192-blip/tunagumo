@@ -6,9 +6,9 @@
 **投稿時にAIを動かさない。** Codex も Claude Code も使わない。順番待ちのファイルを
 1件取り出して送るだけなので、AIの利用上限・障害・課金に左右されない。
 
-**置くだけで投稿される。** `sales/queue/<チャネル>/` にファイルを置き、あとは
-定期実行に任せる。投稿済みは `sales/posted/<チャネル>/` へ移動するので、
-同じものが二度送られることはない。
+承認済みの原稿を `sales/queue/<チャネル>/` から1件送る。
+定期実行は別途有効化が必要。送信前の印と送信結果の記録で、並行送信と
+結果が不明な送信の自動再試行を防ぐ。障害時は投稿先の実態を確認する。
 
 ## ファイルの書き方
 
@@ -33,6 +33,8 @@ Xでスレッドにしたい場合は、本文中に `---` だけの行を入れ
 """
 
 import argparse
+import datetime
+import json
 import os
 import sys
 
@@ -55,6 +57,17 @@ def load_env():
 APPROVAL_MARK = "approved:"
 
 
+def header_values(raw):
+    """Read metadata only before the body; body text cannot grant approval."""
+    values = {}
+    for line in raw.splitlines():
+        key, sep, value = line.strip().partition(":")
+        if not sep or key.lower() not in ("approved", "notion", "media"):
+            break
+        values[key.lower()] = value.strip()
+    return values
+
+
 def approval_of(raw):
     """先頭付近の `approved: <日時>` を返す。無ければ None。
 
@@ -62,21 +75,12 @@ def approval_of(raw):
     書きかけのファイルが、確認されないまま世に出るのを防ぐための最後の砦。
     印は scripts/review_posts.py が付ける。手で書いてもよい。
     """
-    for line in raw.splitlines()[:10]:
-        stripped = line.strip()
-        if stripped.lower().startswith(APPROVAL_MARK):
-            value = stripped.split(":", 1)[1].strip()
-            return value or None
-    return None
+    return header_values(raw).get("approved") or None
 
 
 def notion_page_of(raw):
     """`notion: <ページID>` があれば返す。Notion由来の投稿かどうかの判別に使う。"""
-    for line in raw.splitlines()[:10]:
-        stripped = line.strip()
-        if stripped.lower().startswith("notion:"):
-            return stripped.split(":", 1)[1].strip() or None
-    return None
+    return header_values(raw).get("notion") or None
 
 
 def parse_item(raw):
@@ -93,10 +97,10 @@ def parse_item(raw):
         elif stripped.lower().startswith("media:"):
             media.append(stripped.split(":", 1)[1].strip())
             body_start = i + 1
-        elif stripped == "---" and media:
+        elif stripped == "---" and body_start:
             body_start = i + 1
             break
-        elif stripped:
+        else:
             break
     return media, "\n".join(lines[body_start:]).strip()
 
@@ -133,6 +137,16 @@ def send_x(env, media, body, dry_run):
                 f"{i}件目が長すぎます({n}/{publish_x.MAX_WEIGHTED_LENGTH})。"
                 "--- だけの行で区切るとスレッドにできます。"
             )
+    if media:
+        import publish_x_video
+        if len(media) != 1:
+            raise RuntimeError("Xの動画投稿はMP4を1本だけ指定してください。")
+        video = media[0] if os.path.isabs(media[0]) else os.path.join(REPO_ROOT, media[0])
+        video = publish_x_video.validate_video(video)
+        if dry_run:
+            return f"MP4動画1本を最初の投稿へ添付予定（{len(parts)}件）。認証・公開は未実施"
+        token = env.get("X_OAUTH2_USER_ACCESS_TOKEN") or os.environ.get("X_OAUTH2_USER_ACCESS_TOKEN")
+        return publish_x_video.publish(token, video, parts)
     if dry_run:
         return f"{len(parts)}件のスレッドとして投稿予定"
 
@@ -159,10 +173,13 @@ def send_line(env, media, body, dry_run):
     """
     import json
     import urllib.error
+    import urllib.parse
     import urllib.request
 
     if len(body) > LINE_MAX_CHARS:
         raise RuntimeError(f"本文が長すぎます({len(body)}/{LINE_MAX_CHARS})")
+    if any(urllib.parse.urlparse(url).path.lower().endswith((".mp4", ".mov")) for url in media):
+        raise RuntimeError("このLINE配信処理は動画添付に未対応です。画像として誤送信しません。")
     token = env.get("LINE_CHANNEL_ACCESS_TOKEN") or os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
     if not token:
         raise RuntimeError(".env に LINE_CHANNEL_ACCESS_TOKEN がありません")
@@ -192,6 +209,9 @@ def send_instagram(env, media, body, dry_run):
     instagram_content_publish 権限の審査が要るため、Bufferを使う（既存方針）。"""
     if not media:
         raise RuntimeError("Instagramは画像か動画が必要です。先頭に media: を書いてください。")
+    from urllib.parse import urlparse
+    if len(media) != 1 or urlparse(media[0]).scheme != "https" or not urlparse(media[0]).hostname:
+        raise RuntimeError("Instagramには確認済みの公開HTTPSメディアURLを1件指定してください。")
     if dry_run:
         return f"Buffer経由で投稿予定(media={media[0]})"
 
@@ -200,9 +220,9 @@ def send_instagram(env, media, body, dry_run):
     if not key:
         raise RuntimeError(".env に BUFFER_API_KEY がありません")
     channel = B.find_instagram_channel(key)
-    is_video = media[0].lower().endswith((".mp4", ".mov"))
-    B.create_post(key, channel["id"], media[0], body, is_video)
-    return f"Bufferへ登録しました({channel['displayName']})"
+    is_video = urlparse(media[0]).path.lower().endswith((".mp4", ".mov"))
+    post_id = B.create_post(key, channel["id"], media[0], body, is_video)
+    return f"Bufferへ予約登録しました({channel['displayName']}, id={post_id})"
 
 
 def send_youtube(env, media, body, dry_run):
@@ -295,6 +315,17 @@ def main():
         print(f"{tag} 中身が空です: {path}", file=sys.stderr)
         return 1
 
+    # Atomic claim prevents concurrent workers and retries after an uncertain delivery.
+    # Keep the marker on any failure: a timeout can mean the platform accepted it.
+    marker = path + ".sending"
+    if not args.dry_run:
+        try:
+            with open(marker, "x", encoding="utf-8") as f:
+                f.write(datetime.datetime.now(datetime.timezone.utc).isoformat())
+        except FileExistsError:
+            print(f"{tag} 送信中または送信結果未確認です。再送前に投稿先を確認してください: {path}", file=sys.stderr)
+            return 1
+
     try:
         result = SENDERS[args.channel](load_env(), media, body, args.dry_run)
     except RuntimeError as e:
@@ -308,6 +339,19 @@ def main():
         return 0
 
     print(f"{tag} {os.path.basename(path)} (承認 {approved}) -> {result}")
+    # Save delivery evidence and remove from the queue before any remote bookkeeping.
+    receipt = {"channel": args.channel, "result": result,
+               "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+               "status": "buffer_queued" if args.channel == "instagram" else "posted"}
+    receipt_path = path + ".receipt.json"
+    with open(receipt_path, "w", encoding="utf-8") as f:
+        json.dump(receipt, f, ensure_ascii=False, indent=2)
+    if not args.file:
+        mark_posted(args.channel, path)
+        os.replace(receipt_path, os.path.join(POSTED_ROOT, args.channel, os.path.basename(receipt_path)))
+        os.remove(marker)
+        print(f"{tag} 送信記録を保存し、処理済みへ移動しました。")
+    # --file keeps the claim so repeating the same command cannot publish twice.
     page_id = notion_page_of(raw)
     if page_id:
         # Notionの見た目と実態がずれないよう、投稿できたことを書き戻す。
@@ -317,15 +361,16 @@ def main():
             env = load_env()
             token = env.get("NOTION_TOKEN") or os.environ.get("NOTION_TOKEN")
             if token:
-                notion_sync.set_state(token, page_id, notion_sync.STATE_POSTED, "select")
-                print(f"{tag} Notionを投稿済へ更新しました。")
+                page = notion_sync.api(token, "GET", f"/pages/{page_id}")
+                props = page.get("properties", {})
+                state_name = next(name for name in (notion_sync.STATE_PROP, "Status", "ステータス") if name in props)
+                state = notion_sync.STATE_BUFFER_QUEUED if args.channel == "instagram" else notion_sync.STATE_POSTED
+                notion_sync.set_state(token, page_id, state, props[state_name]["type"], state_name)
+                print(f"{tag} Notionを{state}へ更新しました。")
         except Exception as e:  # noqa: BLE001
-            print(f"{tag} Notionの更新に失敗しました（投稿は完了しています）: {e}",
+            print(f"{tag} Notionの更新に失敗しました（送信先への登録は完了しています）: {e}",
                   file=sys.stderr)
 
-    if not args.file:
-        mark_posted(args.channel, path)
-        print(f"{tag} 投稿済みへ移動しました。")
     return 0
 
 
