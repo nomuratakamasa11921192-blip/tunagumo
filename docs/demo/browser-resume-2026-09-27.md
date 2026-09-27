@@ -22,3 +22,7 @@
 - LINEの営業Webhookを変更しない。メール追加送信不要。投稿系タスクは停止維持。
 
 公式の新規会話での接続確認案内：https://learn.chatgpt.com/docs/chrome-extension#troubleshooting
+
+## ブラウザなしで進めた後続作業
+
+QA専用mainをa5e7346へ更新し、同じGit Bash/開発Composeで全体687件・定期回帰29件成功。定期QAと運用点検の起動をpythonw+CREATE_NO_WINDOWへ変更し、実行時刻・権限を保持。非表示起動3件成功。次回定刻完走と質問時ターミナル増加の根本原因は未確認。詳しくは offline-qa-and-terminal-2026-09-27.md。ブラウザ残件と公開承認は引き続き未完了。
