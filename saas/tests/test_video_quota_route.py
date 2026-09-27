@@ -37,7 +37,8 @@ async def _create_awaiting_approval_session(client, headers) -> str:
     created = await client.post("/api/sessions", json={"text": "物件紹介文を作って"}, headers=headers)
     session_id = created.json()["session_id"]
 
-    for _ in range(100):
+    deadline = asyncio.get_running_loop().time() + 10
+    while asyncio.get_running_loop().time() < deadline:
         res = await client.get(f"/api/sessions/{session_id}", headers=headers)
         if res.json()["status"] == "AWAITING_APPROVAL":
             return session_id
