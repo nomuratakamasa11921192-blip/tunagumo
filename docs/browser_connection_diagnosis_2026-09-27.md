@@ -47,3 +47,16 @@
 - `winget list --name Codex --disable-interactivity` は対象なし（終了コード1）。インストール済みAppxは確認できるが、wingetでの更新対象は得られなかった。アプリ更新・終了は未実施。
 
 参照：[OpenAI公式・WindowsのCodex Doctor](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)。診断コマンドの存在と引数は、このPCの`codex --help`と`codex doctor --help`でも確認。
+
+## 本人の再起動完了連絡後（16:14 JST以降）
+
+- 本人の「やったよ」を受け、Chromeでアプリを開く操作を再試行したが、同じ接続ポリシー取得エラーでページ作成前に失敗。
+- 操作ツールのセッションを初期化してから再試行しても、約31秒でタイムアウト。画面取得・追加録画・投稿は未実施。
+- 16:14のプロセス一覧ではChrome 09/25 01:22、ChatGPT 09/25 01:29、codex 09/25 01:30開始のプロセスを観測。本人の再起動操作を否定する根拠とはせず、どの範囲が再起動されたかは未確定。
+- OpenAI.Codexは26.917.8451.0 / Status Ok。本人へアプリ設定のComputer Use内でChromeがManage・接続要求・項目なしのどれかを質問中。
+- 公式ブラウザ拡張手順を再確認。Manage表示・拡張があるプロファイル・アプリ更新を確認し、再起動で直らない場合は設定経由の拡張再接続、なお失敗する場合は/feedbackとチャットID付きサポート連絡が案内されている。連絡は未送信。
+
+参照：[公式ブラウザ拡張の復旧手順](https://learn.chatgpt.com/docs/chrome-extension#troubleshooting)（9/27再確認）。
+
+- 後続の `winget list --name ChatGPT --disable-interactivity` でMicrosoft Storeの `ChatGPT / 9PLM9XGG6VKS / 26.917.8451.0` を検出。「Codex名で対象なし」と「更新経路がない」を同一視しない。更新操作はまだ行っていない。
+- 本人の16:17の画像はChromeの新しいタブ。アプリ側のComputer Use設定は映っていないため、タスクバーのChatGPTから設定を開きChromeの接続表示を確認する手順を案内した。画像だけで操作接続復旧とは扱わない。
