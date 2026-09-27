@@ -60,3 +60,20 @@
 
 - 後続の `winget list --name ChatGPT --disable-interactivity` でMicrosoft Storeの `ChatGPT / 9PLM9XGG6VKS / 26.917.8451.0` を検出。「Codex名で対象なし」と「更新経路がない」を同一視しない。更新操作はまだ行っていない。
 - 本人の16:17の画像はChromeの新しいタブ。アプリ側のComputer Use設定は映っていないため、タスクバーのChatGPTから設定を開きChromeの接続表示を確認する手順を案内した。画像だけで操作接続復旧とは扱わない。
+
+## 16:22の設定画面と本人の訂正
+
+- 本人の画像でGoogle Chrome「インストール済み」、デフォルトのウェブ閲覧・ダウンロード・アップロード「常に許可」を確認した。
+- この状態の `cua.getState()` も `apps: []`, `browsers: []`、同じrequest-header-policyエラー。画面操作には到達していない。
+- 本人は拡張機能の再インストールをすでに実施済みと明言した。Codexが同じ操作を再依頼したのは誤り。次回も未実施扱いして再依頼しない。
+- `winget upgrade --id 9PLM9XGG6VKS --source msstore --disable-interactivity` は「利用可能なアップグレードが見つかりませんでした」で終了コード1。更新は適用されていない。先のdoctorの更新通知とStoreの配信状況が一致しない理由は未特定。
+- 権限不足・SNS側障害・拡張未インストールとは断定しない。原因と確実な修復方法は未特定。通常の再起動・再インストールの反復を求めず、公式サポートへの診断情報提供を次の経路とする。問い合わせは未送信。
+
+### 問い合わせ用本文（未送信）
+
+WindowsのChatGPT/CodexからChromeを操作できません。2026年9月27日（JST）に再現しています。
+Computer UseのGoogle Chromeは「インストール済み」、ウェブ閲覧は「常に許可」です。本人がアプリ・ブラウザ再起動と拡張再インストールを実施した後も失敗します。
+`cua.getState()` はブラウザ一覧取得時に `Unable to load browser request-header policy. Retry the browser command.` を返し、`apps: []`, `browsers: []` となります。タブ作成もページが開く前に失敗します。
+インストール済みOpenAI.Codexは26.917.8451.0です。doctorはデスクトップbuild 26.924.2738.0への更新を通知しましたが、Microsoft StoreのChatGPT（9PLM9XGG6VKS）をwingetで更新すると新しいパッケージなしでした。doctorのHTTP接続とWebSocket HTTP101は成功しました。
+接続ポリシー取得失敗の調査と、この環境で利用できる正式な更新・修復方法をお願いします。
+送信時はアプリの `/feedback` から会話IDを添付してください。Cookie・認証トークン等を添付する必要はありません。
