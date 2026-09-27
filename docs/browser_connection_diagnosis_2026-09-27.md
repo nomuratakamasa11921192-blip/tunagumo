@@ -44,5 +44,6 @@
 - 診断はデスクトップを「not running」と表示したが、プロセス一覧にはChatGPTが存在する。CLIの検出対象と現在のアプリが一致するかは不明なので、「アプリが動いていない」とは断定しない。
 - Defender除外やDev Drive等の一般的な注意も出たが、本件との因果関係は未確認。セキュリティ設定・認証・MCP設定は変更しない。
 - 更新による本件の解消は未検証。CLIの更新だけでブラウザが直るとは扱わない。
+- `winget list --name Codex --disable-interactivity` は対象なし（終了コード1）。インストール済みAppxは確認できるが、wingetでの更新対象は得られなかった。アプリ更新・終了は未実施。
 
 参照：[OpenAI公式・WindowsのCodex Doctor](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)。診断コマンドの存在と引数は、このPCの`codex --help`と`codex doctor --help`でも確認。
