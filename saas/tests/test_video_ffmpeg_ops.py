@@ -244,3 +244,21 @@ async def test_mix_bgm_over_original_audio_keeps_video_duration():
     # BGMのほうが長い(10秒)が、元動画の尺(2秒)に揃えられていること(-shortest)
     duration = await probe_duration(f"{d}/mixed.mp4")
     assert 1.7 <= duration <= 2.3
+
+
+async def test_photos_to_video_uses_per_photo_durations():
+    d = _workdir()
+    await _make_test_photo(f"{d}/a.jpg", color="red")
+    await _make_test_photo(f"{d}/b.jpg", color="blue")
+
+    await photos_to_video([f"{d}/a.jpg", f"{d}/b.jpg"], f"{d}/slideshow.mp4", durations=[0.5, 2.0])
+
+    duration = await probe_duration(f"{d}/slideshow.mp4")
+    assert 2.0 <= duration <= 3.0  # 0.5秒 + 2.0秒 ≒ 2.5秒
+
+
+async def test_photos_to_video_rejects_duration_count_mismatch():
+    d = _workdir()
+    await _make_test_photo(f"{d}/a.jpg", color="red")
+    with pytest.raises(FFmpegError):
+        await photos_to_video([f"{d}/a.jpg"], f"{d}/out.mp4", durations=[1.0, 2.0])

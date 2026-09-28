@@ -26,7 +26,7 @@ from src.video.ffmpeg_ops import (
     probe_duration,
 )
 from src.video.paths import WORKSPACE_ROOT
-from src.video.schemas import VideoScript
+from src.video.schemas import VideoScene, VideoScript
 from src.video.script import ScriptGenerationError, generate_script
 from src.video.tts import TTSError, TTSProvider
 
@@ -52,19 +52,53 @@ def _fmt_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
 
-def _script_to_srt(script: VideoScript, total_seconds: float) -> str:
-    """各シーンのナレーション文字数に比例して尺を割り振り、簡易的なSRTを作る
-    (音声認識(STT)を使わない分、正確な発話タイミングとはズレる可能性がある近似)。
+def _narrated_scenes(script: VideoScript) -> list[VideoScene]:
+    return [s for s in script.scenes if s.narration.strip()]
+
+
+def _scene_durations(scenes: list[VideoScene], total_seconds: float) -> list[float]:
+    """各シーンのナレーション文字数に比例して尺を割り振る(音声認識(STT)を使わない分、
+    正確な発話タイミングとはズレる可能性がある近似)。字幕と写真の切り替えの両方で
+    この同じ時間割を使い、映像と字幕がずれないようにする。
     """
-    scenes = [s for s in script.scenes if s.narration.strip()]
+    total_chars = sum(len(s.narration) for s in scenes) or 1
+    return [total_seconds * (len(s.narration) / total_chars) for s in scenes]
+
+
+def _photo_durations(scene_durations: list[float], photo_count: int) -> list[float]:
+    """シーンの時間割を写真ごとの表示秒数に変換する(シーン境界=写真の切り替え)。
+    台本は写真と1対1で頼むが、AIが冒頭のあいさつ・締めを別シーンにすることがあるため、
+    1〜2個多い場合はそれを最初・最後の写真にまとめる。それ以上多ければ順番に按分し、
+    シーンの方が少ない場合は対応が取れないため均等割りにする。
+    """
+    total = sum(scene_durations)
+    scene_count = len(scene_durations)
+    extra = scene_count - photo_count
+    if extra < 0:
+        durations = [total / photo_count] * photo_count
+    elif extra <= 2:
+        durations = list(scene_durations[1:1 + photo_count]) if extra else list(scene_durations)
+        if extra:
+            durations[0] += scene_durations[0]
+        if extra == 2:
+            durations[-1] += scene_durations[-1]
+    else:
+        durations = [0.0] * photo_count
+        for j, seconds in enumerate(scene_durations):
+            durations[j * photo_count // scene_count] += seconds
+    return [max(d, MIN_SECONDS_PER_PHOTO) for d in durations]
+
+
+def _script_to_srt(script: VideoScript, total_seconds: float) -> str:
+    scenes = _narrated_scenes(script)
     if not scenes:
         return ""
-    total_chars = sum(len(s.narration) for s in scenes) or 1
 
     lines: list[str] = []
     cursor = 0.0
-    for i, scene in enumerate(scenes, start=1):
-        duration = total_seconds * (len(scene.narration) / total_chars)
+    for i, (scene, duration) in enumerate(
+        zip(scenes, _scene_durations(scenes, total_seconds)), start=1
+    ):
         start, end = cursor, cursor + duration
         cursor = end
         caption = scene.on_screen_text.strip() or scene.narration.strip()
@@ -100,9 +134,18 @@ async def generate_room_tour(
 
     workdir = Path(job_dir) if job_dir is not None else new_job_dir()
 
+    topic = property_info
+    if video_path is None:
+        # 写真の切り替えと字幕を揃えるため、シーンを写真と1対1で対応させる。
+        topic += (
+            f"\n\n【構成の指定】写真は{len(image_paths)}枚あり、アップロード順に表示します。"
+            f"シーンはちょうど{len(image_paths)}個にし、各シーンは同じ順番の写真1枚だけを"
+            "紹介してください(冒頭のあいさつや締めの一言は1番目・最後のシーンに含める)。"
+        )
+
     try:
         script, _usage = await generate_script(
-            llm=llm, model=model, topic=property_info, target_seconds=target_seconds
+            llm=llm, model=model, topic=topic, target_seconds=target_seconds
         )
     except ScriptGenerationError as e:
         raise RoomTourError(f"台本の生成に失敗しました: {e}") from e
@@ -130,9 +173,11 @@ async def generate_room_tour(
         if video_path is not None:
             base_video = await jump_cut_silence(video_path, workdir / "base.mp4")
         else:
-            seconds_per_photo = max(narration_duration / len(image_paths), MIN_SECONDS_PER_PHOTO)
+            scene_durations = _scene_durations(_narrated_scenes(script), narration_duration)
             base_video = await photos_to_video(
-                image_paths, workdir / "base.mp4", seconds_per_photo=seconds_per_photo
+                image_paths,
+                workdir / "base.mp4",
+                durations=_photo_durations(scene_durations, len(image_paths)),
             )
         narrated = await mix_audio(
             base_video, narration_path_rel, workdir / "narrated.mp4", bgm_path=bgm_path

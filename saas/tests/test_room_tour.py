@@ -179,3 +179,52 @@ async def test_duration_limit_rejects_unintelligible_speedup():
                 "-f", "lavfi", "-i", "sine=frequency=440:duration=8", "-shortest", str(WORKSPACE_ROOT / video)])
     with pytest.raises(FFmpegError, match="指定の長さに収まりません"):
         await fit_video_duration(video, f"{d}/short.mp4", target_seconds=5)
+
+
+async def test_photo_durations_follow_scene_boundaries():
+    from src.video.room_tour import _photo_durations
+
+    # シーン数=写真枚数なら、写真の切り替えが字幕(シーン)の切り替えと一致する
+    assert _photo_durations([2.0, 6.0, 4.0, 3.0], 4) == [2.0, 6.0, 4.0, 3.0]
+
+
+async def test_photo_durations_groups_extra_scenes_in_order():
+    from src.video.room_tour import _photo_durations
+
+    # 冒頭あいさつ+4部屋+締め(6シーン)は、あいさつを最初・締めを最後の写真にまとめる
+    assert _photo_durations([2.0, 5.0, 4.0, 6.0, 3.0, 1.0], 4) == [7.0, 4.0, 6.0, 4.0]
+    # あいさつだけ別シーンの場合
+    assert _photo_durations([2.0, 5.0, 4.0, 6.0, 3.0], 4) == [7.0, 4.0, 6.0, 3.0]
+    # 大きく多い場合は順番に按分する
+    assert _photo_durations([1.0] * 8, 2) == [4.0, 4.0]
+
+
+async def test_photo_durations_falls_back_to_even_split_when_fewer_scenes():
+    from src.video.room_tour import MIN_SECONDS_PER_PHOTO, _photo_durations
+
+    assert _photo_durations([4.0, 4.0], 4) == [2.0, 2.0, 2.0, 2.0]
+    assert _photo_durations([1.0], 2) == [MIN_SECONDS_PER_PHOTO, MIN_SECONDS_PER_PHOTO]
+
+
+async def test_generate_room_tour_asks_for_one_scene_per_photo():
+    class _RecordingLLM(_FakeLLM):
+        user_message = ""
+
+        async def call_structured(self, **kwargs):
+            _RecordingLLM.user_message = kwargs["user_message"]
+            return await super().call_structured(**kwargs)
+
+    d = _workdir()
+    await _make_test_photo(f"{d}/photos/a.jpg", color="red")
+    await _make_test_photo(f"{d}/photos/b.jpg", color="blue")
+
+    await generate_room_tour(
+        llm=_RecordingLLM(),
+        model="test-model",
+        property_info="テスト物件",
+        image_paths=[f"{d}/photos/a.jpg", f"{d}/photos/b.jpg"],
+        tts_provider=_FakeTTSProvider(await _fake_narration_audio_bytes(2.0)),
+        job_dir=d,
+    )
+
+    assert "シーンはちょうど2個" in _RecordingLLM.user_message

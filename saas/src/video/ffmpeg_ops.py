@@ -159,6 +159,7 @@ async def photos_to_video(
     out_path: str | Path,
     *,
     seconds_per_photo: float = 3.0,
+    durations: list[float] | None = None,
     width: int = 1280,
     height: int = 720,
     fps: int = 25,
@@ -167,16 +168,20 @@ async def photos_to_video(
     """静止画をパン・ズームしながら順番につなぐスライドショー動画を作る(ルームツアー
     動画生成の標準の下地映像、src/video/room_tour.py参照)。AIは映像内容に一切関与
     しない(実際にアップロードされた写真をそのまま使うだけ)。
+    durationsを渡すと写真ごとの表示秒数になる(字幕の切り替えと揃えるため)。
     """
     if not image_paths:
         raise FFmpegError("画像が1枚も指定されていません")
+    if durations is not None and len(durations) != len(image_paths):
+        raise FFmpegError("写真の枚数と表示秒数の数が一致しません")
 
     resolved_inputs = [ensure_in_workspace(p) for p in image_paths]
     out_path = ensure_in_workspace(out_path)
+    per_photo = durations if durations is not None else [seconds_per_photo] * len(resolved_inputs)
 
     args = ["-y"]
-    for p in resolved_inputs:
-        args += ["-loop", "1", "-framerate", str(fps), "-t", str(seconds_per_photo), "-i", str(p)]
+    for p, seconds in zip(resolved_inputs, per_photo):
+        args += ["-loop", "1", "-framerate", str(fps), "-t", f"{seconds:.3f}", "-i", str(p)]
 
     # zoompanのdは「入力フレーム1枚あたりの出力フレーム数」であり、動画全体の
     # フレーム数ではない(d=フレーム総数を渡すと、フレーム総数^2の長さになってしまう
