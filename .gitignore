@@ -29,4 +29,11 @@ sales/rejected/
 sales/notion_sync.log
 ops_check.log
 # Local demo recordings and raw browser frames (not source files).
-/artifacts/mail-demo-20260927/
+/artifacts/
+private/
+画面録画/
+# SNS制作の動画・写真・配布セットはローカルで保管する
+撮影セット/
+撮影セット_20260924.zip
+# 定期QA専用のclone(このフォルダ内に置くが別リポジトリとして扱う)
+/tunagumo-qa/
