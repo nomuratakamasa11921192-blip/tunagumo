@@ -281,3 +281,34 @@ async def test_vector_search_filters_internal_documents_out_of_public_scope(tena
         assert public.id in found
     finally:
         await _cleanup(tenant["id"])
+
+
+def _unit(index: int) -> list[float]:
+    v = [0.0] * EMBEDDING_DIM
+    v[index] = 1.0
+    return v
+
+
+async def test_vector_search_skips_unrelated_documents(tenant):
+    """意味が遠い資料(コサイン距離がMAX_VECTOR_DISTANCE超)は、ベクトル検索では拾わない。
+    拾うと部署AIが無関係な資料の出典を書かされる(2026-09-28 本番で発生)。"""
+    tenant_id = tenant["id"]
+    try:
+        async with async_session_factory() as db:
+            near = await _make_document(db, tenant_id=tenant_id, title="近い資料")
+            far = await _make_document(db, tenant_id=tenant_id, title="遠い資料")
+            await _add_chunk(db, document=near, tenant_id=tenant_id, content="ベクトルが近い本文", embedding=_unit(0))
+            await _add_chunk(db, document=far, tenant_id=tenant_id, content="ベクトルが遠い本文", embedding=_unit(1))
+            await db.commit()
+
+            query = _unit(0)
+            query[1] = 0.1  # 近い資料とは距離ほぼ0、遠い資料とは距離ほぼ1
+            results = await hybrid_search(
+                db, tenant_id=tenant_id, query_text="該当語なし", query_embedding=query, top_k=5
+            )
+
+        titles = [r.document_title for r in results]
+        assert "近い資料" in titles
+        assert "遠い資料" not in titles
+    finally:
+        await _cleanup(tenant_id)

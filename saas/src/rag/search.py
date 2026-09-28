@@ -14,6 +14,11 @@ from src.core.models import Chunk, Document
 
 RRF_K = 60
 CANDIDATES_PER_SOURCE = 20
+# ベクトル検索は近い順に必ず候補を返すため、無関係な資料まで拾うと部署AIが出典を無理に書くか、
+# 出典必須の検査で差し戻され続ける(2026-09-28 本番で発生)。本番の実測で関係ある依頼は距離0.33〜0.43、
+# 関係の薄い・無関係な依頼は0.51〜0.64だったため、0.5を超える候補は意味検索からは採用しない
+# (キーワード一致の全文検索は従来どおり)。
+MAX_VECTOR_DISTANCE = 0.5
 
 
 @dataclass
@@ -47,6 +52,7 @@ async def hybrid_search(
             Document.status == "ACTIVE",
             Document.index_scope == index_scope,
             (Document.valid_until.is_(None)) | (Document.valid_until >= as_of),
+            Chunk.embedding.cosine_distance(query_embedding) <= MAX_VECTOR_DISTANCE,
         )
         .order_by(Chunk.embedding.cosine_distance(query_embedding))
         .limit(CANDIDATES_PER_SOURCE)
