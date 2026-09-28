@@ -26,8 +26,9 @@ export async function forwardOwnerTest(env, event) {
     await crypto.subtle.sign("HMAC", key, encoder.encode(body)))));
   const response = await fetch(url, {
     method: "POST", headers: {"Content-Type": "application/json", "X-Line-Signature": signature},
-    body, redirect: "error", signal: AbortSignal.timeout(8000),
+    body, redirect: "manual", signal: AbortSignal.timeout(8000),
   });
+  // Workersはredirect:"error"に非対応。manualで受け、リダイレクト(3xx)も失敗として扱う。
   if (!response.ok) throw new Error(`Owner test forwarding failed: ${response.status}`);
   return true;
 }

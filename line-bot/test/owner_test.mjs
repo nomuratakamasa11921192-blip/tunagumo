@@ -22,7 +22,7 @@ test('本人のテストだけを抽出して署名し、SaaSへ渡す',async()=
   assert.equal(events[0].message.text,'内見できますか？');
   assert.equal(events[0].webhookEventId,'event-1');
   assert.equal(event.message.text,OWNER_TEST_PREFIX+' 内見できますか？');
-  assert.equal(sent.redirect,'error');
+  assert.equal(sent.redirect,'manual');
 });
 
 for (const [name,change] of [
