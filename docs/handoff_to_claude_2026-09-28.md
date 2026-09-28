@@ -71,3 +71,10 @@
 - SNS：YouTubeリンク順（トライアル→HP→X→Instagram）とXの紹介文を変更済み。Xの非公開解除はClaude Codeの安全判定で拒否されたため本人操作待ち。Instagramリンク・Threads作成はMetaの「エラーが発生しました」で本人操作待ち。
 - 画像生成：`scripts/codex_image.sh`（Codex CLI経由、ChatGPT月額枠）。
 - 本人操作待ち：Xの「ポストを非公開にする」解除／Instagramリンク（ツナグモのHP・LINE追加）／Threads作成／ルームツアー試聴と画面録画／投稿12本（撮影セット/投稿動画_確認用・投稿原稿）の承認／顧客LINEのログインと送受信試験／メール原文画面の録画／委託契約・データ処理条件の確認。
+
+## 2026-09-29 未明 Claude実施分（本人「全部許可する」）
+
+- 本番反映5件目：5d18ca8 お客様向け応答（メール・Webチャット・LINE共通）から社内用の出典document_idを除去。メール自動返信本文に「出典：document_id …」が載っていたため。
+- メール実送受信：Resendで `[TSUNAGUMO-TEST] 架空物件の設備確認 20260929-01` を本人Gmail宛てに1通（Idempotency-Key付き、送信ID 01a0e894-1bf6-755f-a89e-7e535428e4ea）。自動返信は出典IDなし・署名あり。原文表示（翻訳なし）の受信画面を `artifacts/mail-demo-20260929/メール自動返信_原文表示_20260929.jpg` に保存。ChromeのGIF録画機能はこのタブで動作せず、連続録画は未作成。
+- プライバシーポリシー：外国の委託先への提供（米国、米国の制度、OpenAI API学習不使用・最長30日保存、Anthropic法人条件の学習不使用）を追記し本番反映（4d4710c、公開ページSHA-256一致、旧版は /home/ubuntu/deploy-privacy-20260929/privacy.html.bak）。法務の最終確認は専門家推奨。
+- 顧客LINEの本人限定試験：LINE Developers・LINE公式アカウント管理画面とも本人ログインが必要。本人ログイン後に、本人userIdの確認 → 試験用会社へのチャネル登録 → Worker試験用2設定 → 本人スマホから `[TSUNAGUMO-TEST]` 付きで送信、の順（手順は docs/customer_channel_test_2026-09-26.md）。
