@@ -35,6 +35,8 @@ class OrgState(TypedDict):
     clarify_count: Annotated[int, keep_last]
     board: Annotated[dict, merge_dict]
     citations: Annotated[list, extend_list]
+    # 部署が参照した社内資料の本文(dept_id→検索結果テキスト)。品質検査が回答を原文と照合するために使う
+    rag_sources: Annotated[dict, merge_dict]
     qa_findings: Annotated[list, extend_list]
     qa_verdict: Annotated[Literal["PASS", "FAIL", "PENDING"], keep_last]
     qa_warnings: Annotated[list, extend_list]
@@ -80,6 +82,7 @@ def new_state(tenant_id: str, session_id: str, requester_id: str, raw_message: s
         clarify_count=0,
         board={},
         citations=[],
+        rag_sources={},
         qa_findings=[],
         qa_verdict="PENDING",
         qa_warnings=[],

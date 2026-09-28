@@ -402,3 +402,4 @@
 2026-09-28 [Claude] ClaudeはCodex CLIの画像生成をcodex exec経由で呼べることを実画像1枚で確認し、scripts/codex_image.shを追加しました。定期QAの参照先を移動後のtsunagumo/tunagumo-qaへ更新しました。
 2026-09-28 [Claude] Claudeは本人の依頼でYouTubeのリンク見出しをツナグモのHP・2週間無料トライアルはこちら(LINE)へ変更して公開し、Xの紹介文のLINE見出しを同文言へ変更しました(160字制限のためURLのhttps://を省略、3リンクのクリック可能を確認)。InstagramはLINEリンクが無くスマホ設定待ちです。
 2026-09-28 [Claude] Claudeは本人依頼でYouTubeのリンク順を2週間無料トライアル(LINE)→ツナグモのHP→X→Instagramに変更・公開し、Xの紹介文もトライアル行を先頭へ移して公開表示を確認しました。Threadsは未作成(Instagramログイン画面)で、作成は本人操作待ちです。
+2026-09-28 [Claude] Claudeは本番の社内資料検索で、正しい回答が品質検査で「原文未照合」と差し戻し上限まで繰り返される不具合を確認し、部署が参照した資料本文を検査AIにも渡す修正を追加しました。全711件成功、本番未反映です。

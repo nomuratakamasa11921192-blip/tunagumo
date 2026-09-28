@@ -140,3 +140,48 @@ async def test_dept_node_finds_no_results_when_tenant_has_no_documents(config, t
     sent_prompt = llm.text_calls[0]["user_message"]
     assert "<retrieved_document" not in sent_prompt
     assert result["citations"] == []
+
+
+async def test_qa_auditor_receives_the_documents_the_dept_used(config, tenant):
+    """品質検査にも部署が参照した社内資料を渡す。渡さないと資料どおりの回答でも
+    「原文を確認できない」と差し戻しを繰り返す(2026-09-28 本番で発生)。"""
+    from src.agent.nodes import qa_auditor_node
+    from src.agent.schemas import QaResult
+
+    await _seed_document(
+        tenant_id=tenant["id"], title="内見受付ルール", content="定休日：水曜日。内見の受付枠：11:00、14:00、16:00。"
+    )
+    try:
+        llm = FakeLLM()
+        llm.queue_text("定休日は水曜日です。")
+        node = make_dept_node(
+            "planning_dept", app_config=config, llm=llm, embedding_provider=FakeEmbeddingProvider()
+        )
+        state = new_state(str(tenant["id"]), "s-rag-qa", "user-1", "定休日を教えて")
+        state["goal"] = "定休日を教えて"
+        dept_result = await node(state)
+        assert "定休日：水曜日" in dept_result["rag_sources"]["planning_dept"]
+
+        state.update(board=dept_result["board"], citations=dept_result["citations"],
+                     rag_sources=dept_result["rag_sources"])
+        llm.queue_structured(QaResult())
+        await qa_auditor_node(state, app_config=config, llm=llm)
+
+        qa_prompt = llm.structured_calls[-1]["user_message"]
+        assert "参照された社内資料" in qa_prompt
+        assert "定休日：水曜日" in qa_prompt
+    finally:
+        await _cleanup(tenant["id"])
+
+
+async def test_qa_auditor_prompt_has_no_source_section_without_rag(config):
+    from src.agent.nodes import qa_auditor_node
+    from src.agent.schemas import QaResult
+
+    llm = FakeLLM()
+    llm.queue_structured(QaResult())
+    state = new_state(str(uuid.uuid4()), "s-no-rag", "user-1", "紹介文を作って")
+    state["board"] = {"planning_dept": "紹介文です。"}
+    await qa_auditor_node(state, app_config=config, llm=llm)
+
+    assert "参照された社内資料" not in llm.structured_calls[-1]["user_message"]

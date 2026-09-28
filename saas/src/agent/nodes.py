@@ -442,6 +442,7 @@ def make_dept_node(
             parts.append(f"【差し戻し・却下理由】\n{state['rejection_comment']}")
 
         citations: list[dict] = []
+        rag_context = ""
         if embedding_provider is not None:
             rag_context, citations = await _retrieve_rag_context(
                 state=state, embedding_provider=embedding_provider, dept_id=dept_id
@@ -466,6 +467,7 @@ def make_dept_node(
         return {
             "board": {dept_id: text},
             "citations": citations,
+            "rag_sources": {dept_id: rag_context} if rag_context else {},
             "step_history": [f"{dept_id}: 成果物を生成"],
             "total_steps": 1,
             "cost_usd": compute_cost_usd(dept.model, usage, app_config.pricing),
@@ -493,6 +495,10 @@ async def qa_auditor_node(state: OrgState, *, app_config: AppConfig, llm: Struct
     }
 
     deliverables_text = "\n\n".join(f"### {d}\n{t}" for d, t in done.items())
+    # 部署が根拠にした社内資料を検査側にも渡す。渡さないと、資料どおりの正しい回答でも
+    # 「原文を確認できない」と差し戻しを繰り返してしまう(2026-09-28 本番で確認)。
+    sources = state.get("rag_sources", {}) or {}
+    sources_text = "\n\n".join(f"### {d}が参照した社内資料\n{sources[d]}" for d in done if sources.get(d))
 
     try:
         qa_result, usage = await llm.call_structured(
@@ -500,6 +506,8 @@ async def qa_auditor_node(state: OrgState, *, app_config: AppConfig, llm: Struct
             system_prompt=dept.system_prompt,
             user_message="\n\n".join([
                 *_request_context(state),
+                *([f"【成果物の根拠として参照された社内資料(この本文と照合してください)】\n{sources_text}"]
+                  if sources_text else []),
                 f"【検査対象の成果物】\n{deliverables_text}",
             ]),
             output_model=QaResult,
