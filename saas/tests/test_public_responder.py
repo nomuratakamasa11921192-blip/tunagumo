@@ -130,3 +130,16 @@ async def test_rag_context_is_passed_through_to_prompt():
     )
 
     assert "公開資料の内容" in llm.structured_calls[0]["user_message"]
+
+
+def test_strip_internal_citations_removes_document_ids_from_customer_replies():
+    from src.agent.public_responder import strip_internal_citations
+
+    u = "4c1d2e3f-1234-4abc-9def-0123456789ab"
+    assert strip_internal_citations(f"宅配ボックスがあります。出典：document_id {u}") == "宅配ボックスがあります。"
+    assert strip_internal_citations(f"独立洗面台があります（document_id: {u}）。") == "独立洗面台があります。"
+    cleaned = strip_internal_citations(f"はい、あります。\n\n出典：物件資料（document_id: {u}）\n\n――\n自動応答です。")
+    assert u not in cleaned and "document_id" not in cleaned
+    assert cleaned.startswith("はい、あります。") and cleaned.endswith("自動応答です。")
+    # 出典という言葉だけならそのまま
+    assert strip_internal_citations("出典は担当者に確認します。") == "出典は担当者に確認します。"
