@@ -50,3 +50,12 @@
 - docs/demo/browser-resume-2026-09-27.md：ブラウザ再開順と写真選択失敗の注意。
 
 公式Claude Chrome連携: https://code.claude.com/docs/en/chrome
+
+## 2026-09-28 Claude実施分
+
+- Claude in Chromeは接続成功。本番アプリで架空物件の写真4枚からルームツアーを生成し、寝室・キッチンの映像に「リビング」等の字幕が出る不具合を確認（写真は均等割り、字幕は文字数比で別々に切替していた）。
+- 修正ffea4e8：台本を写真1枚=1シーンで依頼し、シーンの時間割から写真ごとの秒数を決める。あいさつ・締めが別シーンなら最初・最後の写真へまとめる。全709件成功。
+- 本番反映：`scripts/deploy_roomtour_align_20260928.py`（字幕時刻修正8ac70e7も含む2ファイル）。退避先 `/home/ubuntu/deploy-roomtour-20260928/backup-20260928_175046`、切戻しタグ `tsunagumo-roomtour-rollback-{api,scheduler}:20260928_175046`。本番と最新mainの実行コード差分はこれで解消（mail_scan.pyは改行コードのみの差）。
+- VPSの `/home/ubuntu/tsunagumo-release-stage-20260919/.git` はroot所有でubuntuからpull不可。
+- Higgsfield（MCP/Web月額）は9/28時点で `free`・0クレジット。Codexが9/24に月額クレジットを使い切った後、プランが無料に戻っている。
+- 残：本番に本人ログイン後、同じ入力でルームツアー再生成して字幕と写真の一致を目視 → 画面録画。
