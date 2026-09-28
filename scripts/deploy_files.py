@@ -33,7 +33,7 @@ assert run('hostname').decode().strip() == 'tk2-119-60133'
 assert stage.is_relative_to('/home/ubuntu')
 release = json.loads((stage / 'release.json').read_text())
 FILES = sorted(release['files'])
-assert FILES and all(f.startswith('src/') and f.endswith('.py') for f in FILES)
+assert FILES and all((f.startswith('src/') and f.endswith('.py')) or f == 'frontend/index.html' for f in FILES)
 old_hashes, new_hashes = release['old_sha256'], {n: v['sha256'] for n, v in release['files'].items()}
 
 # 事前確認: ホストと稼働中の両コンテナが想定した旧版(0fb8c52)と一致し、処理中の依頼がない
@@ -53,7 +53,7 @@ payload = {}
 context = stage / ('build-' + stamp)
 for n, v in release['files'].items():
     b = base64.b64decode(v['data'], validate=True); assert digest(b) == v['sha256'], n
-    compile(b, n, 'exec')
+    if n.endswith('.py'): compile(b, n, 'exec')
     p = context / 'payload' / n; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(b)
     payload[n] = v['data']
 
@@ -79,6 +79,7 @@ def write_host(p):
     args = ['docker', 'run', '--rm', '-i', '--network', 'none', '--read-only', '--cap-drop', 'ALL',
             '--security-opt', 'no-new-privileges', '--user', '0',
             '--mount', f'type=bind,src={root / "src"},dst=/target/src',
+            '--mount', f'type=bind,src={root / "frontend"},dst=/target/frontend',
             '--entrypoint', 'python', before['docker-api-1']['Image'], '-c', writer, '/target']
     run(*args, data=json.dumps(p).encode())
 

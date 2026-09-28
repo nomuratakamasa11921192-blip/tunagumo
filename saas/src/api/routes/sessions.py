@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime, timedelta
 from typing import Literal
@@ -425,9 +426,23 @@ def _flyer_title_and_body(session: Session) -> tuple[str, str]:
     else:
         body_text = session.request_text
 
-    approval_summary = result.get("approval_summary") or {}
-    title = approval_summary.get("headline") or "物件のご案内資料"
-    return title, body_text
+    # 承認画面用の見出し(approval_summary.headline、例:「…：承認依頼」)は社内向けなので、
+    # お客様に渡すPDFの題名には使わない。本文のキャッチコピーがあればそれを使う。
+    return _catch_copy(body_text) or "物件のご案内資料", body_text
+
+
+def _catch_copy(text: str) -> str | None:
+    lines = [line.strip() for line in text.splitlines()]
+    for i, line in enumerate(lines):
+        if "キャッチコピー" not in line.strip("#*【】[]:： ") or len(line) > 30:
+            continue
+        inline = re.split(r"[:：]", line, maxsplit=1)
+        candidates = ([inline[1]] if len(inline) == 2 else []) + lines[i + 1:i + 4]
+        for cand in candidates:
+            cand = re.sub(r"^([-*・•]|\d+[.)])\s*", "", cand).strip("#*「」 ")
+            if cand:
+                return cand[:60]
+    return None
 
 
 @router.post("/{session_id}/generate-flyer", status_code=200)

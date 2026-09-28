@@ -2547,6 +2547,10 @@
       });
     });
 
+    // 編集(補正)した画像はセッションに保存されないため、元画像→編集後の対応をここで覚え、
+    // マイソクPDFでは編集後の画像を使う。
+    var editedImageUrls = {};
+
     function runStageImage(btn, resultEl, imageUrl, instruction, resetLabel) {
       btn.disabled = true;
       var originalLabel = btn.textContent;
@@ -2557,6 +2561,7 @@
       })
         .then(function (res) {
           if (viewId !== viewToken) return;
+          editedImageUrls[imageUrl] = res.image_url;
           var img = document.createElement('img');
           img.src = res.image_url;
           img.style.cssText = 'max-width:100%; border-radius:8px; margin-top:8px; display:block;';
@@ -2617,7 +2622,7 @@
       generateFlyerBtn.addEventListener('click', function () {
         generateFlyerBtn.disabled = true;
         generateFlyerBtn.textContent = '作成中…';
-        var imageUrls = (result.generated_images || []).map(function (img) { return img.url; });
+        var imageUrls = (result.generated_images || []).map(function (img) { return editedImageUrls[img.url] || img.url; });
         request('/api/sessions/' + data.session_id + '/generate-flyer', {
           method: 'POST',
           headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },

@@ -70,3 +70,34 @@ async def test_generate_flyer_returns_pdf(client, tenant):
     assert res.status_code == 200
     assert res.headers["content-type"] == "application/pdf"
     assert res.content.startswith(b"%PDF")
+
+
+def test_flyer_title_uses_catch_copy_not_internal_headline():
+    from types import SimpleNamespace
+
+    from src.api.routes.sessions import _flyer_title_and_body
+
+    session = SimpleNamespace(
+        request_text="紹介文を作って",
+        result={
+            "board": {"copy_dept": "デモ用・架空物件\n\n## キャッチコピー\n- 春日部駅から徒歩8分の1LDK\n\n## 本文\n紹介文です。"},
+            "approval_summary": {"headline": "架空物件の紹介文下書き：承認依頼"},
+        },
+    )
+    title, body = _flyer_title_and_body(session)
+    assert title == "春日部駅から徒歩8分の1LDK"
+    assert "承認依頼" not in title
+    assert "紹介文です。" in body
+
+
+def test_flyer_title_inline_catch_copy_and_fallback():
+    from types import SimpleNamespace
+
+    from src.api.routes.sessions import _flyer_title_and_body
+
+    inline = SimpleNamespace(request_text="", result={"board": {"d": "キャッチコピー：駅近の2LDK\n本文です。"}})
+    assert _flyer_title_and_body(inline)[0] == "駅近の2LDK"
+
+    none = SimpleNamespace(request_text="", result={"board": {"d": "本文だけです。"},
+                                                    "approval_summary": {"headline": "承認依頼"}})
+    assert _flyer_title_and_body(none)[0] == "物件のご案内資料"
