@@ -58,4 +58,4 @@
 - 本番反映：`scripts/deploy_roomtour_align_20260928.py`（字幕時刻修正8ac70e7も含む2ファイル）。退避先 `/home/ubuntu/deploy-roomtour-20260928/backup-20260928_175046`、切戻しタグ `tsunagumo-roomtour-rollback-{api,scheduler}:20260928_175046`。本番と最新mainの実行コード差分はこれで解消（mail_scan.pyは改行コードのみの差）。
 - VPSの `/home/ubuntu/tsunagumo-release-stage-20260919/.git` はroot所有でubuntuからpull不可。
 - Higgsfield（MCP/Web月額）は9/28時点で `free`・0クレジット。Codexが9/24に月額クレジットを使い切った後、プランが無料に戻っている。
-- 残：本番に本人ログイン後、同じ入力でルームツアー再生成して字幕と写真の一致を目視 → 画面録画。
+- 反映後の本番で再生成（25秒指定）：`ダウンロード/room_tour (2).mp4`、24.9秒・1280×720・音声あり。1秒ごとの全コマでリビング→寝室→キッチン→洗面所の字幕と写真が一致。残りは本人の試聴と画面録画。
