@@ -386,6 +386,9 @@ def main():
         result = SENDERS[args.channel](load_env(), media, body, args.dry_run)
     except RuntimeError as e:
         print(f"{tag} 投稿できませんでした: {e}", file=sys.stderr)
+        if "limit reached" in str(e) and not args.dry_run:
+            # Bufferの予約枠が満杯の時は登録自体が行われていないため、印を外して次回また試す。
+            os.remove(marker)
         return 1
 
     if args.dry_run:

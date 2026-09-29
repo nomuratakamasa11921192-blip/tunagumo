@@ -124,6 +124,10 @@ def create_post(api_key, channel_id, media_url, caption, is_video=False, schedul
         f"channelId: {json.dumps(channel_id)}",
         "schedulingType: automatic",
         f"assets: [{{ {asset_key}: {{ url: {json.dumps(media_url)} }} }}]",
+        # Instagramは投稿の種類の指定が必須(2026-09-30、未指定だと "require a type" で拒否される)。
+        # 動画はフィードにも表示するリール。映像はAI生成のため、その旨の印を付ける。
+        ("metadata: { instagram: { type: reel, shouldShareToFeed: true, isAiGenerated: true } }"
+         if is_video else "metadata: { instagram: { type: post, shouldShareToFeed: true } }"),
     ]
     if schedule:
         fields.append("mode: customScheduled")

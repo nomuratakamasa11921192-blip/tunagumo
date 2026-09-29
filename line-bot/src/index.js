@@ -367,6 +367,33 @@ async function createStripeCheckoutSession(env, customerId, originUrl) {
   return session.url;
 }
 
+// 面談の申し込みを運営者本人のLINEへ知らせる(2026-09-30)。通知に失敗しても予約自体は成立させる。
+export async function notifyOwnerOfBooking(env, booking, fetchImpl = fetch) {
+  if (!env.OWNER_LINE_USER_ID || !env.LINE_CHANNEL_ACCESS_TOKEN) return false;
+  const when = booking.label || booking.start_iso || "";
+  const text = [
+    "【面談の申し込みがありました】",
+    `日時: ${when}`,
+    `会社: ${booking.company || ""}`,
+    `担当者: ${booking.contact_name || ""}`,
+    `業種: ${booking.industry || ""}`,
+    `メール: ${booking.email || ""}`,
+    booking.event_link ? `カレンダー: ${booking.event_link}` : "",
+  ].filter(Boolean).join("\n");
+  try {
+    const res = await fetchImpl("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: { "content-type": "application/json", Authorization: `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}` },
+      body: JSON.stringify({ to: env.OWNER_LINE_USER_ID, messages: [{ type: "text", text }] }),
+    });
+    if (!res.ok) console.error("owner notify failed", res.status);
+    return res.ok;
+  } catch (err) {
+    console.error("owner notify failed", err);
+    return false;
+  }
+}
+
 async function saveBooking(env, customerId, record) {
   await env.CHAT_HISTORY.put(`booking:${customerId}`, JSON.stringify(record), {
     expirationTtl: BOOKING_TTL_SECONDS,
@@ -848,6 +875,7 @@ async function handleReserveApi(request, env, pathname, originUrl) {
         apikey_token: crypto.randomUUID(),
         created_at: new Date().toISOString(),
       });
+      await notifyOwnerOfBooking(env, { ...contact, label, start_iso, event_link: result.event_link });
       return new Response(JSON.stringify({ ok: true, ...result }), {
         headers: { "content-type": "application/json" },
       });
