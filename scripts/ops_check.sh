@@ -15,7 +15,10 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# 原因調査は2026-09-29からClaude Code(claude -p)が担当。失敗時のみ予備としてCodexで再実行する。
+CLAUDE_SCHEDULED_MODEL="${CLAUDE_SCHEDULED_MODEL:-opus}"
 SCHEDULED_MODEL="${CODEX_SCHEDULED_MODEL:-gpt-6-sol}"
+SCHEDULED_FALLBACK="${SCHEDULED_FALLBACK:-codex}"
 LOG="ops_check.log"
 stamp() { date "+%Y-%m-%d %H:%M"; }
 
@@ -56,7 +59,7 @@ fi
 # --- 異常あり -------------------------------------------------------------
 summary=$(echo "$result" | grep "^\[NG\]" | head -3 | sed 's/^\[NG\] //' | tr '\n' ' ')
 
-# Windowsの通知。Codexが動かなくても、異常に気付けるようにする。
+# Windowsの通知。AIが動かなくても、異常に気付けるようにする。
 powershell -NoProfile -Command "
   [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > \$null
   \$x = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
@@ -67,8 +70,8 @@ powershell -NoProfile -Command "
   [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier(\$app).Show([Windows.UI.Notifications.ToastNotification]::new(\$x))
 " >/dev/null 2>&1
 
-# Codexに原因を調べさせる（読むだけ・変更禁止）。上限等で失敗しても点検結果と通知は残っている。
-report=$(codex exec -s danger-full-access --model "$SCHEDULED_MODEL" "あなたはツナグモ本番VPSの点検担当です。作業ディレクトリはこのリポジトリのルート。
+# AIに原因を調べさせる（読むだけ・変更禁止）。上限等で失敗しても点検結果と通知は残っている。
+prompt="あなたはツナグモ本番VPSの点検担当です。作業ディレクトリはこのリポジトリのルート。
 本日の自動点検で次の異常が見つかりました:
 
 $result
@@ -79,11 +82,19 @@ SSH(ホスト名 tsunagumo-vps、ユーザー ubuntu)で原因を**調べるだ�
 - 手がかり: バックアップは root の crontab で毎日3:00に /opt/tsunagumo/saas/docker で bash ./backup_db.sh を実行し、ログは /var/log/tsunagumo_backup.log
 - docs/security_review_2026-09-20.md、docs/handoff_to_codex_2026-09-22.md に経緯あり
 
-最後に、日本語で次の3点を簡潔に書いてください: 1) 何が起きているか 2) 考えられる原因 3) 人がやるべき対処（コマンドがあれば示す）" 2>&1)
+最後に、日本語で次の3点を簡潔に書いてください: 1) 何が起きているか 2) 考えられる原因 3) 人がやるべき対処（コマンドがあれば示す）"
+# 読み取り系の道具だけを許可する(書き換え・削除はプロンプトでも禁止)。
+report=$(claude -p "$prompt" --model "$CLAUDE_SCHEDULED_MODEL" --allowedTools Bash Read Grep Glob 2>&1)
 codex_status=$?
+if [ "$codex_status" -ne 0 ] && [ "$SCHEDULED_FALLBACK" = "codex" ]; then
+  report="$report
+(Claude Codeが失敗したため予備のCodexで再調査)
+$(codex exec -s danger-full-access --model "$SCHEDULED_MODEL" "$prompt" 2>&1)"
+  codex_status=$?
+fi
 
 {
-  echo "----- Codexの調査 (終了コード ${codex_status}) -----"
+  echo "----- AI(Claude Code)の調査 (終了コード ${codex_status}) -----"
   echo "$report" | tail -40
   echo
 } >> "$LOG"

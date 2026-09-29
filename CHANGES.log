@@ -415,3 +415,4 @@
 2026-09-29 [Codex] Codexは本日のVPS点検のSSHタイムアウトを読み取り専用で調査し、TCP 22不通とこのPC回線のFortiGuard遮断を確認しました。VPS内部と当日バックアップは未確認で、本番変更・sudo使用はありません。
 2026-09-29 [Claude] Claudeは本人のLINE試験の成功(資料に基づくAI回答のLINE返信200)を確認して試験用2設定を削除し、顧客に見える表記のtsunagumoをtunagumoへ統一しました(試験件名[TUNAGUMO-TEST]、外部向けUser-Agent、API名等)。本番の保存名・Stripe記録名・サーバー名は互換性のため維持しています。
 2026-09-29 [Claude] Claudeは利用規約第5条の解約時期を「契約期間の終了時に有効・日割り返金なし・トライアル中の解約は無料」と明確化しました(Stripeの期間末解約・日割りなし設定と一致)。YouTubeへ投稿6本を公開し、残り6本を毎日1本の投稿待ちにしました。
+2026-09-29 [Claude] Claudeは本人指示で定期QA(daily_qa.sh)と運用点検の原因調査(ops_check.sh)の実行AIをCodexからClaude Code(claude -p、既定opus)へ移し、失敗時のみCodexで再実行する形にしました。QAスクリプトのテスト29件をDockerで確認しました。

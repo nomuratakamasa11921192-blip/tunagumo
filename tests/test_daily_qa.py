@@ -36,11 +36,11 @@ elif name == 'docker':
         event = 'pytest'
     elif 'unittest' in args:
         event = 'script-tests'
-elif name == 'codex':
-    prompt = args[-1]
+elif name in ('codex', 'claude'):
+    prompt = args[args.index('-p') + 1] if '-p' in args else args[-1]
     event = 'repair' if '開発用のテスト' in prompt else ('audit' if '本日の自動修正' in prompt else 'save')
 with log.open('a') as f:
-    f.write(json.dumps(dict(event=event, args=args)) + '\n')
+    f.write(json.dumps(dict(event=event, args=args, tool=name)) + '\n')
 count = sum(row['event'] == event for row in previous) + 1
 fail = os.environ.get('QA_TEST_FAIL', '')
 if fail in (event, event + str(count)):
@@ -67,7 +67,7 @@ else:
 
 
 class DailyQATests(unittest.TestCase):
-    def run_script(self, fail='', code=1, quota_text=False, dirty=False, unpushed=False, branch='main', start_dirty=False, model=''):
+    def run_script(self, fail='', code=1, quota_text=False, dirty=False, unpushed=False, branch='main', start_dirty=False, model='', claude_model=''):
         with tempfile.TemporaryDirectory(prefix='tunagumo-qa-test-') as tmp:
             root = Path(tmp)
             shutil.copy2(ROOT / 'daily_qa.sh', root / 'daily_qa.sh')
@@ -76,13 +76,13 @@ class DailyQATests(unittest.TestCase):
             (root / '.env').write_text('SLACK_WEBHOOK_URL=https://example.invalid/test-only\n')
             fake_bin = root / 'bin'
             fake_bin.mkdir()
-            for name in ('git', 'docker', 'codex', 'curl', 'run', 'up', 'python3'):
+            for name in ('git', 'docker', 'codex', 'claude', 'curl', 'run', 'up', 'python3'):
                 executable = fake_bin / name
                 executable.write_text('#!' + sys.executable + '\n' + FAKE_TOOL)
                 executable.chmod(0o755)
             log = root / 'calls.jsonl'
             env = {**os.environ, 'PATH': str(fake_bin) + os.pathsep + os.environ['PATH'],
-                   'CODEX_SCHEDULED_MODEL': model, 'QA_TEST_LOG': str(log), 'QA_TEST_FAIL': fail, 'QA_TEST_EXIT': str(code),
+                   'CODEX_SCHEDULED_MODEL': model, 'CLAUDE_SCHEDULED_MODEL': claude_model, 'QA_TEST_LOG': str(log), 'QA_TEST_FAIL': fail, 'QA_TEST_EXIT': str(code),
                    'QA_TEST_QUOTA_TEXT': '1' if quota_text else '',
                    'QA_TEST_BRANCH': branch, 'QA_TEST_START_DIRTY': '1' if start_dirty else '',
                    'QA_TEST_DIRTY': '1' if dirty else '', 'QA_TEST_UNPUSHED': '1' if unpushed else ''}
@@ -109,7 +109,9 @@ class DailyQATests(unittest.TestCase):
         ])
         for call in calls:
             if call['event'] in {'repair', 'audit', 'save'}:
-                self.assertEqual(call['args'][call['args'].index('--model') + 1], 'gpt-6-sol')
+                # 定期実行は2026-09-29からClaude Codeが担当する
+                self.assertEqual(call['tool'], 'claude')
+                self.assertEqual(call['args'][call['args'].index('--model') + 1], 'opus')
             if call['event'] in {'build', 'up', 'migrate', 'pytest', 'script-tests'}:
                 self.assertEqual(call['args'][:9], [
                     'compose', '-p', 'tunagumo-dev', '--env-file', '../.env.test',
@@ -196,21 +198,22 @@ class DailyQATests(unittest.TestCase):
     def test_save_failure_does_not_notify_success(self):
         self.assert_stopped('save', ['curl'])
 
-    def test_failure_retries_with_scheduled_model(self):
+    def test_failure_retries_with_codex_fallback(self):
         result, calls = self.run_script(fail='repair1')
         self.assertEqual(result.returncode, 0, result.stderr)
         repair = [c for c in calls if c['event'] == 'repair']
-        self.assertEqual(len(repair), 2)
-        for call in repair:
-            self.assertEqual(call['args'][call['args'].index('--model') + 1], 'gpt-6-sol')
+        self.assertEqual([c['tool'] for c in repair], ['claude', 'codex'])
+        self.assertEqual(repair[0]['args'][repair[0]['args'].index('--model') + 1], 'opus')
+        self.assertEqual(repair[1]['args'][repair[1]['args'].index('--model') + 1], 'gpt-6-sol')
 
-    def test_configured_model_applies_to_every_stage_and_retry(self):
-        result, calls = self.run_script(fail='repair1', model='test-model')
+    def test_configured_models_apply_to_every_stage_and_fallback(self):
+        result, calls = self.run_script(fail='repair1', model='test-model', claude_model='test-claude')
         self.assertEqual(result.returncode, 0, result.stderr)
         agents = [c for c in calls if c['event'] in {'repair', 'audit', 'save'}]
         self.assertEqual(len(agents), 4)
         for call in agents:
-            self.assertEqual(call['args'][call['args'].index('--model') + 1], 'test-model')
+            expected = 'test-model' if call['tool'] == 'codex' else 'test-claude'
+            self.assertEqual(call['args'][call['args'].index('--model') + 1], expected)
 
     def test_successful_quota_test_does_not_rerun_agent(self):
         result, calls = self.run_script(quota_text=True)
@@ -222,7 +225,7 @@ class DailyQATests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(any(c['event'] in {'run', 'up'} and c['args'][:1] != ['compose'] for c in calls))
         repair = next(c for c in calls if c['event'] == 'repair')
-        self.assertIn('`run --rm`', repair['args'][-1])
+        self.assertIn('`run --rm`', repair['args'][repair['args'].index('-p') + 1])
 
 
 if __name__ == '__main__':

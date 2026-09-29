@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===========================================================================
-# daily_qa.sh - Codex主導・日常バグチェック＆GitHub自動同期スクリプト
+# daily_qa.sh - Claude Code主導(予備: Codex)・日常バグチェック＆GitHub自動同期スクリプト
 #
 # 実行場所: WindowsのGit BashまたはVPSの開発用clone（main専用）。
 # /opt/tsunagumo（本番）には一切触れない。このスクリプト自体もそこに置かない。
@@ -34,8 +34,11 @@ if [ -f .env ]; then
   set +a
 fi
 
-# 定期実行だけのモデル指定。対話作業用モデルとは分離する。
+# 定期実行は2026-09-29からClaude Code(claude -p)が担当する(本人指示)。
+# Claudeが利用上限・障害で失敗した時だけ、予備としてCodexで再実行する(SCHEDULED_FALLBACK=none で無効)。
+CLAUDE_SCHEDULED_MODEL="${CLAUDE_SCHEDULED_MODEL:-opus}"
 SCHEDULED_MODEL="${CODEX_SCHEDULED_MODEL:-gpt-6-sol}"
+SCHEDULED_FALLBACK="${SCHEDULED_FALLBACK:-codex}"
 # Windowsのpython3はMicrosoft Storeの別名で実行できない場合がある。
 QA_PYTHON=python3
 case "${OSTYPE:-}" in msys*|cygwin*) QA_PYTHON=python ;; esac
@@ -50,29 +53,23 @@ notify_slack() {
   fi
 }
 
-# $1 = codexに渡すプロンプト文字列
+# $1 = 定期実行のAIに渡すプロンプト文字列
 run_codex_scheduled() {
   local prompt="$1"
   local out
-  # codex exec = 非対話(cron)実行専用のサブコマンド。素の `codex "..."` は
-  # TUI起動を試みてしまい、端末が無いcron環境では "stdin is not a terminal" で
-  # 失敗する(2026-09-08 instagram_check.shのcron初回実行で発覚、同じ構造の
-  # このスクリプトも同様に失敗していた可能性が高い)。
-  # `-a`/`--ask-for-approval` は exec には存在しない(codexコマンド本体のみの
-  # オプションだった)。exec では `-s/--sandbox danger-full-access` を使う
-  # (2026-09-10、`codex exec --help`で確認)。
   local status=0
-  if out=$(codex exec -s danger-full-access --model "$SCHEDULED_MODEL" "$prompt" 2>&1); then
+  # claude -p = 非対話実行。定期実行は人が承認できないため権限確認を省略する
+  # (作業内容はプロンプトで開発用clone・開発用Composeに限定している)。
+  if out=$(claude -p "$prompt" --model "$CLAUDE_SCHEDULED_MODEL" --dangerously-skip-permissions 2>&1); then
     status=0
   else
     status=$?
   fi
 
-  # 正常なテスト名(test_video_quota_route等)やAPIエラー処理の説明を制限と誤認しない。
-  # テストの成否は、保存前にスクリプト自身がpytestを実行して別途確認する。
-  if [ "$status" -ne 0 ]; then
-    echo "[daily_qa] 定期実行モデルで失敗/制限を検知。${SCHEDULED_MODEL} で再実行します。" >&2
+  if [ "$status" -ne 0 ] && [ "$SCHEDULED_FALLBACK" = "codex" ]; then
+    echo "[daily_qa] Claude Codeで失敗/制限を検知(終了コード ${status})。予備のCodex(${SCHEDULED_MODEL})で再実行します。" >&2
     echo "$out"
+    # codex exec = 非対話実行。exec では `-s/--sandbox danger-full-access` を使う(2026-09-10確認)。
     if out=$(codex exec -s danger-full-access --model "$SCHEDULED_MODEL" "$prompt" 2>&1); then
       status=0
     else
@@ -128,7 +125,7 @@ dc up -d db 2>&1 | tail -3
 # 開発用DBに新しい列・テーブルを反映してからテストする。
 dc run --rm -T api alembic upgrade head
 
-echo "=== [1/4] Codexによる日常自動テストとバグ修復 ==="
+echo "=== [1/4] Claude Codeによる日常自動テストとバグ修復 ==="
 run_codex_scheduled "$(cat <<'QA_PROMPT'
 AGENTS.mdとSYSTEM_PROMPT.mdに従い、開発用のテストを実行せよ。
 
@@ -160,7 +157,7 @@ src/main.py の起動時ヘルスチェックが実APIへ疎通確認するの�
 QA_PROMPT
 )"
 
-echo "=== [2/4] Codexによる開発途中コードの誤爆チェック ==="
+echo "=== [2/4] Claude Codeによる開発途中コードの誤爆チェック ==="
 run_codex_scheduled "$(cat <<'AUDIT_PROMPT'
 本日の自動修正が、TODOコメントや未実装のダミー関数など、人間が意図的に
 未完成のまま残している開発途中の機能を誤って削除・書き換えしていないか、
@@ -169,7 +166,7 @@ git diff で確認せよ。もし該当する変更があれば、その部分�
 AUDIT_PROMPT
 )"
 
-# Codexの終了コードや「成功」という文章だけではテストの成功を証明できない。
+# AIの終了コードや「成功」という文章だけではテストの成功を証明できない。
 # 監査による変更も含めた最新のコードを再ビルドし、実際のpytest終了コードで保存可否を決める。
 echo "=== [保存前検証] 再ビルド・DB更新・全テスト ==="
 dc build api 2>&1 | tail -5
@@ -185,10 +182,10 @@ MSYS_NO_PATHCONV=1 dc run --rm -T --no-deps \
   --volume "$qa_mount_root/scripts/ops_check.sh:/qa/scripts/ops_check.sh:ro" \
   api python -m unittest discover -s /qa/tests -v
 
-echo "=== [3/4] CodexによるGitコミット＆GitHub保存 ==="
+echo "=== [3/4] Claude CodeによるGitコミット＆GitHub保存 ==="
 run_codex_scheduled "$(cat <<'SAVE_PROMPT'
 本日の日常QAが正常終了した。変更があれば
-'[Codex] 定期バグチェックと修復完了' のメッセージでコミットし、
+'[Claude] 定期バグチェックと修復完了' のメッセージでコミットし、
 origin/main へpushせよ（これは本番VPSへの反映ではなく、GitHubリポジトリの
 更新のみであることを理解した上で実行せよ）。変更が無ければ何もしなくてよい。
 検証済みのコード・テストにはこの工程で追加の変更を加えない。
@@ -212,4 +209,4 @@ fi
 echo "=== [4/4] Slackへの完了通知 ==="
 notify_slack "【定期QA】ツナグモ 本日の自動バグチェック完了。詳細は qa_execution.log / GitHub を確認してください。"
 
-echo "=== [完了] Codex単独・日常自動QAシステム 正常終了 ==="
+echo "=== [完了] Claude Code・日常自動QAシステム 正常終了 ==="
