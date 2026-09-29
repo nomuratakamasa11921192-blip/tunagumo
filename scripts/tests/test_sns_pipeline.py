@@ -117,3 +117,28 @@ class PipelineTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DuplicateGuardTests(unittest.TestCase):
+    def test_same_text_or_same_video_is_not_posted_twice(self):
+        with tempfile.TemporaryDirectory() as d:
+            posted = Path(d) / 'posted' / 'youtube'
+            posted.mkdir(parents=True)
+            video = Path(d) / 'a.mp4'
+            video.write_bytes(b'video-1')
+            (posted / 'old.txt').write_text(f'approved: x\nmedia: {video}\n---\nprivacy: public\n題名\n', encoding='utf-8')
+            with patch.object(a, 'POSTED_ROOT', str(Path(d) / 'posted')):
+                same = f'approved: y\nmedia: {video}\n---\nprivacy: public\n別の題名\n'
+                self.assertIsNotNone(a.find_posted_duplicate('youtube', same, str(Path(d) / 'new.txt')))
+                remade = Path(d) / 'v2' / 'a.mp4'
+                remade.parent.mkdir()
+                remade.write_bytes(b'video-2')  # 同名でも作り直した動画は別物
+                fixed = f'approved: y\nmedia: {remade}\n---\nprivacy: public\n題名\n'
+                self.assertIsNone(a.find_posted_duplicate('youtube', fixed, str(Path(d) / 'new.txt')))
+
+            xdir = Path(d) / 'posted' / 'x'
+            xdir.mkdir(parents=True)
+            (xdir / 'old.txt').write_text('approved: x\n---\n同じ本文\nhttps://tunagumo.com\n', encoding='utf-8')
+            with patch.object(a, 'POSTED_ROOT', str(Path(d) / 'posted')):
+                self.assertIsNotNone(a.find_posted_duplicate('x', 'approved: z\n---\n同じ本文\n https://tunagumo.com \n', 'n.txt'))
+                self.assertIsNone(a.find_posted_duplicate('x', 'approved: z\n---\n別の本文\n', 'n.txt'))

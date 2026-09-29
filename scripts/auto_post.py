@@ -116,6 +116,41 @@ def next_in_queue(channel):
     return os.path.join(d, files[0]) if files else None
 
 
+def _media_key(ref):
+    """ローカルの動画・画像は中身のハッシュ、URLはURLそのもので比べる(作り直した同名ファイルは別物)。"""
+    local = ref if os.path.isabs(ref) else os.path.join(REPO_ROOT, ref)
+    if os.path.isfile(local):
+        import hashlib
+        with open(local, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    return ref
+
+
+def content_key(raw):
+    """同じ投稿かどうかの判定用。添付があれば添付の中身、無ければ本文(承認印等のヘッダ除く)で比べる。"""
+    media, body = parse_item(raw)
+    if media:
+        return ("media", tuple(sorted(_media_key(m) for m in media)))
+    return ("text", "\n".join(line.strip() for line in body.splitlines() if line.strip()))
+
+
+def find_posted_duplicate(channel, raw, path):
+    """同じチャネルで同じ内容を投稿済みなら、そのファイルを返す(2026-09-29)。
+    ClaudeとCodexの両方が投稿を扱っても、二重投稿にならないようにするための最後の確認。"""
+    key = content_key(raw)
+    posted_dir = os.path.join(POSTED_ROOT, channel)
+    if not os.path.isdir(posted_dir):
+        return None
+    for name in os.listdir(posted_dir):
+        p = os.path.join(posted_dir, name)
+        if not name.endswith(".txt") or os.path.abspath(p) == os.path.abspath(path):
+            continue
+        with open(p, "r", encoding="utf-8") as f:
+            if content_key(f.read()) == key:
+                return p
+    return None
+
+
 def mark_posted(channel, path):
     dest_dir = os.path.join(POSTED_ROOT, channel)
     os.makedirs(dest_dir, exist_ok=True)
@@ -313,6 +348,11 @@ def main():
     media, body = parse_item(raw)
     if not body and not media:
         print(f"{tag} 中身が空です: {path}", file=sys.stderr)
+        return 1
+    duplicate = find_posted_duplicate(args.channel, raw, path)
+    if duplicate:
+        print(f"{tag} 同じ内容を投稿済みのため投稿しません: {os.path.basename(path)}"
+              f"（投稿済み: {os.path.basename(duplicate)}）", file=sys.stderr)
         return 1
 
     # Atomic claim prevents concurrent workers and retries after an uncertain delivery.
