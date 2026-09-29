@@ -1,0 +1,10 @@
+approved: 2026-09-29 17:18 (Notion)
+notion: 3e49baaf6d9581a0b013cbdf2226843e
+---
+ツナグモの動画機能は2種類。
+
+・手元の写真や動画からルームツアーを作る：月額の利用枠内
+・映像そのものを新しく生成する：Higgsfieldの別途契約・費用が必要
+
+料金の詳細はこちら。
+https://tunagumo.com/pricing
