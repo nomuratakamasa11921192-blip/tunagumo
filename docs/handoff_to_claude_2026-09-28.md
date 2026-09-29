@@ -84,3 +84,16 @@
 - 追記（9/29 15:20）：LINE本人試験が無応答だった原因はWorkerの `redirect:"error"`（Cloudflare非対応）。manualに修正・反映（8971159）。本人の `[TSUNAGUMO-TEST] ツナグモハイツ203号室に宅配ボックスはありますか？` に資料ベースのAI回答がLINE返信200で届いたことを確認。試験後にWorkerの試験用2設定を削除。
 - 表記統一（9ba78ee）：顧客に見える表記をtunagumoへ（試験件名 `[TUNAGUMO-TEST]`、外部User-Agent、API名、ウィジェットのログ、サイトのCSS名）。DBのメール件名条件1件も更新。アプリ7ファイル・Worker（版581727e1）・サイトindexを反映。互換性のため維持：ログイン情報の保存名（tsunagumo_api_key等）、Stripeメタデータ名、/opt/tsunagumo、Worker名とURL、Composeのプロジェクト名、定期タスク名。
 - ローカルの作業フォルダ名は本人判断で `事業①/tsunagumo` のまま（改名しない）。
+
+## 2026-09-29 夕方 Claude実施分（SNS投稿・定期実行の移行）
+
+- 投稿動画12本：無音が各13〜14秒あったため、ナレーションを約17〜22秒に書き直し（全本末尾に「説明後から2週間無料。詳しくはプロフィールのリンクから。」）、OpenAI TTS（gpt-4o-mini-tts/alloy）＋合成BGMで再作成。無音は各1〜2秒（最初と最後のフェードのみ）。`撮影セット/投稿動画_確認用_v2/`。Whisperで聞き取りを確認。
+- YouTube：旧版6本（6RZpHh-sh1I, R4tjXkGgSGQ, lqrqAxkQcVw, rgtxiXK-VLI, eQgUW_3aqUU, rjH8RUy7Bkw）を公開済み。API認証がアップロード専用のため非公開化できず、Studioでの非公開化が必要（未完了）。v2の12本は `sales/queue/youtube/` に承認済みで並べ、定期タスク tsunagumo-post-youtube（毎日18:00、9/30開始）で1日1本公開。説明文にトライアル案内とURLを追記。
+- X：APIはクレジット切れ（402、1投稿0.2ドル・リンク付き）。ブラウザ投稿は本人がChromeを使用中だと操作できず未実施。Xの投稿元はNotion承認済の11件（9/22_01・02は9/23_03・04と完全同一のためNotionを下書きに戻して除外）。自作のX用12本は重複テーマのため `sales/drafts/_withdrawn_x_20260929/` へ退避。tsunagumo-post-x は無効のまま（毎日12:30に変更済み）。
+- LINE：Notion承認済のお知らせ1件を配信（友だち1人）。Notionは投稿済に自動更新。
+- Notion承認フロー：`notion_sync.py --channels x,line` を毎時（tsunagumo-notion-sync有効化）。Instagramは承認済10件を対象外で保持。
+- 二重投稿防止：`auto_post.py` が投稿済みと同じ内容（添付は中身のハッシュ、文章は本文）を送らず、列から `_duplicates` へ退避。
+- 定期タスクの投稿系（notion-sync/post-line/post-youtube/post-x）はウィンドウを出さない run_scheduled_hidden.py 経由に変更。
+- 定期QA・運用点検の実行AIをClaude Code（claude -p、既定opus）へ移行。失敗時のみCodex。QA用clone更新済み。
+- Stripe：本番の制限付きキーでは契約の参照・価格の停止が不可。旧価格は新規申込に未使用のため据え置き。
+- 試験用会社のLINE接続情報を削除。
