@@ -69,7 +69,7 @@ def oauth1_header(method, url, creds):
     return 'OAuth ' + ', '.join(f'{quote(k)}="{quote(v)}"' for k, v in sorted(oauth.items()))
 
 
-def request(token, method, path, payload=None, content_type='application/json'):
+def request(token, method, path, payload=None, content_type='application/json', timeout=30):
     """tokenはOAuth2のアクセストークン(文字列)か、OAuth1.0aの4つの鍵(dict)。"""
     if not token:
         raise RuntimeError('Xの動画用ユーザー認証が未設定です。送信はしていません。')
@@ -81,7 +81,7 @@ def request(token, method, path, payload=None, content_type='application/json'):
     req = urllib.request.Request(API_ROOT + path, method=method, data=data,
         headers={'Authorization': auth, 'Content-Type': content_type})
     try:
-        with urllib.request.build_opener(NoRedirect()).open(req, timeout=30) as response:
+        with urllib.request.build_opener(NoRedirect()).open(req, timeout=timeout) as response:
             raw = response.read()
         result = json.loads(raw.decode('utf-8')) if raw else {}
         if not isinstance(result, dict) or result.get('errors'):
@@ -113,8 +113,9 @@ def upload(token, path):
                     f'--{boundary}\r\nContent-Disposition: form-data; name="media"; filename="chunk.mp4"\r\n'
                     'Content-Type: application/octet-stream\r\n\r\n').encode('ascii')
             body += chunk + f'\r\n--{boundary}--\r\n'.encode('ascii')
+            # 低速回線でも送り切れるよう、動画の分割送信だけ待ち時間を長くする(2026-09-29)。
             request(token, 'POST', f'/media/upload/{media_id}/append', body,
-                    f'multipart/form-data; boundary={boundary}')
+                    f'multipart/form-data; boundary={boundary}', timeout=300)
             segment += 1
             sent += len(chunk)
     if sent != size:

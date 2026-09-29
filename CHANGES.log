@@ -419,3 +419,4 @@
 2026-09-29 [Claude] ClaudeはYouTube Studioで旧版6本を非公開にし(外部から403を確認)、無音を埋めた新版6本を公開しました(v=bknt4-jYbsA v=cCqWoV_FH-k v=eU5pIhHg4go v=hoAHqx__x-Q v=iu2azbEihYQ v=j208HjZV2WM )。残り新版6本は毎日18:00に1本ずつ公開されます。Xはブラウザの非表示タブでは投稿ボタンが受理されず未投稿です。
 2026-09-29 [Claude] Claudeは毎週日曜20:00に「開発の裏側・高校生で起業した話」のX下書きを1本作りNotionへ送る定期タスク(tsunagumo-weekly-story、Xの投稿待ち3本以上の週は見送り)を追加し、YouTubeを翌日17時から15分おきに上限まで公開する設定にしました。
 2026-09-29 [Claude] 本人の判断で「開発の裏側」の週1下書きの自動作成をやめ、定期タスクとスクリプトを削除しました(本人とClaudeで都度考えて作る)。
+2026-09-29 [Claude] ClaudeはXのクレジット購入後、OAuth1.0aの鍵で動画付き投稿を開始し(低速回線向けに動画送信の待ち時間を延長)、X投稿の定期タスクを毎日12:30で有効化しました。Instagram用に作り直し動画12本を https://tunagumo.com/assets/reels/ に公開し投稿待ちを作成しました(Bufferの新しい鍵待ち)。
