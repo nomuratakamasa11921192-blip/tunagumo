@@ -418,3 +418,4 @@
 2026-09-29 [Claude] Claudeは本人指示で定期QA(daily_qa.sh)と運用点検の原因調査(ops_check.sh)の実行AIをCodexからClaude Code(claude -p、既定opus)へ移し、失敗時のみCodexで再実行する形にしました。QAスクリプトのテスト29件をDockerで確認しました。
 2026-09-29 [Claude] ClaudeはYouTube Studioで旧版6本を非公開にし(外部から403を確認)、無音を埋めた新版6本を公開しました(v=bknt4-jYbsA v=cCqWoV_FH-k v=eU5pIhHg4go v=hoAHqx__x-Q v=iu2azbEihYQ v=j208HjZV2WM )。残り新版6本は毎日18:00に1本ずつ公開されます。Xはブラウザの非表示タブでは投稿ボタンが受理されず未投稿です。
 2026-09-29 [Claude] Claudeは毎週日曜20:00に「開発の裏側・高校生で起業した話」のX下書きを1本作りNotionへ送る定期タスク(tsunagumo-weekly-story、Xの投稿待ち3本以上の週は見送り)を追加し、YouTubeを翌日17時から15分おきに上限まで公開する設定にしました。
+2026-09-29 [Claude] 本人の判断で「開発の裏側」の週1下書きの自動作成をやめ、定期タスクとスクリプトを削除しました(本人とClaudeで都度考えて作る)。
