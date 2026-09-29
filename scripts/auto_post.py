@@ -180,12 +180,18 @@ def send_x(env, media, body, dry_run):
         video = publish_x_video.validate_video(video)
         if dry_run:
             return f"MP4動画1本を最初の投稿へ添付予定（{len(parts)}件）。認証・公開は未実施"
-        # アクセストークンは約2時間で切れるため、期限が近ければ投稿前に自動更新する(2026-09-29)。
-        import x_oauth2_login
-        try:
-            token = x_oauth2_login.refresh_if_needed()
-        except Exception as e:  # noqa: BLE001
-            raise RuntimeError(f"Xの認証を更新できませんでした: {e}")
+        # OAuth2が設定されていればそれを使い(期限前に自動更新)、無ければ従来のOAuth1.0aの4つの鍵で送る(2026-09-29)。
+        if env.get("X_OAUTH2_CLIENT_ID") or os.environ.get("X_OAUTH2_CLIENT_ID"):
+            import x_oauth2_login
+            try:
+                token = x_oauth2_login.refresh_if_needed()
+            except Exception as e:  # noqa: BLE001
+                raise RuntimeError(f"Xの認証を更新できませんでした: {e}")
+        else:
+            missing = [k for k in publish_x.REQUIRED_KEYS if not (env.get(k) or os.environ.get(k))]
+            if missing:
+                raise RuntimeError(f".env に設定がありません: {', '.join(missing)}")
+            token = {k: env.get(k) or os.environ.get(k) for k in publish_x.REQUIRED_KEYS}
         return publish_x_video.publish(token, video, parts)
     if dry_run:
         return f"{len(parts)}件のスレッドとして投稿予定"

@@ -52,15 +52,34 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def oauth1_header(method, url, creds):
+    """OAuth 1.0a の署名。JSONやmultipartの本文は署名に含めず、URLのクエリだけを含める(X API v2の仕様)。"""
+    import base64, hashlib, hmac
+    quote = lambda v: urllib.parse.quote(str(v), safe='~')
+    parsed = urllib.parse.urlsplit(url)
+    oauth = {'oauth_consumer_key': creds['X_API_KEY'], 'oauth_nonce': secrets.token_hex(16),
+             'oauth_signature_method': 'HMAC-SHA1', 'oauth_timestamp': str(int(time.time())),
+             'oauth_token': creds['X_ACCESS_TOKEN'], 'oauth_version': '1.0'}
+    params = list(oauth.items()) + urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    base_params = '&'.join(f'{quote(k)}={quote(v)}' for k, v in sorted((quote(k), quote(v)) for k, v in params))
+    base_url = f'{parsed.scheme}://{parsed.netloc}{parsed.path}'
+    base = '&'.join([method.upper(), quote(base_url), quote(base_params)])
+    key = f"{quote(creds['X_API_SECRET'])}&{quote(creds['X_ACCESS_TOKEN_SECRET'])}"
+    oauth['oauth_signature'] = base64.b64encode(hmac.new(key.encode(), base.encode(), hashlib.sha1).digest()).decode()
+    return 'OAuth ' + ', '.join(f'{quote(k)}="{quote(v)}"' for k, v in sorted(oauth.items()))
+
+
 def request(token, method, path, payload=None, content_type='application/json'):
+    """tokenはOAuth2のアクセストークン(文字列)か、OAuth1.0aの4つの鍵(dict)。"""
     if not token:
         raise RuntimeError('Xの動画用ユーザー認証が未設定です。送信はしていません。')
     if not path.startswith('/') or path.startswith('//'):
         raise ValueError('API path required')
     data = (json.dumps(payload).encode('utf-8')
             if payload is not None and content_type == 'application/json' else payload)
+    auth = oauth1_header(method, API_ROOT + path, token) if isinstance(token, dict) else f'Bearer {token}'
     req = urllib.request.Request(API_ROOT + path, method=method, data=data,
-        headers={'Authorization': f'Bearer {token}', 'Content-Type': content_type})
+        headers={'Authorization': auth, 'Content-Type': content_type})
     try:
         with urllib.request.build_opener(NoRedirect()).open(req, timeout=30) as response:
             raw = response.read()
@@ -133,7 +152,7 @@ def publish(token, path, parts):
     # Validate before the first request, including the read-only account lookup.
     path = validate_video(path)
     if not token:
-        raise RuntimeError('X_OAUTH2_USER_ACCESS_TOKENが未設定です。動画も本文も送信していません。')
+        raise RuntimeError('Xの認証情報が未設定です。動画も本文も送信していません。')
     if not parts or any(not part.strip() for part in parts):
         raise RuntimeError('投稿本文がありません。')
     identity = request(token, 'GET', '/users/me').get('data', {})
