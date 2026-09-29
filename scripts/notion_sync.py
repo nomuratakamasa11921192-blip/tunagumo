@@ -285,7 +285,10 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="変更せず対象だけ表示する")
     parser.add_argument("--push", action="store_true",
                         help="ローカルの下書きをNotionへ送る(Notionで一覧・承認できるように)")
+    parser.add_argument("--channels", default="",
+                        help="取り込むチャネルをカンマ区切りで限定する(例: x,line,youtube)。省略時は全チャネル")
     args = parser.parse_args()
+    only = {c.strip() for c in args.channels.split(",") if c.strip()}
 
     env = auto_post.load_env()
     token = env.get("NOTION_TOKEN") or os.environ.get("NOTION_TOKEN")
@@ -333,6 +336,8 @@ def main():
         if channel not in auto_post.CHANNELS:
             print(f"  - {title}: 未対応のチャネル「{channel}」のため取り込みません", file=sys.stderr)
             continue
+        if only and channel not in only:
+            continue  # 対象外のチャネルは承認済のまま残す(例: 手動運用中のInstagram)
         if not caption:
             print(f"  - {title}: キャプションが空のため取り込みません", file=sys.stderr)
             continue

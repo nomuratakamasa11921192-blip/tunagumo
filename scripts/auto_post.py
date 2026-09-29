@@ -353,6 +353,11 @@ def main():
     if duplicate:
         print(f"{tag} 同じ内容を投稿済みのため投稿しません: {os.path.basename(path)}"
               f"（投稿済み: {os.path.basename(duplicate)}）", file=sys.stderr)
+        if not args.file and not args.dry_run:
+            # 列の先頭に残すと以降の投稿が止まるため、重複は脇によけて次回は次の投稿へ進む。
+            skipped = os.path.join(POSTED_ROOT, args.channel, "_duplicates")
+            os.makedirs(skipped, exist_ok=True)
+            os.replace(path, os.path.join(skipped, os.path.basename(path)))
         return 1
 
     # Atomic claim prevents concurrent workers and retries after an uncertain delivery.
