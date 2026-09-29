@@ -472,7 +472,7 @@ def test_imap_first_run_and_uidvalidity_change_only_record_position(real_transpo
 
 
 def test_subject_scope_does_not_fetch_private_bodies(real_transport, monkeypatch):
-    prefix = "[TSUNAGUMO-TEST]"
+    prefix = "[TUNAGUMO-TEST]"
 
     class ScopedIMAP(_FakeIMAP):
         def uid(self, command, *args):
@@ -495,7 +495,7 @@ def test_subject_scope_does_not_fetch_private_bodies(real_transport, monkeypatch
     assert [uid for uid, _ in result.messages] == [102]
     assert result.last_uid == 103
     commands = _FakeIMAP.instances[-1].commands
-    assert ("uid", "SEARCH", None, "UID", "101:*", "HEADER", "Subject", '"[TSUNAGUMO-TEST]"') in commands
+    assert ("uid", "SEARCH", None, "UID", "101:*", "HEADER", "Subject", '"[TUNAGUMO-TEST]"') in commands
     assert not any(c[:3] == ("uid", "FETCH", "101") for c in commands)
 
 
@@ -509,18 +509,18 @@ def test_subject_search_failure_does_not_fall_back_to_all_mail(real_transport, m
 
     monkeypatch.setattr(mail_module.imaplib, "IMAP4_SSL", FailedSearch)
     account = _account()
-    account.subject_prefix = "[TSUNAGUMO-TEST]"
+    account.subject_prefix = "[TUNAGUMO-TEST]"
     with pytest.raises(MailConfigError, match="検索"):
         real_transport.fetch_new(account, last_uid=100, uidvalidity=555)
 
 
 @_async
 async def test_subject_scope_skips_recording_and_notifications(config, tenant, monkeypatch, sent_notifications):
-    await _setup_account(tenant["id"], subject_prefix="[TSUNAGUMO-TEST]")
+    await _setup_account(tenant["id"], subject_prefix="[TUNAGUMO-TEST]")
     _ai(monkeypatch, escalated=False)
     transport = FakeTransport([
         _raw(subject="私用のメール", msg_id="<private@example.net>"),
-        _raw(subject="[TSUNAGUMO-TEST] 内見", msg_id="<test@example.net>"),
+        _raw(subject="[TUNAGUMO-TEST] 内見", msg_id="<test@example.net>"),
     ])
     try:
         result = await _scan(config, transport)
@@ -542,7 +542,7 @@ async def test_mail_scope_defaults_preserves_and_resets_on_change(client, tenant
     try:
         response = await client.put("/api/account/mail-account", json=body, headers=headers)
         assert response.status_code == 200
-        assert response.json()["subject_prefix"] == "[TSUNAGUMO-TEST]"
+        assert response.json()["subject_prefix"] == "[TUNAGUMO-TEST]"
         for update in ({"subject_prefix": "[ANOTHER-TEST]"}, {"username": "business@example.net"}, {"enabled": False}):
             async with async_session_factory() as db:
                 row = await db.get(TenantMailAccount, tenant["id"])

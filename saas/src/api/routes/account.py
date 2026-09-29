@@ -201,7 +201,7 @@ class MailAccountResponse(BaseModel):
     smtp_port: int | None = None
     username: str | None = None
     enabled: bool = False
-    subject_prefix: str = "[TSUNAGUMO-TEST]"
+    subject_prefix: str = "[TUNAGUMO-TEST]"
     last_checked_at: datetime | None = None
     last_error: str | None = None
 
@@ -231,7 +231,7 @@ async def update_mail_account(
     """接続を試してから保存する(つながらない設定のまま即レスが止まっているのに気付かない、を防ぐ)。"""
     row = await db.get(TenantMailAccount, tenant.id)
     subject_prefix = req.subject_prefix.strip() if req.subject_prefix is not None else (
-        row.subject_prefix if row is not None else "[TSUNAGUMO-TEST]"
+        row.subject_prefix if row is not None else "[TUNAGUMO-TEST]"
     )
     password = req.password or (decrypt_secret(row.password_encrypted) if row is not None else "")
     if not password:

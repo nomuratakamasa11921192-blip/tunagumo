@@ -1,5 +1,5 @@
 // 既存の営業Webhookを維持し、本人の明示的なテストだけをSaaS一次受けへ渡す。
-export const OWNER_TEST_PREFIX = "[TSUNAGUMO-TEST]";
+export const OWNER_TEST_PREFIX = "[TUNAGUMO-TEST]";
 
 export async function forwardOwnerTest(env, event) {
   if (!env.SAAS_TEST_LINE_USER_ID || event.source?.type !== "user" ||

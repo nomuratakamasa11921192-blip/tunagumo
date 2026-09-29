@@ -37,4 +37,4 @@ STRIPE_PRICE_BUSINESS = "price_1UJZTjGj5LbAzw5NoElecOWp"  # ビジネス 税込5
 # 本人限定のSaaS問い合わせテストを行うときだけ両方を設定する。未設定では営業動作を維持。
 #   SAAS_TEST_LINE_USER_ID (本人の1対1トークのuserId。グループ・ルームは対象外)
 #   SAAS_TEST_TENANT_ID    (既存の会社ID。チャネル認証情報を同社へ先に登録する)
-# テスト本文は [TSUNAGUMO-TEST] で開始する。Webhook URL自体は変更しない。
+# テスト本文は [TUNAGUMO-TEST] で開始する。Webhook URL自体は変更しない。

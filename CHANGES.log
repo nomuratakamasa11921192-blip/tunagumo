@@ -412,3 +412,5 @@
 2026-09-29 [Codex] Codexは本日のgit差分を確認し、意図的に未完成の機能を削除・書き換えた変更がないことを確認しました。この時点では追加テスト、コミット、pushは行っていません。
 2026-09-29 [Codex] Codexは日常QAの記録のみを指定のメッセージでコミットし、origin/mainへpushしました。本番VPSには反映していません。
 2026-09-29 [Claude] Claudeは本人のLINE試験が無応答だった原因を、Workerの本人試験転送がCloudflare非対応のredirect:"error"で例外になっていたことと特定し、manualに修正して反映しました(版69fb54ff)。署名付き診断でSaaS受信・AI応答生成まで確認済みです。
+2026-09-29 [Codex] Codexは本日のVPS点検のSSHタイムアウトを読み取り専用で調査し、TCP 22不通とこのPC回線のFortiGuard遮断を確認しました。VPS内部と当日バックアップは未確認で、本番変更・sudo使用はありません。
+2026-09-29 [Claude] Claudeは本人のLINE試験の成功(資料に基づくAI回答のLINE返信200)を確認して試験用2設定を削除し、顧客に見える表記のtsunagumoをtunagumoへ統一しました(試験件名[TUNAGUMO-TEST]、外部向けUser-Agent、API名等)。本番の保存名・Stripe記録名・サーバー名は互換性のため維持しています。

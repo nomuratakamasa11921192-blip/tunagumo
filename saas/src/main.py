@@ -71,7 +71,7 @@ def docs_urls(env: str) -> dict:
     return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
 
 
-app = FastAPI(title="tsunagumo", lifespan=lifespan, **docs_urls(settings.env))
+app = FastAPI(title="tunagumo", lifespan=lifespan, **docs_urls(settings.env))
 
 
 # 画面(frontend/)で読み込んでよい配信元を限定する指示。顧客のAPIキーをlocalStorageに

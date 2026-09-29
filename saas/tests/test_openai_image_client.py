@@ -201,7 +201,7 @@ def test_flyer_fetcher_reads_generated_image_from_disk(images_dir):
 
 @pytest.mark.parametrize(
     "url",
-    ["file:///etc/passwd", "http://example.com/a.jpg", "https://127.0.0.1/a.jpg", "https://tsunagumo.invalid/etc/passwd"],
+    ["file:///etc/passwd", "http://example.com/a.jpg", "https://127.0.0.1/a.jpg", "https://tunagumo.invalid/etc/passwd"],
 )
 def test_flyer_fetcher_rejects_unsafe_urls(url):
     with pytest.raises(FlyerGenerationError):

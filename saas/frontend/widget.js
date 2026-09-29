@@ -18,7 +18,7 @@
   var currentScript = document.currentScript;
   var publicKey = currentScript && currentScript.getAttribute('data-key');
   if (!publicKey) {
-    console.error('[tsunagumo-widget] data-key属性が指定されていません');
+    console.error('[tunagumo-widget] data-key属性が指定されていません');
     return;
   }
 

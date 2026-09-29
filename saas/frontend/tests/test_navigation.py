@@ -43,7 +43,7 @@ class NavigationTests(unittest.TestCase):
         self.company_usage = None
         self.member_login_body = None
         self.last_comment = None
-        self.mail_account = {'configured': False, 'subject_prefix': '[TSUNAGUMO-TEST]'}
+        self.mail_account = {'configured': False, 'subject_prefix': '[TUNAGUMO-TEST]'}
         self.saved_mail = None
         self.uploaded_document_body = None
         self.video_uploads = []
@@ -249,7 +249,7 @@ class NavigationTests(unittest.TestCase):
 
     def test_new_mail_connection_preserves_test_limit_on_save(self):
         self.page.click('#settings-btn')
-        expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TSUNAGUMO-TEST]')
+        expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TUNAGUMO-TEST]')
         self.page.fill('#mail-from', 'test@example.net')
         self.page.fill('#mail-user', 'test@example.net')
         self.page.fill('#mail-pass', 'test-password')
@@ -257,7 +257,7 @@ class NavigationTests(unittest.TestCase):
         self.page.fill('#mail-smtp-host', 'smtp.example.net')
         self.page.click('#mail-save-btn')
         expect(self.page.locator('#mail-pass')).to_have_value('')
-        self.assertEqual(self.saved_mail['subject_prefix'], '[TSUNAGUMO-TEST]')
+        self.assertEqual(self.saved_mail['subject_prefix'], '[TUNAGUMO-TEST]')
         self.saved_mail = None
         self.page.fill('#mail-subject-prefix', '')
         self.page.once('dialog', lambda dialog: dialog.dismiss())
@@ -314,7 +314,7 @@ class NavigationTests(unittest.TestCase):
                 expect(result).not_to_contain_text('Bad Gateway')
                 expect(self.page.locator('#mail-pass')).to_have_value('password-kept-on-failure')
                 expect(self.page.locator('#mail-user')).to_have_value('owner@gmail.com')
-                expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TSUNAGUMO-TEST]')
+                expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TUNAGUMO-TEST]')
                 expect(self.page.locator('#mail-status')).to_contain_text('未連携')
                 expect(self.page.locator('#mail-save-btn')).to_be_enabled()
                 self.assertIsNone(self.saved_mail)
@@ -330,7 +330,7 @@ class NavigationTests(unittest.TestCase):
         expect(self.page.locator('#mail-smtp-host')).to_have_value('smtp.gmail.com')
         expect(self.page.locator('#mail-smtp-port')).to_have_value('465')
         expect(self.page.locator('#mail-pass')).to_have_value('test-app-password')
-        expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TSUNAGUMO-TEST]')
+        expect(self.page.locator('#mail-subject-prefix')).to_have_value('[TUNAGUMO-TEST]')
         self.assertIsNone(self.saved_mail)
 
     def test_answer_still_polls_and_displays_completion_on_same_view(self):

@@ -20,7 +20,7 @@ from bs4 import BeautifulSoup
 
 from src.core.safe_http import UnsafeURLError, safe_get
 
-USER_AGENT = "tsunagumo-property-import/1.0 (+https://tunagumo.com; AI SaaS for real estate)"
+USER_AGENT = "tunagumo-property-import/1.0 (+https://tunagumo.com; AI SaaS for real estate)"
 FETCH_TIMEOUT_SECONDS = 15.0
 MAX_TEXT_CHARS = 4000
 MAX_IMAGE_URLS = 8

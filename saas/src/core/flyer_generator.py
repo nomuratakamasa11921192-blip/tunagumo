@@ -20,7 +20,7 @@ MAX_FLYER_IMAGES = 6
 MAX_FLYER_IMAGE_BYTES = 20 * 1024 * 1024
 # 相対URL(/api/generated-images/...)を解決するための内部専用のbase_url。
 # 実在しないドメイン(.invalid)なので、外部へ通信することはない。
-_INTERNAL_BASE_URL = "https://tsunagumo.invalid"
+_INTERNAL_BASE_URL = "https://tunagumo.invalid"
 
 
 class FlyerGenerationError(Exception):
