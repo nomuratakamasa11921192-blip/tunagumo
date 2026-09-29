@@ -33,7 +33,7 @@ assert run('hostname').decode().strip() == 'tk2-119-60133'
 assert stage.is_relative_to('/home/ubuntu')
 release = json.loads((stage / 'release.json').read_text())
 FILES = sorted(release['files'])
-assert FILES and all((f.startswith('src/') and f.endswith('.py')) or f == 'frontend/index.html' for f in FILES)
+assert FILES and all((f.startswith('src/') and f.endswith('.py')) or f in ('frontend/index.html', 'frontend/widget.js') for f in FILES)
 old_hashes, new_hashes = release['old_sha256'], {n: v['sha256'] for n, v in release['files'].items()}
 
 # 事前確認: ホストと稼働中の両コンテナが想定した旧版(0fb8c52)と一致し、処理中の依頼がない
