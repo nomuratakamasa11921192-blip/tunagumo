@@ -20,6 +20,7 @@ import secrets
 import sys
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 import webbrowser
 
@@ -69,8 +70,13 @@ def token_request(env, data):
     else:
         data = {**data, "client_id": client_id}
     req = urllib.request.Request(TOKEN_URL, data=urllib.parse.urlencode(data).encode(), headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as res:
-        return json.load(res)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as res:
+            return json.load(res)
+    except urllib.error.HTTPError as e:
+        # Xの返す理由(error, error_description)だけを表示する。トークンや秘密値は含まれない。
+        detail = e.read().decode("utf-8", errors="replace")[:300]
+        raise RuntimeError(f"Xのトークン取得に失敗しました(HTTP {e.code}): {detail}") from None
 
 
 def save_tokens(result):
@@ -126,8 +132,11 @@ def login():
     server = http.server.HTTPServer(("127.0.0.1", 8723), Handler)
     print("ブラウザでXの許可画面を開きます。「アプリにアクセスを許可」を押してください。")
     webbrowser.open(url)
-    server.timeout = 300
-    server.handle_request()
+    # ブラウザはfavicon等の別リクエストも送るため、認可コードかエラーが届くまで待つ(最大5分)。
+    server.timeout = 5
+    deadline = time.time() + 300
+    while time.time() < deadline and "code" not in received and "error" not in received:
+        server.handle_request()
     if received.get("state") != state or "code" not in received:
         print(f"認証を受け取れませんでした: {received.get('error', '不明')}")
         return 1

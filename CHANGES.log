@@ -422,3 +422,10 @@
 2026-09-29 [Claude] ClaudeはXのクレジット購入後、OAuth1.0aの鍵で動画付き投稿を開始し(低速回線向けに動画送信の待ち時間を延長)、X投稿の定期タスクを毎日12:30で有効化しました。Instagram用に作り直し動画12本を https://tunagumo.com/assets/reels/ に公開し投稿待ちを作成しました(Bufferの新しい鍵待ち)。
 2026-09-30 [Claude] ClaudeはXへ動画付き12本・文章5本の計17本を投稿し終えました(二重投稿なし、Notion由来5件は投稿済へ更新)。Bufferの新しい鍵は有効でしたが、接続先Instagramが公式のtunagumo_comではなくtunagumo2026のため、Instagram投稿は保留しました。
 2026-09-30 [Claude] ClaudeはInstagramのリール10本をBufferへ予約し(上限10件、残り2本は毎日21:00に自動追加)、面談の申し込み時に運営者本人のLINEへ通知する機能をWorkerに追加・反映しました(版178db744)。
+2026-09-30 [Claude] Claudeは本日のVPS点検のSSHタイムアウトを読み取りのみで調査し、このPC回線でVPSだけでなくgithub.comの22番も不通、HTTPSはFortiGuardのWeb Filter Violation(403)になることを確認しました。
+[Claude] 原因はPC側回線(社内/プロバイダのFortiGate)による外向き22番遮断と判断しました。VPS内部と当日バックアップは未確認で、本番変更・sudo使用はありません。
+2026-10-01 [Claude] Claudeは本日のVPS点検のSSHタイムアウトを読み取りのみで調査し、VPS・github.com・1.1.1.1すべての22番が不通、VPS宛てHTTPはFortiGuard遮断(403)・HTTPSは証明書差し替え(UNTRUSTED_ROOT)を確認しました。
+[Claude] 原因は9/24以降と同じPC側回線(FortiGate)による外向き22番遮断と判断しました。VPS内部と当日バックアップは未確認で、本番変更・sudo使用はありません。
+2026-10-02 [Claude] Claudeは本日のVPS点検のSSHタイムアウトを読み取りのみで調査し、VPS・github.com・1.1.1.1の22番がすべて不通、VPS宛てHTTPはFortiGuardのWeb Filter Violation(403)、HTTPSはTLS失敗であることを確認しました。
+[Claude] 原因は9/24以降と同じPC側回線(FortiGate)による外向き22番遮断と判断しました。VPS内部と当日バックアップは未確認で、本番変更・sudo使用はありません。
+2026-10-03 [Claude] ClaudeはXのOAuth2認証(本人の許可1回)を取得し、接続と自動更新を確認しました。以後のX動画投稿はOAuth2で行い、期限前に自動更新します。認可待ちがfavicon等の別リクエストで終了する不具合も修正しました。
